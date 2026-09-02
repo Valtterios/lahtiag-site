@@ -88,8 +88,12 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         <h1>{event.title}: bracket</h1>
         <p class="event-meta">
           <a href={`/events/${event.id}`}>Back to the event page</a>
-          {' · '}
-          <a href={`/events/${event.id}/bracket?display`}>Open display mode</a>
+          {session?.isAdmin && (
+            <>
+              {' · '}
+              <a href={`/events/${event.id}/bracket?display`}>Open presenter mode</a>
+            </>
+          )}
         </p>
       </article>
       {flash && <p class="flash">{flash}</p>}
