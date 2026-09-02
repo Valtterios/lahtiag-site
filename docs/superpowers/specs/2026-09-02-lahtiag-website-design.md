@@ -177,6 +177,8 @@ In that case the external bot must call the site's `/api/v1/*` routes with a sha
 
 Availability note: the website and slash commands would remain independent of that server. Only mirroring would depend on it.
 
+The maintainer's second workstation has SSH access to the AMP host, so standing a gateway bot up there is a short piece of work rather than a project. That lowers the cost of the deferred mirroring item, but does not change the rule above: even hosted there, the bot calls `/api/v1/*` with a service secret and never touches D1 directly.
+
 ## Repository layout
 
 ```
