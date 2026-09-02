@@ -228,19 +228,28 @@ const { guildId = DISCORD_GUILD_ID } = Astro.props;
     // Hop 2: the widget endpoint omits the server icon and the total member
     // count; the invite endpoint carries both and allows CORS. The invite
     // code expires, so it is taken from hop 1 each load, never hardcoded.
+    // This hop has its own try/catch, isolated from hop 1's: hop 1 has
+    // already rendered the name, online count, join button and avatar grid,
+    // and a hop 2 failure (most commonly the invite expiring between the two
+    // calls) must only drop the icon and the total, not the whole widget.
+    // Do not collapse this back into the outer catch below.
     const code = inviteCodeFrom(widget.instant_invite);
     if (!code) return;
-    const invite = await getJson<InviteResponse>(inviteUrl(code));
+    try {
+      const invite = await getJson<InviteResponse>(inviteUrl(code));
 
-    const total = totalMemberCount(invite);
-    if (total) setCounts(countsEl, widget.presence_count, total);
+      const total = totalMemberCount(invite);
+      if (total) setCounts(countsEl, widget.presence_count, total);
 
-    const hash = invite.guild?.icon;
-    if (!hash) return;
-    const icon = document.createElement('img');
-    icon.src = guildIconUrl(guildId, hash);
-    icon.alt = '';
-    iconEl.replaceChildren(icon);
+      const hash = invite.guild?.icon;
+      if (!hash) return;
+      const icon = document.createElement('img');
+      icon.src = guildIconUrl(guildId, hash);
+      icon.alt = '';
+      iconEl.replaceChildren(icon);
+    } catch (error: unknown) {
+      console.error(error);
+    }
   }
 
   for (const root of document.querySelectorAll<HTMLElement>('.dw')) {
