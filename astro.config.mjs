@@ -13,5 +13,12 @@ export default defineConfig({
   // sessions by default, which would provision an unused KV namespace on
   // first deploy. Do not re-enable this without revisiting that constraint.
   session: false,
-  adapter: cloudflare(),
+  adapter: cloudflare({
+    // The site has no images, so the default Cloudflare Images setup (an
+    // `IMAGES` binding plus ~24 KiB of image-transform code in the Worker)
+    // is pure dead weight. `passthrough` disables it, keeping the Worker
+    // free of bindings it does not use, same reasoning as `session: false`
+    // above.
+    imageService: 'passthrough',
+  }),
 });
