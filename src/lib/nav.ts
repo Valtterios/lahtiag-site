@@ -15,6 +15,16 @@ export function pagePath(id: string): string {
   return id === 'home' ? '/' : `/${id}`;
 }
 
+// Whether href is the current nav item for a request at pathname. Astro's
+// Astro.url.pathname may carry a trailing slash (or be exactly "/" for the
+// root); links from pagePath() never do except for "/" itself, so a bare
+// trailing-slash strip (falling back to "/" when that empties the string)
+// is enough to compare them.
+export function isCurrentNavLink(pathname: string, href: string): boolean {
+  const normalized = pathname.replace(/\/+$/, '') || '/';
+  return normalized === href;
+}
+
 export function navLinks(entries: NavSource[]): NavLink[] {
   return entries
     .filter((entry) => typeof entry.data.navOrder === 'number')

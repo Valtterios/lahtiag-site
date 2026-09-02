@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pagePath, navLinks } from '../src/lib/nav';
+import { pagePath, navLinks, isCurrentNavLink } from '../src/lib/nav';
 
 describe('pagePath', () => {
   it('maps the home entry to the site root', () => {
@@ -26,5 +26,23 @@ describe('navLinks', () => {
 
   it('returns an empty list when nothing is ordered', () => {
     expect(navLinks([{ id: 'x', data: { title: 'X' } }])).toEqual([]);
+  });
+});
+
+describe('isCurrentNavLink', () => {
+  it('matches an exact match', () => {
+    expect(isCurrentNavLink('/about', '/about')).toBe(true);
+  });
+
+  it('matches when the pathname has a trailing slash', () => {
+    expect(isCurrentNavLink('/about/', '/about')).toBe(true);
+  });
+
+  it('matches the root path', () => {
+    expect(isCurrentNavLink('/', '/')).toBe(true);
+  });
+
+  it('does not match a different link', () => {
+    expect(isCurrentNavLink('/about', '/rules')).toBe(false);
   });
 });
