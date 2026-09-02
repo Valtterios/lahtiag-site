@@ -6,6 +6,10 @@ import cloudflare from '@astrojs/cloudflare';
 // the Worker itself only ever renders the 404 page. Later phases add
 // server routes by simply not exporting prerender.
 export default defineConfig({
+  // Canonical origin. Later phases build absolute URLs from this (e.g. the
+  // Discord OAuth callback), so it must match the [[routes]] custom domain
+  // in wrangler.toml.
+  site: 'https://lahtiag.fi',
   output: 'server',
   // The spec's Architecture section says "No KV, R2 or Durable Objects.
   // Sessions are stateless"; auth in a later phase uses HMAC-signed cookies

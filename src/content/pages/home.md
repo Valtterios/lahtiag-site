@@ -1,24 +1,28 @@
 ---
 title: Home
-description: LahtiAG is a gaming association based in Lahti, Finland.
+description: LahtiAG is a non-profit gaming and esports association for students in Lahti, Finland.
 navOrder: 1
 ---
 
-<!-- PLACEHOLDER COPY: replace or migrate from Google Sites. Decision pending (spec open question 2). -->
+## About us
 
-LahtiAG is a gaming association based in Lahti. This paragraph is placeholder
-text that describes, in one or two sentences, who we are, what we do and how to join. It is
-marked for replacement and must not ship past Phase 1 review.
+Lahti Association of Gaming (LAG ry) is a non-profit organization for
+students in Lahti who share an interest in gaming. Our goal is to bring
+together students from local higher education institutions to game and
+participate in esports.
+
+We regularly organize gaming events, tournaments, and meetups where members
+can improve their skills, meet like-minded students, and enjoy themselves.
+The association also builds connections with companies and professionals in
+the gaming industry, offering members opportunities to grow their
+professional networks.
 
 ## What we do
 
-<!-- PLACEHOLDER COPY -->
+- Gaming and esports events, tournaments, training sessions, and informal meetups
+- Opportunities to develop your gaming skills and take part in activities that promote gaming culture
+- Connections to the gaming industry — companies, professionals, and other student associations
 
-Placeholder: a short list of the activities the association runs, such as
-regular gaming nights, tournaments and community events. Replace with real
-copy.
-
-## Join us on Discord
-
-Most of what happens in LahtiAG happens on our Discord server. Presence and
-the join link are live below.
+Membership is free and open to every student in Lahti. Read more on the
+[members page](/members), or come say hi on Discord first — the widget above
+shows who's online right now.

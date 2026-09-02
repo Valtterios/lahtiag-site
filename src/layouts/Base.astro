@@ -22,12 +22,23 @@ const pathname = Astro.url.pathname;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title} | LahtiAG</title>
     {description && <meta name="description" content={description} />}
+    <meta property="og:title" content={`${title} | LahtiAG`} />
+    {description && <meta property="og:description" content={description} />}
+    <meta name="theme-color" content="#12152b" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link
+      rel="preload"
+      href="/fonts/bricolage-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
   </head>
   <body>
+    <a class="skip-link" href="#main">Skip to content</a>
     <header class="site-header">
       <div class="inner">
-        <a class="brand" href="/">LahtiAG</a>
+        <a class="brand" href="/">Lahti<b>AG</b></a>
         <nav aria-label="Main">
           <ul>
             {links.map((link) => (
@@ -41,12 +52,38 @@ const pathname = Astro.url.pathname;
         </nav>
       </div>
     </header>
-    <main class="site-main">
+    <main class="site-main" id="main">
       <slot />
     </main>
     <footer class="site-footer">
       <div class="inner">
-        <p>LahtiAG is a gaming association in Lahti, Finland. This site is maintained as Markdown in git.</p>
+        <div>
+          <h2>Lahti Association of Gaming LAG ry</h2>
+          <p>Mukkulankatu 19<br />15210 Lahti, Finland</p>
+          <p class="footer-legal">Business ID / Y-tunnus 3485167-1</p>
+        </div>
+        <div>
+          <h2>Association</h2>
+          <ul>
+            <li><a href="/rules">Rules</a></li>
+            <li>
+              <a
+                href="https://drive.google.com/file/d/1fiQObAwsNpSMynzs05ZCtp_L0VSlPt4f/view"
+                rel="noopener"
+              >Privacy policy</a>
+            </li>
+            <li><a href="/members">Become a member</a></li>
+          </ul>
+        </div>
+        <div>
+          <h2>Find us</h2>
+          <ul>
+            <li><a href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Discord</a></li>
+            <li><a href="https://www.instagram.com/lahti_ag" rel="noopener">Instagram</a></li>
+            <li><a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a></li>
+          </ul>
+        </div>
+        <p class="footer-note">© {new Date().getFullYear()} Lahti Association of Gaming LAG ry</p>
       </div>
     </footer>
   </body>

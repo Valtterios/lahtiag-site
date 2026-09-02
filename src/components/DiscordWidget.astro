@@ -34,7 +34,7 @@ const { guildId = DISCORD_GUILD_ID } = Astro.props;
     margin-top: 2rem;
     background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius, 10px);
     overflow: hidden;
     font-size: 0.8125rem;
     line-height: 1.45;
@@ -85,16 +85,16 @@ const { guildId = DISCORD_GUILD_ID } = Astro.props;
     flex: 0 0 auto;
     padding: 9px 18px;
     background: var(--accent);
-    color: #fff;
+    color: var(--accent-ink, #fff);
     text-decoration: none;
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 0.875rem;
-    font-weight: 500;
+    font-weight: 600;
     white-space: nowrap;
   }
   .dw-join:hover {
     background: var(--accent-dark);
-    color: #fff;
+    color: var(--accent-ink, #fff);
   }
   .dw-join-unavailable {
     flex: 0 0 auto;

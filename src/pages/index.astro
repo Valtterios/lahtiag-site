@@ -12,9 +12,28 @@ if (!entry) {
 const { Content } = await render(entry);
 ---
 <Base title={entry.data.title} description={entry.data.description}>
+  <section class="hero">
+    <div>
+      <p class="hero-eyebrow">Lahti Association of Gaming · LAG ry</p>
+      <h1>Where Lahti's students <em>come to play</em>.</h1>
+      <p class="hero-lede">
+        A non-profit gaming and esports association for students of Lahti's
+        higher education institutions. Gaming nights, tournaments, LAN
+        events — and a Discord that never sleeps.
+      </p>
+      <p class="hero-ctas">
+        <a class="btn btn-primary" href="https://forms.gle/nwsqFmqDyzJtpntE9" rel="noopener">
+          Become a member — it's free
+        </a>
+        <a class="btn btn-ghost" href="/events">See what's on</a>
+      </p>
+    </div>
+    <div class="hero-side">
+      <p class="live-tag">Live · the clubroom</p>
+      <DiscordWidget />
+    </div>
+  </section>
   <article class="prose">
-    <h1>{entry.data.title}</h1>
     <Content />
   </article>
-  <DiscordWidget />
 </Base>
