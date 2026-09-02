@@ -16,11 +16,13 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
   if (startsAt === null) return redirect('/events?err=bad_time', 303);
 
   const capacityRaw = String(form.get('capacity') ?? '').trim();
-  const teamRaw = String(form.get('team_id') ?? '').trim();
+  const teamSizeRaw = String(form.get('team_size') ?? '').trim();
+  const organizers = String(form.get('organizers') ?? '').trim();
   const description = String(form.get('description') ?? '').trim();
 
   try {
     const now = Math.floor(Date.now() / 1000);
+    const teamSize = teamSizeRaw ? Number(teamSizeRaw) : null;
     const id = await createEvent(
       env.DB,
       {
@@ -28,7 +30,8 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
         description: description || null,
         starts_at: startsAt,
         capacity: capacityRaw ? Number(capacityRaw) : null,
-        team_id: teamRaw ? Number(teamRaw) : null,
+        team_size: teamSize,
+        organizers: organizers || null,
         created_by: admin.session.discordId,
       },
       now,
@@ -37,9 +40,11 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
     // originated (spec): website writes mirror to Discord when the webhook
     // is configured, and the message id is kept for later edits.
     if (env.DISCORD_WEBHOOK_URL) {
+      const teamsLine = teamSize ? `\nTeams of ${teamSize}, form yours on the site!` : '';
+      const byLine = organizers ? `\nOrganized by ${organizers}` : '';
       const messageId = await postWebhook(
         env.DISCORD_WEBHOOK_URL,
-        `📅 **${String(form.get('title') ?? '').trim()}**\n${formatHelsinki(startsAt)}\nSign up: ${url.origin}/events/${id}`,
+        `📅 **${String(form.get('title') ?? '').trim()}**\n${formatHelsinki(startsAt)}${byLine}${teamsLine}\nSign up: ${url.origin}/events/${id}`,
       );
       if (messageId) await setEventMessageId(env.DB, id, messageId);
     }

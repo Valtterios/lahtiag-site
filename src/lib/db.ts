@@ -6,7 +6,15 @@ import type { D1Database } from '@cloudflare/workers-types';
 
 export class RuleError extends Error {
   constructor(
-    public code: 'missing' | 'cancelled' | 'full' | 'started' | 'bad_input',
+    public code:
+      | 'missing'
+      | 'cancelled'
+      | 'full'
+      | 'started'
+      | 'bad_input'
+      | 'team_full'
+      | 'dup_name'
+      | 'not_team_event',
     message: string,
   ) {
     super(message);
@@ -24,8 +32,10 @@ export interface EventRow {
   title: string;
   description: string | null;
   starts_at: number;
-  capacity: number | null;
-  team_id: number | null;
+  capacity: number | null; // people on a solo event, TEAMS on a team event
+  team_id: number | null; // legacy, unused: organizers replaced it
+  team_size: number | null; // set = tournament-style team signups
+  organizers: string | null; // comma-separated free-text names
   created_by: string;
   created_at: number;
   cancelled_at: number | null;
@@ -35,29 +45,24 @@ export interface EventRow {
 export interface EventWithCounts extends EventRow {
   yes_count: number;
   maybe_count: number;
+  teams_count: number;
 }
 
 export interface SignupRow {
   discord_id: string;
   status: 'yes' | 'maybe';
   created_at: number;
+  event_team_id: number | null;
   username: string;
   avatar_hash: string | null;
 }
 
-export interface TeamRow {
+export interface EventTeamRow {
   id: number;
+  event_id: number;
   name: string;
-  game: string;
-  active: number;
-}
-
-export interface TeamMemberRow {
-  team_id: number;
-  discord_id: string;
-  position: string | null;
-  username: string;
-  avatar_hash: string | null;
+  created_by: string;
+  created_at: number;
 }
 
 export interface AnnouncementRow {
@@ -67,6 +72,7 @@ export interface AnnouncementRow {
   published_at: number;
   author_id: string;
   source: 'web' | 'discord';
+  discord_message_id: string | null;
   author_name: string | null;
 }
 
@@ -109,7 +115,8 @@ export async function ensureMember(
 const EVENT_COUNTS = `
   SELECT e.*,
     (SELECT COUNT(*) FROM signups s WHERE s.event_id = e.id AND s.status = 'yes')   AS yes_count,
-    (SELECT COUNT(*) FROM signups s WHERE s.event_id = e.id AND s.status = 'maybe') AS maybe_count
+    (SELECT COUNT(*) FROM signups s WHERE s.event_id = e.id AND s.status = 'maybe') AS maybe_count,
+    (SELECT COUNT(*) FROM event_teams t WHERE t.event_id = e.id)                    AS teams_count
   FROM events e`;
 
 export async function listUpcomingEvents(db: D1Database, now: number): Promise<EventWithCounts[]> {
@@ -145,7 +152,8 @@ export async function createEvent(
     description: string | null;
     starts_at: number;
     capacity: number | null;
-    team_id: number | null;
+    team_size?: number | null;
+    organizers?: string | null;
     created_by: string;
   },
   now: number,
@@ -154,17 +162,23 @@ export async function createEvent(
   if (input.capacity !== null && (!Number.isInteger(input.capacity) || input.capacity < 1)) {
     throw new RuleError('bad_input', 'Capacity must be a positive whole number.');
   }
+  const teamSize = input.team_size ?? null;
+  if (teamSize !== null && (!Number.isInteger(teamSize) || teamSize < 1)) {
+    throw new RuleError('bad_input', 'Team size must be a positive whole number.');
+  }
+  const organizers = input.organizers?.trim() || null;
   const row = await db
     .prepare(
-      `INSERT INTO events (title, description, starts_at, capacity, team_id, created_by, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) RETURNING id`,
+      `INSERT INTO events (title, description, starts_at, capacity, team_size, organizers, created_by, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) RETURNING id`,
     )
     .bind(
       input.title.trim(),
       input.description,
       input.starts_at,
       input.capacity,
-      input.team_id,
+      teamSize,
+      organizers,
       input.created_by,
       now,
     )
@@ -186,7 +200,10 @@ export async function setEventMessageId(db: D1Database, id: number, messageId: s
 
 // The signup rules (spec, Error handling): rejected when the event is
 // cancelled or full. Capacity counts 'yes' answers only, and changing your
-// own existing answer never counts you twice.
+// own existing answer never counts you twice. On a TEAM event capacity
+// counts teams instead, so plain signups (free agents) never hit it, and
+// answering yes/maybe here always drops any team membership — joining a
+// team goes through joinEventTeam.
 export async function setSignup(
   db: D1Database,
   eventId: number,
@@ -197,7 +214,7 @@ export async function setSignup(
   const event = await getEvent(db, eventId);
   if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
   if (event.cancelled_at !== null) throw new RuleError('cancelled', 'This event is cancelled.');
-  if (status === 'yes' && event.capacity !== null) {
+  if (status === 'yes' && event.capacity !== null && event.team_size === null) {
     const taken = await db
       .prepare(
         `SELECT COUNT(*) AS n FROM signups WHERE event_id = ?1 AND status = 'yes' AND discord_id != ?2`,
@@ -208,12 +225,13 @@ export async function setSignup(
   }
   await db
     .prepare(
-      `INSERT INTO signups (event_id, discord_id, status, created_at)
-       VALUES (?1, ?2, ?3, ?4)
-       ON CONFLICT (event_id, discord_id) DO UPDATE SET status = ?3`,
+      `INSERT INTO signups (event_id, discord_id, status, created_at, event_team_id)
+       VALUES (?1, ?2, ?3, ?4, NULL)
+       ON CONFLICT (event_id, discord_id) DO UPDATE SET status = ?3, event_team_id = NULL`,
     )
     .bind(eventId, discordId, status, now)
     .run();
+  if (event.team_size !== null) await dropEmptyEventTeams(db, eventId);
 }
 
 export async function removeSignup(db: D1Database, eventId: number, discordId: string): Promise<void> {
@@ -221,12 +239,129 @@ export async function removeSignup(db: D1Database, eventId: number, discordId: s
     .prepare('DELETE FROM signups WHERE event_id = ?1 AND discord_id = ?2')
     .bind(eventId, discordId)
     .run();
+  await dropEmptyEventTeams(db, eventId);
+}
+
+// --- tournament team signups -----------------------------------------------
+
+async function requireOpenTeamEvent(db: D1Database, eventId: number): Promise<EventWithCounts> {
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  if (event.cancelled_at !== null) throw new RuleError('cancelled', 'This event is cancelled.');
+  if (event.team_size === null) {
+    throw new RuleError('not_team_event', 'This event does not take team signups.');
+  }
+  return event;
+}
+
+// A team with no members left is deleted rather than lingering as an empty
+// name squatting on the roster (and, on capped events, on a team slot).
+async function dropEmptyEventTeams(db: D1Database, eventId: number): Promise<void> {
+  await db
+    .prepare(
+      `DELETE FROM event_teams WHERE event_id = ?1 AND id NOT IN
+        (SELECT event_team_id FROM signups WHERE event_id = ?1 AND event_team_id IS NOT NULL)`,
+    )
+    .bind(eventId)
+    .run();
+}
+
+export async function listEventTeams(db: D1Database, eventId: number): Promise<EventTeamRow[]> {
+  const { results } = await db
+    .prepare('SELECT * FROM event_teams WHERE event_id = ?1 ORDER BY created_at ASC')
+    .bind(eventId)
+    .all<EventTeamRow>();
+  return results;
+}
+
+// Creating a team also joins it: a team's founder is its first member.
+export async function createEventTeam(
+  db: D1Database,
+  eventId: number,
+  name: string,
+  discordId: string,
+  now: number,
+): Promise<number> {
+  const event = await requireOpenTeamEvent(db, eventId);
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length > 40) {
+    throw new RuleError('bad_input', 'A team name is 1 to 40 characters.');
+  }
+  if (event.capacity !== null) {
+    const teams = await db
+      .prepare('SELECT COUNT(*) AS n FROM event_teams WHERE event_id = ?1')
+      .bind(eventId)
+      .first<{ n: number }>();
+    if ((teams?.n ?? 0) >= event.capacity) {
+      throw new RuleError('full', 'All team slots for this event are taken.');
+    }
+  }
+  const duplicate = await db
+    .prepare('SELECT id FROM event_teams WHERE event_id = ?1 AND name = ?2 COLLATE NOCASE')
+    .bind(eventId, trimmed)
+    .first();
+  if (duplicate) throw new RuleError('dup_name', 'A team with that name already exists.');
+  const row = await db
+    .prepare(
+      `INSERT INTO event_teams (event_id, name, created_by, created_at)
+       VALUES (?1, ?2, ?3, ?4) RETURNING id`,
+    )
+    .bind(eventId, trimmed, discordId, now)
+    .first<{ id: number }>();
+  await joinEventTeam(db, eventId, row!.id, discordId, now);
+  return row!.id;
+}
+
+export async function joinEventTeam(
+  db: D1Database,
+  eventId: number,
+  eventTeamId: number,
+  discordId: string,
+  now: number,
+): Promise<void> {
+  const event = await requireOpenTeamEvent(db, eventId);
+  const team = await db
+    .prepare('SELECT * FROM event_teams WHERE id = ?1 AND event_id = ?2')
+    .bind(eventTeamId, eventId)
+    .first<EventTeamRow>();
+  if (!team) throw new RuleError('missing', 'No such team on this event.');
+  const members = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM signups
+       WHERE event_id = ?1 AND event_team_id = ?2 AND discord_id != ?3`,
+    )
+    .bind(eventId, eventTeamId, discordId)
+    .first<{ n: number }>();
+  if ((members?.n ?? 0) >= event.team_size!) {
+    throw new RuleError('team_full', 'That team is already full.');
+  }
+  await db
+    .prepare(
+      `INSERT INTO signups (event_id, discord_id, status, created_at, event_team_id)
+       VALUES (?1, ?2, 'yes', ?3, ?4)
+       ON CONFLICT (event_id, discord_id) DO UPDATE SET status = 'yes', event_team_id = ?4`,
+    )
+    .bind(eventId, discordId, now, eventTeamId)
+    .run();
+  // Switching teams may have emptied the previous one.
+  await dropEmptyEventTeams(db, eventId);
+}
+
+// Leaving a team keeps the member signed up as a free agent.
+export async function leaveEventTeam(db: D1Database, eventId: number, discordId: string): Promise<void> {
+  await db
+    .prepare(
+      'UPDATE signups SET event_team_id = NULL WHERE event_id = ?1 AND discord_id = ?2',
+    )
+    .bind(eventId, discordId)
+    .run();
+  await dropEmptyEventTeams(db, eventId);
 }
 
 export async function listSignups(db: D1Database, eventId: number): Promise<SignupRow[]> {
   const { results } = await db
     .prepare(
-      `SELECT s.discord_id, s.status, s.created_at, m.username, m.avatar_hash
+      `SELECT s.discord_id, s.status, s.created_at, s.event_team_id, m.username, m.avatar_hash
        FROM signups s JOIN members m ON m.discord_id = s.discord_id
        WHERE s.event_id = ?1
        ORDER BY s.created_at ASC`,
@@ -234,70 +369,6 @@ export async function listSignups(db: D1Database, eventId: number): Promise<Sign
     .bind(eventId)
     .all<SignupRow>();
   return results;
-}
-
-export async function listTeams(db: D1Database): Promise<TeamRow[]> {
-  const { results } = await db
-    .prepare('SELECT * FROM teams WHERE active = 1 ORDER BY game, name')
-    .all<TeamRow>();
-  return results;
-}
-
-export async function findTeamByName(db: D1Database, name: string): Promise<TeamRow | null> {
-  return db
-    .prepare('SELECT * FROM teams WHERE active = 1 AND name = ?1 COLLATE NOCASE')
-    .bind(name.trim())
-    .first<TeamRow>();
-}
-
-export async function getTeam(db: D1Database, id: number): Promise<TeamRow | null> {
-  return db.prepare('SELECT * FROM teams WHERE id = ?1').bind(id).first<TeamRow>();
-}
-
-export async function createTeam(db: D1Database, name: string, game: string): Promise<number> {
-  if (!name.trim() || !game.trim()) throw new RuleError('bad_input', 'A team needs a name and a game.');
-  const row = await db
-    .prepare('INSERT INTO teams (name, game) VALUES (?1, ?2) RETURNING id')
-    .bind(name.trim(), game.trim())
-    .first<{ id: number }>();
-  return row!.id;
-}
-
-export async function listTeamMembers(db: D1Database): Promise<TeamMemberRow[]> {
-  const { results } = await db
-    .prepare(
-      `SELECT t.team_id, t.discord_id, t.position, m.username, m.avatar_hash
-       FROM team_members t JOIN members m ON m.discord_id = t.discord_id
-       ORDER BY t.joined_at ASC`,
-    )
-    .all<TeamMemberRow>();
-  return results;
-}
-
-export async function addTeamMember(
-  db: D1Database,
-  teamId: number,
-  discordId: string,
-  position: string | null,
-  now: number,
-): Promise<void> {
-  const team = await getTeam(db, teamId);
-  if (!team || !team.active) throw new RuleError('missing', `No active team with id ${teamId}.`);
-  await db
-    .prepare(
-      `INSERT INTO team_members (team_id, discord_id, position, joined_at)
-       VALUES (?1, ?2, ?3, ?4)
-       ON CONFLICT (team_id, discord_id) DO UPDATE SET position = ?3`,
-    )
-    .bind(teamId, discordId, position, now)
-    .run();
-}
-
-export async function removeTeamMember(db: D1Database, teamId: number, discordId: string): Promise<void> {
-  await db
-    .prepare('DELETE FROM team_members WHERE team_id = ?1 AND discord_id = ?2')
-    .bind(teamId, discordId)
-    .run();
 }
 
 export async function listAnnouncements(db: D1Database, limit = 20): Promise<AnnouncementRow[]> {
@@ -310,6 +381,23 @@ export async function listAnnouncements(db: D1Database, limit = 20): Promise<Ann
     .bind(limit)
     .all<AnnouncementRow>();
   return results;
+}
+
+// Returns the deleted row so the caller can also remove the mirrored
+// Discord message (deleting the Discord message by hand does NOT reach the
+// site — nothing listens for deletions — so the site is the place to
+// delete, and it cleans up Discord too).
+export async function deleteAnnouncement(
+  db: D1Database,
+  id: number,
+): Promise<AnnouncementRow | null> {
+  const row = await db
+    .prepare('SELECT a.*, NULL AS author_name FROM announcements a WHERE id = ?1')
+    .bind(id)
+    .first<AnnouncementRow>();
+  if (!row) return null;
+  await db.prepare('DELETE FROM announcements WHERE id = ?1').bind(id).run();
+  return row;
 }
 
 export async function createAnnouncement(

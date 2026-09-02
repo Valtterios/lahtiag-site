@@ -10,10 +10,6 @@ import {
   cancelEvent,
   createAnnouncement,
   createEvent,
-  ensureMember,
-  findTeamByName,
-  addTeamMember,
-  removeTeamMember,
   setAnnouncementMessageId,
   setEventMessageId,
   upsertMember,
@@ -123,27 +119,29 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
         await reply('Date or time did not parse. Use `YYYY-MM-DD` and `HH:MM` (Helsinki time).');
         return;
       }
-      let teamId: number | null = null;
-      const teamOption = opts.get('team');
-      if (teamOption !== undefined) {
-        const team = await findTeamByName(env.DB, String(teamOption));
-        if (!team) {
-          await reply(`No team called "${teamOption}".`);
-          return;
-        }
-        teamId = team.id;
-      }
       const capacity = opts.has('capacity') ? Number(opts.get('capacity')) : null;
+      const teamSize = opts.has('team_size') ? Number(opts.get('team_size')) : null;
+      const organizers = opts.has('organizers') ? String(opts.get('organizers')) : null;
       const title = String(opts.get('name') ?? '');
       const id = await createEvent(
         env.DB,
-        { title, description: null, starts_at: startsAt, capacity, team_id: teamId, created_by: invoker.id },
+        {
+          title,
+          description: null,
+          starts_at: startsAt,
+          capacity,
+          team_size: teamSize,
+          organizers,
+          created_by: invoker.id,
+        },
         now,
       );
       if (env.DISCORD_WEBHOOK_URL) {
+        const byLine = organizers ? `\nOrganized by ${organizers}` : '';
+        const teamsLine = teamSize ? `\nTeams of ${teamSize}, form yours on the site!` : '';
         const messageId = await postWebhook(
           env.DISCORD_WEBHOOK_URL,
-          `📅 **${title.trim()}**\n${formatHelsinki(startsAt)}\nSign up: ${origin}/events/${id}`,
+          `📅 **${title.trim()}**\n${formatHelsinki(startsAt)}${byLine}${teamsLine}\nSign up: ${origin}/events/${id}`,
         );
         if (messageId) await setEventMessageId(env.DB, id, messageId);
       }
@@ -171,24 +169,6 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
         if (messageId) await setAnnouncementMessageId(env.DB, id, messageId);
       }
       await reply(`Published: **${title}**, ${origin}/announcements`);
-    } else if (name === 'roster add' || name === 'roster remove') {
-      const userId = String(opts.get('user') ?? '');
-      const teamNameOption = String(opts.get('team') ?? '');
-      const team = await findTeamByName(env.DB, teamNameOption);
-      if (!team) {
-        await reply(`No team called "${teamNameOption}".`);
-        return;
-      }
-      const resolved = command.resolved?.users?.[userId];
-      const display = resolved ? (resolved.global_name ?? resolved.username) : `member ${userId.slice(-4)}`;
-      if (name === 'roster add') {
-        await ensureMember(env.DB, userId, display, now);
-        await addTeamMember(env.DB, team.id, userId, null, now);
-        await reply(`Added **${display}** to **${team.name}**.`);
-      } else {
-        await removeTeamMember(env.DB, team.id, userId);
-        await reply(`Removed **${display}** from **${team.name}**.`);
-      }
     } else {
       await reply(`Unknown command: ${name}.`);
     }

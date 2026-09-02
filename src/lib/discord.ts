@@ -112,6 +112,12 @@ export async function postWebhook(webhookUrl: string, content: string): Promise<
   }
 }
 
+// Webhook messages can be deleted through the webhook itself, no bot token
+// needed — used when an announcement is deleted on the site.
+export async function deleteWebhookMessage(webhookUrl: string, messageId: string): Promise<void> {
+  await fetch(`${webhookUrl}/messages/${messageId}`, { method: 'DELETE' }).catch(() => {});
+}
+
 // --- HTTP interactions -----------------------------------------------------
 
 function hexToBytes(hex: string): Uint8Array | null {

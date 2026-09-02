@@ -31,7 +31,6 @@ export function isCurrentNavLink(pathname: string, href: string): boolean {
 // code path.
 export const APP_PAGES: NavSource[] = [
   { id: 'events', data: { title: 'Events', navOrder: 2 } },
-  { id: 'teams', data: { title: 'Teams', navOrder: 3 } },
   { id: 'announcements', data: { title: 'News', navOrder: 4 } },
 ];
 

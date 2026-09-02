@@ -15,7 +15,7 @@ if (!clientId || !clientSecret) {
 
 const STRING = 3;
 const INTEGER = 4;
-const USER = 6;
+
 const SUB_COMMAND = 1;
 
 const commands = [
@@ -31,8 +31,9 @@ const commands = [
           { type: STRING, name: 'name', description: 'Event title', required: true },
           { type: STRING, name: 'date', description: 'YYYY-MM-DD (Helsinki)', required: true },
           { type: STRING, name: 'time', description: 'HH:MM (Helsinki)', required: true },
-          { type: INTEGER, name: 'capacity', description: 'Max "going" signups', required: false, min_value: 1 },
-          { type: STRING, name: 'team', description: 'Team name, if team-specific', required: false },
+          { type: INTEGER, name: 'capacity', description: 'Max signups (people, or teams for a team event)', required: false, min_value: 1 },
+          { type: INTEGER, name: 'team_size', description: 'Players per team; set to make this a team event', required: false, min_value: 1 },
+          { type: STRING, name: 'organizers', description: 'Organizer names, comma separated', required: false },
         ],
       },
       {
@@ -47,30 +48,6 @@ const commands = [
     name: 'announce',
     description: 'Publish an announcement to the site',
     options: [{ type: STRING, name: 'text', description: 'Announcement text (Markdown)', required: true }],
-  },
-  {
-    name: 'roster',
-    description: 'Manage team rosters',
-    options: [
-      {
-        type: SUB_COMMAND,
-        name: 'add',
-        description: 'Add a member to a team',
-        options: [
-          { type: USER, name: 'user', description: 'Member', required: true },
-          { type: STRING, name: 'team', description: 'Team name', required: true },
-        ],
-      },
-      {
-        type: SUB_COMMAND,
-        name: 'remove',
-        description: 'Remove a member from a team',
-        options: [
-          { type: USER, name: 'user', description: 'Member', required: true },
-          { type: STRING, name: 'team', description: 'Team name', required: true },
-        ],
-      },
-    ],
   },
 ];
 

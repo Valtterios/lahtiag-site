@@ -20,7 +20,7 @@ const NOW = 1_760_000_000;
 const db = () => env.DB;
 
 async function wipe(): Promise<void> {
-  for (const table of ['signups', 'team_members', 'events', 'teams', 'announcements', 'members']) {
+  for (const table of ['signups', 'event_teams', 'events', 'announcements', 'members']) {
     await db().prepare(`DELETE FROM ${table}`).run();
   }
 }
@@ -38,7 +38,6 @@ async function seedEvent(capacity: number | null): Promise<number> {
       description: null,
       starts_at: NOW + 86400,
       capacity,
-      team_id: null,
       created_by: 'admin',
     },
     NOW,
@@ -142,7 +141,6 @@ describe('createEvent validation', () => {
     const base = {
       description: null,
       starts_at: NOW,
-      team_id: null,
       created_by: 'admin',
     };
     await expect(

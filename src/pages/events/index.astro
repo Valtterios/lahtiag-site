@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
 import SessionBox from '../../components/SessionBox.astro';
 import { currentSession, ensureCsrf } from '../../lib/guard';
-import { listUpcomingEvents, listPastEvents, listTeams } from '../../lib/db';
+import { listUpcomingEvents, listPastEvents } from '../../lib/db';
 import { formatHelsinki } from '../../lib/time';
 
 // Server-rendered: the events list lives in D1. The Phase 1 Markdown page
@@ -13,12 +13,10 @@ const session = await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
 const now = Math.floor(Date.now() / 1000);
 
-const [upcoming, past, teams] = await Promise.all([
+const [upcoming, past] = await Promise.all([
   listUpcomingEvents(env.DB, now),
   listPastEvents(env.DB, now, 10),
-  listTeams(env.DB),
 ]);
-const teamName = new Map(teams.map((team) => [team.id, team.name]));
 
 const FLASH: Record<string, string> = {
   forbidden: 'That needs the admin role in Discord.',
@@ -47,13 +45,18 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
           <p class="event-when">{formatHelsinki(event.starts_at)}</p>
           <h2><a href={`/events/${event.id}`}>{event.title}</a></h2>
           <p class="event-meta">
-            {event.team_id !== null && teamName.has(event.team_id) && (
-              <span>{teamName.get(event.team_id)}, </span>
+            {event.organizers && <span>By {event.organizers}, </span>}
+            {event.team_size !== null ? (
+              <span>
+                teams of {event.team_size}, {event.teams_count}
+                {event.capacity !== null ? ` / ${event.capacity}` : ''} teams in
+              </span>
+            ) : (
+              <span>
+                {event.yes_count}{event.capacity !== null ? ` / ${event.capacity}` : ''} going
+                {event.maybe_count > 0 ? `, ${event.maybe_count} maybe` : ''}
+              </span>
             )}
-            <span>
-              {event.yes_count}{event.capacity !== null ? ` / ${event.capacity}` : ''} going
-              {event.maybe_count > 0 ? `, ${event.maybe_count} maybe` : ''}
-            </span>
           </p>
         </li>
       ))}
@@ -86,15 +89,17 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         <label>Title <input name="title" required maxlength="120" /></label>
         <label>Date <input name="date" required placeholder="2026-10-01" pattern="\d{4}-\d{2}-\d{2}" /></label>
         <label>Time (Helsinki) <input name="time" required placeholder="18:00" pattern="\d{1,2}[:.]\d{2}" /></label>
-        <label>Capacity <input name="capacity" type="number" min="1" placeholder="unlimited" /></label>
         <label>
-          Team
-          <select name="team_id">
-            <option value="">Association-wide</option>
-            {teams.map((team) => (
-              <option value={team.id}>{team.name} ({team.game})</option>
-            ))}
-          </select>
+          Team size
+          <input name="team_size" type="number" min="1" placeholder="empty = individual signups" />
+        </label>
+        <label>
+          Capacity
+          <input name="capacity" type="number" min="1" placeholder="unlimited (people, or teams for a team event)" />
+        </label>
+        <label>
+          Organizers
+          <input name="organizers" placeholder="LahtiAG, Kapital" maxlength="120" />
         </label>
         <label>Description <textarea name="description" rows="3"></textarea></label>
         <button class="btn btn-primary" type="submit">Create event</button>

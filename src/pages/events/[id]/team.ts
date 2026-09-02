@@ -1,0 +1,49 @@
+import { env } from 'cloudflare:workers';
+import type { APIRoute } from 'astro';
+import { checkCsrf, currentSession } from '../../../lib/guard';
+import {
+  createEventTeam,
+  joinEventTeam,
+  leaveEventTeam,
+  upsertMember,
+  RuleError,
+} from '../../../lib/db';
+
+// Tournament team actions: any signed-in member, no admin needed — forming
+// teams is the members' own business.
+
+export const POST: APIRoute = async ({ request, params, redirect }) => {
+  const id = Number(params.id);
+  const back = `/events/${id}`;
+
+  const session = await currentSession(request, env);
+  if (!session) return redirect(`${back}?err=signin`, 303);
+
+  const form = await request.formData();
+  if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf`, 303);
+
+  const action = String(form.get('action') ?? '');
+  const now = Math.floor(Date.now() / 1000);
+
+  await upsertMember(
+    env.DB,
+    { discord_id: session.discordId, username: session.username, avatar_hash: session.avatarHash },
+    now,
+  );
+
+  try {
+    if (action === 'create') {
+      await createEventTeam(env.DB, id, String(form.get('name') ?? ''), session.discordId, now);
+    } else if (action === 'join') {
+      await joinEventTeam(env.DB, id, Number(form.get('event_team_id')), session.discordId, now);
+    } else if (action === 'leave') {
+      await leaveEventTeam(env.DB, id, session.discordId);
+    } else {
+      return redirect(`${back}?err=csrf`, 303);
+    }
+  } catch (error) {
+    if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
+    throw error;
+  }
+  return redirect(back, 303);
+};

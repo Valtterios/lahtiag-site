@@ -48,6 +48,13 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         </p>
         <h2>{item.title}</h2>
         <div set:html={item.html} />
+        {session?.isAdmin && (
+          <form method="post" action="/announcements/delete" class="inline-form">
+            <input type="hidden" name="csrf" value={csrf} />
+            <input type="hidden" name="id" value={item.id} />
+            <button class="btn-link" type="submit">Delete</button>
+          </form>
+        )}
       </article>
     ))
   )}

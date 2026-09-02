@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import Base from '../../../layouts/Base.astro';
 import SessionBox from '../../../components/SessionBox.astro';
 import { currentSession, ensureCsrf } from '../../../lib/guard';
-import { getEvent, listSignups, getTeam } from '../../../lib/db';
+import { getEvent, listSignups, listEventTeams } from '../../../lib/db';
 import { formatHelsinki } from '../../../lib/time';
 
 const id = Number(Astro.params.id);
@@ -17,18 +17,32 @@ const session = await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
 
 const signups = event ? await listSignups(env.DB, event.id) : [];
-const team = event?.team_id != null ? await getTeam(env.DB, event.team_id) : null;
+const eventTeams = event?.team_size != null ? await listEventTeams(env.DB, event.id) : [];
+
 const going = signups.filter((signup) => signup.status === 'yes');
 const maybe = signups.filter((signup) => signup.status === 'maybe');
 const mine = session ? signups.find((signup) => signup.discord_id === session.discordId) : undefined;
-const isFull =
-  event?.capacity != null && going.filter((s) => s.discord_id !== session?.discordId).length >= event.capacity;
+
+// Solo events: capacity counts people. Team events: capacity counts teams.
+const isTeamEvent = event?.team_size != null;
+const teamMembers = (teamId: number) => signups.filter((s) => s.event_team_id === teamId);
+const freeAgents = going.filter((s) => s.event_team_id === null);
+const isFull = !isTeamEvent
+  ? event?.capacity != null &&
+    going.filter((s) => s.discord_id !== session?.discordId).length >= event.capacity
+  : event?.capacity != null && eventTeams.length >= event.capacity;
+const open = event ? event.cancelled_at === null : false;
 
 const FLASH: Record<string, string> = {
   full: 'This event is full.',
+  team_full: 'That team is already full.',
+  dup_name: 'A team with that name already exists.',
+  not_team_event: 'This event does not take team signups.',
   cancelled: 'This event has been cancelled and signups are closed.',
   signin: 'Sign in with Discord first.',
   csrf: 'The form was stale. Try again.',
+  bad_input: "That didn't work. A team name is 1 to 40 characters.",
+  missing: 'No such team on this event.',
   forbidden: 'That needs the admin role in Discord.',
   discord_down: "Discord didn't answer while re-checking your role. Try again.",
 };
@@ -46,20 +60,31 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
   ) : (
     <>
       <article class="prose">
-        <p class="hero-eyebrow">{formatHelsinki(event.starts_at)}{team && `, ${team.name}`}</p>
+        <p class="hero-eyebrow">{formatHelsinki(event.starts_at)}</p>
         <h1>{event.title}</h1>
         {event.cancelled_at !== null && <p class="flash">This event is cancelled.</p>}
+        {event.organizers && <p class="event-meta">Organized by {event.organizers}</p>}
         {event.description && <p>{event.description}</p>}
         <p class="event-meta">
-          {going.length}{event.capacity !== null ? ` / ${event.capacity}` : ''} going
-          {maybe.length > 0 ? `, ${maybe.length} maybe` : ''}
+          {isTeamEvent ? (
+            <>
+              Teams of {event.team_size}: {eventTeams.length}
+              {event.capacity !== null ? ` / ${event.capacity}` : ''} teams,
+              {' '}{going.length} players in
+            </>
+          ) : (
+            <>
+              {going.length}{event.capacity !== null ? ` / ${event.capacity}` : ''} going
+              {maybe.length > 0 ? `, ${maybe.length} maybe` : ''}
+            </>
+          )}
         </p>
       </article>
 
       <SessionBox session={session} csrf={csrf} />
       {flash && <p class="flash">{flash}</p>}
 
-      {session && event.cancelled_at === null && (
+      {!isTeamEvent && session && open && (
         <form method="post" action={`/events/${event.id}/signup`} class="signup-bar">
           <input type="hidden" name="csrf" value={csrf} />
           <button
@@ -85,7 +110,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         </form>
       )}
 
-      {signups.length > 0 && (
+      {!isTeamEvent && signups.length > 0 && (
         <section class="prose">
           <h2>Who's coming</h2>
           {going.length > 0 && (
@@ -97,7 +122,79 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         </section>
       )}
 
-      {session?.isAdmin && event.cancelled_at === null && (
+      {isTeamEvent && (
+        <section class="prose">
+          <h2>Teams</h2>
+          {eventTeams.length === 0 && (
+            <p class="app-empty">No teams yet. Start the first one!</p>
+          )}
+          {eventTeams.map((team) => {
+            const members = teamMembers(team.id);
+            const slotsLeft = event.team_size! - members.length;
+            const inThisTeam = mine?.event_team_id === team.id;
+            return (
+              <div class="team-card">
+                <h3>
+                  {team.name}
+                  <span class="event-meta"> {members.length} / {event.team_size}</span>
+                </h3>
+                <p>{members.map((m) => m.username).join(', ') || 'Empty'}</p>
+                {session && open && !inThisTeam && slotsLeft > 0 && (
+                  <form method="post" action={`/events/${event.id}/team`} class="inline-form">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="join" />
+                    <input type="hidden" name="event_team_id" value={team.id} />
+                    <button class="btn btn-ghost" type="submit">Join this team</button>
+                  </form>
+                )}
+                {inThisTeam && open && (
+                  <form method="post" action={`/events/${event.id}/team`} class="inline-form">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="leave" />
+                    <button class="btn-link" type="submit">Leave team</button>
+                  </form>
+                )}
+              </div>
+            );
+          })}
+
+          {freeAgents.length > 0 && (
+            <p><strong>Looking for a team:</strong> {freeAgents.map((s) => s.username).join(', ')}</p>
+          )}
+
+          {session && open && (
+            <div class="team-actions">
+              {!isFull && (
+                <form method="post" action={`/events/${event.id}/team`} class="app-form app-form-row">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="action" value="create" />
+                  <label>New team name <input name="name" required maxlength="40" /></label>
+                  <button class="btn btn-primary" type="submit">Create a team</button>
+                </form>
+              )}
+              <form method="post" action={`/events/${event.id}/signup`} class="signup-bar">
+                <input type="hidden" name="csrf" value={csrf} />
+                {mine?.event_team_id == null && mine?.status === 'yes' ? (
+                  <button class="btn btn-primary" type="button" disabled>
+                    You're listed as looking for a team
+                  </button>
+                ) : (
+                  <button class="btn btn-ghost" name="status" value="yes" type="submit">
+                    Sign up without a team
+                  </button>
+                )}
+                {mine && (
+                  <button class="btn btn-ghost" name="status" value="remove" type="submit">
+                    Remove my signup
+                  </button>
+                )}
+              </form>
+            </div>
+          )}
+        </section>
+      )}
+
+      {session?.isAdmin && open && (
         <section class="admin-panel">
           <h2>Admin</h2>
           <form method="post" action={`/events/${event.id}/cancel`}>
