@@ -36,8 +36,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
 
   {rendered.length === 0 ? (
     <p class="app-empty">
-      Nothing posted yet. Announcements land on
-      <a href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Discord</a> first.
+      Nothing posted yet. Announcements land on <a href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Discord</a> first.
     </p>
   ) : (
     rendered.map((item) => (

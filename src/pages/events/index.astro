@@ -38,8 +38,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
 
   {upcoming.length === 0 ? (
     <p class="app-empty">
-      Nothing scheduled right now. Announcements land on
-      <a href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Discord</a> first.
+      Nothing scheduled right now. Announcements land on <a href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Discord</a> first.
     </p>
   ) : (
     <ul class="event-list">
