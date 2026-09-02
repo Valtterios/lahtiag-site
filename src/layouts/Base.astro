@@ -1,6 +1,6 @@
 ---
 import { getCollection } from 'astro:content';
-import { navLinks, isCurrentNavLink } from '../lib/nav';
+import { navLinks, isCurrentNavLink, APP_PAGES } from '../lib/nav';
 import '../styles/site.css';
 
 interface Props {
@@ -12,7 +12,7 @@ const { title, description } = Astro.props;
 
 // The nav is built from the collection at build time, so a new Markdown
 // file with a navOrder appears in the header without touching this file.
-const links = navLinks(await getCollection('pages'));
+const links = navLinks([...(await getCollection('pages')), ...APP_PAGES]);
 const pathname = Astro.url.pathname;
 ---
 <!doctype html>

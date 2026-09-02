@@ -1,0 +1,111 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../../layouts/Base.astro';
+import SessionBox from '../../../components/SessionBox.astro';
+import { currentSession, ensureCsrf } from '../../../lib/guard';
+import { getEvent, listSignups, getTeam } from '../../../lib/db';
+import { formatHelsinki } from '../../../lib/time';
+
+const id = Number(Astro.params.id);
+const event = Number.isInteger(id) ? await getEvent(env.DB, id) : null;
+
+if (!event) {
+  Astro.response.status = 404;
+}
+
+const session = await currentSession(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+
+const signups = event ? await listSignups(env.DB, event.id) : [];
+const team = event?.team_id != null ? await getTeam(env.DB, event.team_id) : null;
+const going = signups.filter((signup) => signup.status === 'yes');
+const maybe = signups.filter((signup) => signup.status === 'maybe');
+const mine = session ? signups.find((signup) => signup.discord_id === session.discordId) : undefined;
+const isFull =
+  event?.capacity != null && going.filter((s) => s.discord_id !== session?.discordId).length >= event.capacity;
+
+const FLASH: Record<string, string> = {
+  full: 'This event is full.',
+  cancelled: 'This event has been cancelled — signups are closed.',
+  signin: 'Sign in with Discord first.',
+  csrf: 'The form was stale. Try again.',
+  forbidden: 'That needs the admin role in Discord.',
+  discord_down: "Discord didn't answer while re-checking your role. Try again.",
+};
+const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
+---
+<Base
+  title={event ? event.title : 'Event not found'}
+  description={event ? `${event.title} — ${formatHelsinki(event.starts_at)}` : undefined}
+>
+  {!event ? (
+    <article class="prose">
+      <h1>No such event</h1>
+      <p>Nothing lives at this id. Back to <a href="/events">events</a>.</p>
+    </article>
+  ) : (
+    <>
+      <article class="prose">
+        <p class="hero-eyebrow">{formatHelsinki(event.starts_at)}{team && ` · ${team.name}`}</p>
+        <h1>{event.title}</h1>
+        {event.cancelled_at !== null && <p class="flash">This event is cancelled.</p>}
+        {event.description && <p>{event.description}</p>}
+        <p class="event-meta">
+          {going.length}{event.capacity !== null ? ` / ${event.capacity}` : ''} going
+          {maybe.length > 0 ? `, ${maybe.length} maybe` : ''}
+        </p>
+      </article>
+
+      <SessionBox session={session} csrf={csrf} />
+      {flash && <p class="flash">{flash}</p>}
+
+      {session && event.cancelled_at === null && (
+        <form method="post" action={`/events/${event.id}/signup`} class="signup-bar">
+          <input type="hidden" name="csrf" value={csrf} />
+          <button
+            class={`btn ${mine?.status === 'yes' ? 'btn-primary' : 'btn-ghost'}`}
+            name="status"
+            value="yes"
+            disabled={isFull && mine?.status !== 'yes'}
+            type="submit"
+          >
+            {isFull && mine?.status !== 'yes' ? 'Full' : "I'm going"}
+          </button>
+          <button
+            class={`btn ${mine?.status === 'maybe' ? 'btn-primary' : 'btn-ghost'}`}
+            name="status"
+            value="maybe"
+            type="submit"
+          >Maybe</button>
+          {mine && (
+            <button class="btn btn-ghost" name="status" value="remove" type="submit">
+              Remove my signup
+            </button>
+          )}
+        </form>
+      )}
+
+      {signups.length > 0 && (
+        <section class="prose">
+          <h2>Who's coming</h2>
+          {going.length > 0 && (
+            <p><strong>Going:</strong> {going.map((s) => s.username).join(', ')}</p>
+          )}
+          {maybe.length > 0 && (
+            <p><strong>Maybe:</strong> {maybe.map((s) => s.username).join(', ')}</p>
+          )}
+        </section>
+      )}
+
+      {session?.isAdmin && event.cancelled_at === null && (
+        <section class="admin-panel">
+          <h2>Admin</h2>
+          <form method="post" action={`/events/${event.id}/cancel`}>
+            <input type="hidden" name="csrf" value={csrf} />
+            <button class="btn btn-ghost" type="submit">Cancel this event</button>
+          </form>
+        </section>
+      )}
+    </>
+  )}
+</Base>

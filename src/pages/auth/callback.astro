@@ -1,0 +1,120 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import { exchangeCode, fetchMe, fetchGuildMember, hasAdminRole } from '../../lib/discord';
+import { DISCORD_GUILD_ID } from '../../lib/config';
+import {
+  SESSION_TTL_SECONDS,
+  signSession,
+  sessionCookie,
+  newCsrfToken,
+  csrfCookie,
+} from '../../lib/auth';
+import { upsertMember } from '../../lib/db';
+
+// The OAuth return leg. The three failure modes the spec's error handling
+// distinguishes each get their own message: a stale state or exchange
+// failure ("try again"), not being in the Discord server (show the invite),
+// and Discord itself being unreachable.
+
+
+type Outcome = 'expired' | 'not_member' | 'discord_down';
+let outcome: Outcome | null = null;
+
+sign: {
+  if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET || !env.SESSION_SECRET) {
+    return Astro.redirect('/auth/unavailable');
+  }
+
+  const code = Astro.url.searchParams.get('code');
+  const state = Astro.url.searchParams.get('state');
+  const stateCookie = Astro.cookies.get('__Host-oauth-state')?.value;
+  Astro.cookies.delete('__Host-oauth-state', { path: '/' });
+  if (!code || !state || !stateCookie || state !== stateCookie) {
+    outcome = 'expired';
+    break sign;
+  }
+
+  const accessToken = await exchangeCode(
+    env.DISCORD_CLIENT_ID,
+    env.DISCORD_CLIENT_SECRET,
+    code,
+    `${Astro.url.origin}/auth/callback`,
+  );
+  if (!accessToken) {
+    outcome = 'discord_down';
+    break sign;
+  }
+
+  const [user, membership] = await Promise.all([
+    fetchMe(accessToken),
+    fetchGuildMember(accessToken, DISCORD_GUILD_ID),
+  ]);
+  if (!user || membership.status === 'error') {
+    outcome = 'discord_down';
+    break sign;
+  }
+  if (membership.status === 'not_member') {
+    outcome = 'not_member';
+    break sign;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const username = membership.nick ?? user.global_name ?? user.username;
+  await upsertMember(
+    env.DB,
+    { discord_id: user.id, username, avatar_hash: user.avatar },
+    now,
+  );
+
+  const token = await signSession(
+    {
+      discordId: user.id,
+      username,
+      avatarHash: user.avatar,
+      isAdmin: hasAdminRole(membership.roles, env.ADMIN_ROLE_ID),
+      accessToken,
+      expiresAt: now + SESSION_TTL_SECONDS,
+    },
+    env.SESSION_SECRET,
+  );
+  Astro.response.headers.append('Set-Cookie', sessionCookie(token));
+  Astro.response.headers.append('Set-Cookie', csrfCookie(newCsrfToken()));
+  return Astro.redirect('/events');
+}
+---
+<Base title="Signing in">
+  <article class="prose">
+    {outcome === 'expired' && (
+      <>
+        <h1>That sign-in expired</h1>
+        <p>The login attempt was stale or incomplete. It happens — just start over.</p>
+        <p><a class="btn btn-primary" href="/login">Sign in with Discord</a></p>
+      </>
+    )}
+    {outcome === 'not_member' && (
+      <>
+        <h1>You're not in the LahtiAG Discord yet</h1>
+        <p>
+          Membership here comes from the Discord server: join it first, then
+          sign in again.
+        </p>
+        <p>
+          <a class="btn btn-primary" href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">
+            Join the Discord server
+          </a>
+        </p>
+      </>
+    )}
+    {outcome === 'discord_down' && (
+      <>
+        <h1>Discord didn't answer</h1>
+        <p>
+          Your account is fine — Discord itself was unreachable while signing
+          you in. Wait a moment and try again.
+        </p>
+        <p><a class="btn btn-primary" href="/login">Try again</a></p>
+      </>
+    )}
+  </article>
+</Base>

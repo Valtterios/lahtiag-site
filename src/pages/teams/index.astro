@@ -1,0 +1,99 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import SessionBox from '../../components/SessionBox.astro';
+import { currentSession, ensureCsrf } from '../../lib/guard';
+import { listTeams, listTeamMembers } from '../../lib/db';
+
+const session = await currentSession(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+
+const [teams, members] = await Promise.all([listTeams(env.DB), listTeamMembers(env.DB)]);
+const roster = new Map<number, typeof members>();
+for (const member of members) {
+  const list = roster.get(member.team_id) ?? [];
+  list.push(member);
+  roster.set(member.team_id, list);
+}
+
+const games = [...new Set(teams.map((team) => team.game))];
+
+const FLASH: Record<string, string> = {
+  forbidden: 'That needs the admin role in Discord.',
+  discord_down: "Discord didn't answer while re-checking your role. Try again.",
+  bad_input: "The team couldn't be saved from those values.",
+  missing: 'No such team.',
+  csrf: 'The form was stale. Try again.',
+};
+const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
+---
+<Base title="Teams" description="LahtiAG's teams and rosters, per game.">
+  <article class="prose">
+    <h1>Teams</h1>
+  </article>
+  <SessionBox session={session} csrf={csrf} />
+  {flash && <p class="flash">{flash}</p>}
+
+  {teams.length === 0 && (
+    <p class="app-empty">
+      No teams yet. When squads form, their rosters live here.
+    </p>
+  )}
+
+  {games.map((game) => (
+    <section class="prose">
+      <h2>{game}</h2>
+      {teams
+        .filter((team) => team.game === game)
+        .map((team) => (
+          <div class="team-card">
+            <h3>{team.name}</h3>
+            {(roster.get(team.id) ?? []).length === 0 ? (
+              <p class="event-meta">No roster yet.</p>
+            ) : (
+              <ul>
+                {(roster.get(team.id) ?? []).map((member) => (
+                  <li>
+                    {member.username}
+                    {member.position && <span class="event-meta"> — {member.position}</span>}
+                    {session?.isAdmin && (
+                      <form method="post" action="/teams/manage" class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="remove" />
+                        <input type="hidden" name="team_id" value={team.id} />
+                        <input type="hidden" name="discord_id" value={member.discord_id} />
+                        <button class="btn-link" type="submit">remove</button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {session?.isAdmin && (
+              <form method="post" action="/teams/manage" class="app-form app-form-row">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="action" value="add" />
+                <input type="hidden" name="team_id" value={team.id} />
+                <label>Discord id <input name="discord_id" required pattern="\d+" /></label>
+                <label>Position <input name="position" placeholder="optional" /></label>
+                <button class="btn btn-ghost" type="submit">Add to roster</button>
+              </form>
+            )}
+          </div>
+        ))}
+    </section>
+  ))}
+
+  {session?.isAdmin && (
+    <section class="admin-panel">
+      <h2>Create a team</h2>
+      <form method="post" action="/teams/manage" class="app-form">
+        <input type="hidden" name="csrf" value={csrf} />
+        <input type="hidden" name="action" value="create" />
+        <label>Name <input name="name" required maxlength="60" /></label>
+        <label>Game <input name="game" required maxlength="60" /></label>
+        <button class="btn btn-primary" type="submit">Create team</button>
+      </form>
+    </section>
+  )}
+</Base>

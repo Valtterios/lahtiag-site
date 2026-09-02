@@ -1,7 +1,6 @@
 ---
 title: Rules
 description: LahtiAG community guidelines and the official association rules.
-navOrder: 5
 ---
 
 Our guidelines exist to ensure a safe, welcoming, and engaging environment

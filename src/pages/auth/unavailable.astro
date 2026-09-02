@@ -1,0 +1,19 @@
+---
+import Base from '../../layouts/Base.astro';
+
+// Shown while the Discord application's secrets are not yet configured on
+// the Worker. Static (so it costs nothing), which also means it serves as
+// 200 — a status code can't be attached to a prerendered page.
+export const prerender = true;
+---
+<Base title="Login unavailable">
+  <article class="prose">
+    <h1>Login isn't set up yet</h1>
+    <p>
+      Signing in with Discord hasn't been switched on for this deployment.
+      If you run this site, set the Discord OAuth secrets described in the
+      Phase 2 plan and this page goes away.
+    </p>
+    <p><a class="btn btn-ghost" href="/">Back to the front page</a></p>
+  </article>
+</Base>

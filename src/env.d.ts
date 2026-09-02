@@ -1,0 +1,32 @@
+// The Worker's environment: the two bindings plus the spec's secrets. The
+// secrets are optional on purpose — routes degrade to a friendly "not
+// configured" page instead of crashing when one is missing, so code can
+// deploy before the Discord application exists.
+//
+// Workers types are pulled in via inline import() only: a global
+// `/// <reference types="@cloudflare/workers-types" />` would clobber the
+// DOM types the Discord widget's browser script needs (its Element/Response
+// definitions collide with lib.dom).
+type WorkerEnv = {
+  DB: import('@cloudflare/workers-types').D1Database;
+  ASSETS: import('@cloudflare/workers-types').Fetcher;
+  ADMIN_ROLE_ID: string;
+  DISCORD_CLIENT_ID?: string;
+  DISCORD_CLIENT_SECRET?: string;
+  SESSION_SECRET?: string;
+  DISCORD_PUBLIC_KEY?: string;
+  DISCORD_WEBHOOK_URL?: string;
+};
+
+// Astro v6+ with @astrojs/cloudflare 14: request env is imported from
+// 'cloudflare:workers' (Astro.locals.runtime.env was removed and throws),
+// and the execution context lives at Astro.locals.cfContext.
+declare module 'cloudflare:workers' {
+  export const env: WorkerEnv;
+}
+
+declare namespace App {
+  interface Locals {
+    cfContext: import('@cloudflare/workers-types').ExecutionContext;
+  }
+}

@@ -1,0 +1,67 @@
+---
+import { env } from 'cloudflare:workers';
+import { marked } from 'marked';
+import Base from '../../layouts/Base.astro';
+import SessionBox from '../../components/SessionBox.astro';
+import { currentSession, ensureCsrf } from '../../lib/guard';
+import { listAnnouncements } from '../../lib/db';
+import { formatHelsinki } from '../../lib/time';
+
+const session = await currentSession(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+const announcements = await listAnnouncements(env.DB);
+
+// Announcement bodies are Markdown written by admins (web form or the
+// admin-gated /announce slash command), not arbitrary user input, and CSP
+// script-src 'self' backstops the rendered HTML.
+const rendered = announcements.map((item) => ({
+  ...item,
+  html: marked.parse(item.body_md, { async: false }) as string,
+}));
+
+const FLASH: Record<string, string> = {
+  forbidden: 'That needs the admin role in Discord.',
+  discord_down: "Discord didn't answer while re-checking your role. Try again.",
+  bad_input: 'An announcement needs a title and a body.',
+  csrf: 'The form was stale. Try again.',
+};
+const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
+---
+<Base title="News" description="LahtiAG announcements — the same news that lands on Discord.">
+  <article class="prose">
+    <h1>News</h1>
+  </article>
+  <SessionBox session={session} csrf={csrf} />
+  {flash && <p class="flash">{flash}</p>}
+
+  {rendered.length === 0 ? (
+    <p class="app-empty">
+      Nothing posted yet — announcements land on
+      <a href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Discord</a> first.
+    </p>
+  ) : (
+    rendered.map((item) => (
+      <article class="news-card prose">
+        <p class="event-when">
+          {formatHelsinki(item.published_at)}
+          {item.author_name && ` · ${item.author_name}`}
+          {item.source === 'discord' && ' · via Discord'}
+        </p>
+        <h2>{item.title}</h2>
+        <div set:html={item.html} />
+      </article>
+    ))
+  )}
+
+  {session?.isAdmin && (
+    <section class="admin-panel">
+      <h2>Post an announcement</h2>
+      <form method="post" action="/announcements/new" class="app-form">
+        <input type="hidden" name="csrf" value={csrf} />
+        <label>Title <input name="title" required maxlength="120" /></label>
+        <label>Body (Markdown) <textarea name="body" rows="6" required></textarea></label>
+        <button class="btn btn-primary" type="submit">Publish</button>
+      </form>
+    </section>
+  )}
+</Base>

@@ -1,7 +1,7 @@
 ---
 title: Contact
 description: The LahtiAG board and how to reach them.
-navOrder: 4
+navOrder: 6
 ---
 
 ## Board 2026

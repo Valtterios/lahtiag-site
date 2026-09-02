@@ -11,6 +11,11 @@ export default defineConfig({
   // in wrangler.toml.
   site: 'https://lahtiag.fi',
   output: 'server',
+  build: {
+    // public/_headers ships CSP style-src 'self'; Astro's default inlining
+    // of small stylesheets would violate it on every page.
+    inlineStylesheets: 'never',
+  },
   // The spec's Architecture section says "No KV, R2 or Durable Objects.
   // Sessions are stateless"; auth in a later phase uses HMAC-signed cookies
   // with no server-side store. @astrojs/cloudflare enables KV-backed

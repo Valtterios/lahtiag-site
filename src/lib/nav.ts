@@ -25,6 +25,16 @@ export function isCurrentNavLink(pathname: string, href: string): boolean {
   return normalized === href;
 }
 
+// The server-rendered app pages are not content-collection entries, so they
+// enter the nav as synthetic sources merged by the same navOrder scale the
+// Markdown pages use. Shaped as NavSource so navLinks() needs no second
+// code path.
+export const APP_PAGES: NavSource[] = [
+  { id: 'events', data: { title: 'Events', navOrder: 2 } },
+  { id: 'teams', data: { title: 'Teams', navOrder: 3 } },
+  { id: 'announcements', data: { title: 'News', navOrder: 4 } },
+];
+
 export function navLinks(entries: NavSource[]): NavLink[] {
   return entries
     .filter((entry) => typeof entry.data.navOrder === 'number')

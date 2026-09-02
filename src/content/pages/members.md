@@ -1,7 +1,7 @@
 ---
 title: Members
 description: Membership in LahtiAG is free — perks, how to join, and how to get involved.
-navOrder: 3
+navOrder: 5
 ---
 
 ## Membership benefits

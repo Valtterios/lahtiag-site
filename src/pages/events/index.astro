@@ -1,0 +1,105 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import SessionBox from '../../components/SessionBox.astro';
+import { currentSession, ensureCsrf } from '../../lib/guard';
+import { listUpcomingEvents, listPastEvents, listTeams } from '../../lib/db';
+import { formatHelsinki } from '../../lib/time';
+
+// Server-rendered: the events list lives in D1. The Phase 1 Markdown page
+// of event stories moved to /history when this route took the path over.
+
+const session = await currentSession(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+const now = Math.floor(Date.now() / 1000);
+
+const [upcoming, past, teams] = await Promise.all([
+  listUpcomingEvents(env.DB, now),
+  listPastEvents(env.DB, now, 10),
+  listTeams(env.DB),
+]);
+const teamName = new Map(teams.map((team) => [team.id, team.name]));
+
+const FLASH: Record<string, string> = {
+  forbidden: 'That needs the admin role in Discord.',
+  discord_down: "Discord didn't answer while re-checking your role. Try again.",
+  bad_input: "The event couldn't be created from those values.",
+  bad_time: "That date and time didn't parse. Use YYYY-MM-DD and HH:MM.",
+  csrf: 'The form was stale. Try again.',
+};
+const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
+---
+<Base title="Events" description="Upcoming LahtiAG events, tournaments and meetups — with signups.">
+  <article class="prose">
+    <h1>Events</h1>
+  </article>
+  <SessionBox session={session} csrf={csrf} />
+  {flash && <p class="flash">{flash}</p>}
+
+  {upcoming.length === 0 ? (
+    <p class="app-empty">
+      Nothing scheduled right now — announcements land on
+      <a href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Discord</a> first.
+    </p>
+  ) : (
+    <ul class="event-list">
+      {upcoming.map((event) => (
+        <li class="event-card">
+          <p class="event-when">{formatHelsinki(event.starts_at)}</p>
+          <h2><a href={`/events/${event.id}`}>{event.title}</a></h2>
+          <p class="event-meta">
+            {event.team_id !== null && teamName.has(event.team_id) && (
+              <span>{teamName.get(event.team_id)} · </span>
+            )}
+            <span>
+              {event.yes_count}{event.capacity !== null ? ` / ${event.capacity}` : ''} going
+              {event.maybe_count > 0 ? `, ${event.maybe_count} maybe` : ''}
+            </span>
+          </p>
+        </li>
+      ))}
+    </ul>
+  )}
+
+  {past.length > 0 && (
+    <section class="prose">
+      <h2>Recently</h2>
+      <ul>
+        {past.map((event) => (
+          <li>
+            <a href={`/events/${event.id}`}>{event.title}</a> — {formatHelsinki(event.starts_at)}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )}
+
+  <p class="app-empty">
+    Looking for the older event stories — Game Fest, the Mario Kart
+    Tournament? They live on the <a href="/history">history page</a>.
+  </p>
+
+  {session?.isAdmin && (
+    <section class="admin-panel">
+      <h2>Create an event</h2>
+      <form method="post" action="/events/new" class="app-form">
+        <input type="hidden" name="csrf" value={csrf} />
+        <label>Title <input name="title" required maxlength="120" /></label>
+        <label>Date <input name="date" required placeholder="2026-10-01" pattern="\d{4}-\d{2}-\d{2}" /></label>
+        <label>Time (Helsinki) <input name="time" required placeholder="18:00" pattern="\d{1,2}[:.]\d{2}" /></label>
+        <label>Capacity <input name="capacity" type="number" min="1" placeholder="unlimited" /></label>
+        <label>
+          Team
+          <select name="team_id">
+            <option value="">Association-wide</option>
+            {teams.map((team) => (
+              <option value={team.id}>{team.name} ({team.game})</option>
+            ))}
+          </select>
+        </label>
+        <label>Description <textarea name="description" rows="3"></textarea></label>
+        <button class="btn btn-primary" type="submit">Create event</button>
+      </form>
+    </section>
+  )}
+</Base>

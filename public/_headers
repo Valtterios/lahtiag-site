@@ -1,0 +1,16 @@
+# Security headers for every route. Hand-written per the Phase 1 review:
+# these must exist before the first __Host- session cookie does. The
+# @astrojs/cloudflare adapter APPENDS its /_astro/* cache block to this file
+# at build time — do not move this file into dist or the append is lost.
+#
+# CSP notes: scripts and styles are 'self' only, which requires
+# build.inlineStylesheets: 'never' in astro.config.mjs (Astro would otherwise
+# inline small stylesheets). The Discord widget fetches discord.com
+# (connect-src) and shows avatars/icons from cdn.discordapp.com (img-src).
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' https://cdn.discordapp.com; font-src 'self'; connect-src 'self' https://discord.com; form-action 'self'; base-uri 'none'; frame-ancestors 'none'
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()

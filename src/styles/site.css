@@ -301,6 +301,9 @@ a:hover {
   border-radius: 10px;
   text-decoration: none;
   border: 1px solid transparent;
+  /* .btn also lands on <button> elements in forms */
+  background: none;
+  cursor: pointer;
 }
 
 .btn-primary {
@@ -394,6 +397,177 @@ a:hover {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 0.1em 0.35em;
+}
+
+/* ---------- app pages (events, teams, news) ---------- */
+
+.flash {
+  max-width: var(--prose-measure);
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: rgba(255, 180, 84, 0.08);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.app-empty {
+  color: var(--muted);
+  max-width: var(--prose-measure);
+}
+
+.event-list {
+  list-style: none;
+  margin: 0 0 2rem;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.event-card,
+.team-card,
+.news-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.3rem;
+}
+
+.event-card h2 {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 1.25rem;
+  margin: 0.15rem 0 0.3rem;
+}
+
+.event-card h2 a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.event-card h2 a:hover {
+  color: var(--accent);
+}
+
+.event-when {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0;
+}
+
+.event-meta {
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin: 0;
+}
+
+.team-card {
+  margin: 0.8rem 0 1.2rem;
+}
+
+.team-card h3 {
+  margin-top: 0;
+}
+
+.news-card {
+  margin-bottom: 1.2rem;
+}
+
+.news-card h2 {
+  margin-top: 0.3rem;
+}
+
+.news-card h2::before {
+  display: none;
+}
+
+.signup-bar {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin: 0 0 2rem;
+}
+
+.signup-bar .btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-panel {
+  margin-top: 3rem;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 1.3rem 1.5rem 1.6rem;
+}
+
+.admin-panel h2 {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 1rem;
+}
+
+.app-form {
+  display: grid;
+  gap: 0.9rem;
+  max-width: 30rem;
+}
+
+.app-form label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.app-form input,
+.app-form select,
+.app-form textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+}
+
+.app-form input:focus,
+.app-form select:focus,
+.app-form textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+
+.app-form button {
+  justify-self: start;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.app-form-row {
+  grid-template-columns: auto auto auto;
+  align-items: end;
+  max-width: none;
+  margin-top: 0.8rem;
+}
+
+@media (max-width: 600px) {
+  .app-form-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+}
+
+.inline-form {
+  display: inline;
+  margin-left: 0.5rem;
 }
 
 /* ---------- footer ---------- */

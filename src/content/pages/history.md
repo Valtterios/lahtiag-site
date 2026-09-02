@@ -1,14 +1,10 @@
 ---
-title: Events
-description: Upcoming and past LahtiAG events — tournaments, LAN parties, and meetups.
-navOrder: 2
+title: History
+description: Stories from past LahtiAG events — Game Fest, the Mario Kart Tournament, and more.
 ---
 
-## Upcoming
-
-To be announced — follow [our Instagram](https://www.instagram.com/lahti_ag)
-for the latest news and teasers, or join the Discord where every event is
-announced first.
+Stories from events we've run. Upcoming events with live signups are on the
+[events page](/events).
 
 ## Past events
 

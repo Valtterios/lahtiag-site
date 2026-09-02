@@ -38,6 +38,43 @@ custom_domain = true
 [observability]
 enabled = true
 
-# No [vars] section: DISCORD_GUILD_ID (src/lib/config.ts) is deliberately a
-# build-time constant baked into the Worker bundle, not a Worker var, per
-# the design spec.
+# DISCORD_GUILD_ID is deliberately NOT here (src/lib/config.ts is its single
+# home, baked in at build time, per the design spec). ADMIN_ROLE_ID is the
+# spec's one plain var; "0" fails every admin check closed until the real
+# role id is supplied.
+[vars]
+ADMIN_ROLE_ID = "0"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "lahtiag"
+database_id = "86177f14-544f-497c-b5a4-7802f463b37e"
+
+# ---------------------------------------------------------------------------
+# Preview environment. WRANGLER NAMED ENVIRONMENTS INHERIT NOTHING from the
+# top level (Phase 1 review, trap 1): every table above must be repeated here
+# or the preview deploy silently loses it. The preview Worker is named
+# lahtiag-site-preview, serves on *.workers.dev (no custom domain), and binds
+# a SEPARATE D1 database so previews cannot write real signups.
+# Deploy with: npx wrangler deploy --env preview
+# ---------------------------------------------------------------------------
+[env.preview]
+workers_dev = true
+compatibility_flags = ["nodejs_compat"]
+
+[env.preview.assets]
+directory = "./dist/client"
+binding = "ASSETS"
+not_found_handling = "404-page"
+html_handling = "drop-trailing-slash"
+
+[env.preview.observability]
+enabled = true
+
+[env.preview.vars]
+ADMIN_ROLE_ID = "0"
+
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "lahtiag-preview"
+database_id = "115f5d46-a85b-4461-b6e4-ae98ea807984"
