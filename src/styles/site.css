@@ -152,9 +152,15 @@ a:hover {
 }
 
 .brand img {
-  height: 26px;
+  height: 42px;
   width: auto;
   display: block;
+}
+
+@media (max-width: 600px) {
+  .brand img {
+    height: 34px;
+  }
 }
 
 .site-header nav ul {
@@ -671,7 +677,7 @@ a:hover {
 }
 
 .footer-note img {
-  height: 22px;
+  height: 30px;
   width: auto;
 }
 
