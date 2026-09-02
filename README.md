@@ -27,6 +27,8 @@ static assets.
 
 ## Deployment
 
+The site is live at <https://lahtiag-site.lahtiag-site.workers.dev>.
+
 Push to `main` deploys production through Cloudflare Workers Builds. The
 Worker is named `lahtiag-site` (see `wrangler.toml`). `npm run deploy`
 deploys from a laptop, which is only needed for the very first deploy or
