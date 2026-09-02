@@ -153,7 +153,7 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
 
 function controlPanel(): { content: string; components: unknown[] } {
   return {
-    content: '<:lahtiag:1544775220458430565> **Tournament controls** — what needs doing?',
+    content: '<:lahtiag:1544775220458430565> **Tournament controls**. What needs doing?',
     components: [
       {
         type: 1,

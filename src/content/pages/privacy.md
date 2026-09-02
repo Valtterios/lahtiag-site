@@ -48,8 +48,8 @@ what happens to data inside Discord is governed by
 ## How long, and how to be removed
 
 Signups and results are kept as part of the association's event history.
-If you want your participation removed — from one event or from
-everything — contact the board at
+If you want your participation removed, from one event or from
+everything, contact the board at
 [board@lahtiag.fi](mailto:board@lahtiag.fi) and it will be deleted. Your
 other data protection rights (access, rectification, and the rest) are
 listed in the
