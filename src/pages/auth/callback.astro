@@ -4,11 +4,11 @@ import Base from '../../layouts/Base.astro';
 import { exchangeCode, fetchMe, fetchGuildMember, hasAdminRole } from '../../lib/discord';
 import { DISCORD_GUILD_ID } from '../../lib/config';
 import {
+  SESSION_COOKIE,
+  CSRF_COOKIE,
   SESSION_TTL_SECONDS,
   signSession,
-  sessionCookie,
   newCsrfToken,
-  csrfCookie,
 } from '../../lib/auth';
 import { upsertMember } from '../../lib/db';
 
@@ -78,8 +78,19 @@ sign: {
     },
     env.SESSION_SECRET,
   );
-  Astro.response.headers.append('Set-Cookie', sessionCookie(token));
-  Astro.response.headers.append('Set-Cookie', csrfCookie(newCsrfToken()));
+  // Astro.cookies (not response header appends): headers set on
+  // Astro.response are dropped when Astro.redirect() builds its fresh
+  // response, which silently lost the session and left users "signed in"
+  // straight back to the sign-in button.
+  const cookieOptions = {
+    path: '/',
+    maxAge: SESSION_TTL_SECONDS,
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+  } as const;
+  Astro.cookies.set(SESSION_COOKIE, token, cookieOptions);
+  Astro.cookies.set(CSRF_COOKIE, newCsrfToken(), cookieOptions);
   return Astro.redirect('/events');
 }
 ---

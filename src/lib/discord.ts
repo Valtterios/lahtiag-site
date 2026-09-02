@@ -14,7 +14,9 @@ export function authorizeUrl(clientId: string, redirectUri: string, state: strin
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', OAUTH_SCOPES);
   url.searchParams.set('state', state);
-  url.searchParams.set('prompt', 'none');
+  // No `prompt` param: `none` bounces first-time users straight back with
+  // an error before they ever see the consent screen. The default shows
+  // the authorize page, a single click for anyone already authorized.
   return url.toString();
 }
 
