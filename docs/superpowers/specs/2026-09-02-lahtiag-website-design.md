@@ -45,7 +45,7 @@ Splitting content and API buys separation that nothing currently needs, at the c
 
 A single Worker serves the apex domain.
 
-- Static assets (prerendered Markdown pages, CSS, images) are served from Cloudflare's edge without invoking the Worker.
+- Static assets (prerendered Markdown pages, CSS, images) are served from Cloudflare's edge without invoking the Worker. This requires `output: 'server'` in the Astro config with `export const prerender = true` on every static page, not a static-only build. Since Astro 6 the adapter's wrangler `main` is the package specifier `@astrojs/cloudflare/entrypoints/server`, not a path into `dist/`. Cloudflare's own Astro guide still shows the old path and will misconfigure the project.
 - Server routes handle authentication, events, signups and admin writes.
 - `/discord/interactions` receives Discord slash commands.
 
@@ -57,9 +57,13 @@ No KV, R2 or Durable Objects. Sessions are stateless, images live in the reposit
 
 Secrets, set with `wrangler secret put` and never committed: `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `SESSION_SECRET`, `DISCORD_PUBLIC_KEY`, `DISCORD_WEBHOOK_URL`.
 
-Plain vars in `wrangler.toml`: `DISCORD_GUILD_ID`, `ADMIN_ROLE_ID`.
+Plain vars in `wrangler.toml`: `ADMIN_ROLE_ID`.
 
-Environments: production on the apex domain; branch and PR previews on `*.workers.dev`, bound to a **separate D1 database** so preview deployments cannot write to real signups.
+`DISCORD_GUILD_ID` is deliberately not a Worker var. The Discord widget runs in the browser and cannot read one. It is inlined at build time as the single source of that id; server code in later phases reads the same build-time constant rather than introducing a second copy.
+
+Environments: production on the apex domain; branch and PR previews on `*.workers.dev`, bound to a **separate D1 database** so preview deployments cannot write to real signups. A single `wrangler.toml` cannot express that: it requires Wrangler environments with a per-environment `d1_databases` binding. This is Phase 2 work, when D1 first exists.
+
+Cloudflare custom domains match exactly, so attaching the apex leaves `www` dead. Whether `www` redirects to the apex is an explicit decision at domain attachment, not a default.
 
 ## Authentication and authorisation
 
@@ -200,10 +204,11 @@ Routes:
 - Login failures distinguish "you are not in the Discord server" from "Discord is unreachable", because those require different actions from the user.
 - Signup writes are rejected when an event is cancelled or full.
 - Interaction signature failures return 401 without touching the database.
+- The Discord widget depends on Server Widget being enabled in the Discord server settings. If it is turned off, `widget.json` stops returning data and the component renders its error state. This is the only way the widget fails in production, and it fails from a change made in Discord, not in this repository.
 
 ## Testing
 
-Vitest with `@cloudflare/vitest-pool-workers`, which runs tests inside the real Workers runtime against a local D1 rather than against mocks.
+Vitest with `@cloudflare/vitest-plugin`, which runs tests inside the real Workers runtime against a local D1 rather than against mocks. Cloudflare renamed this package from `@cloudflare/vitest-pool-workers`; use the plugin.
 
 Priority coverage:
 
