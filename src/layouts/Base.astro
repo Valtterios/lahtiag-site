@@ -1,0 +1,52 @@
+---
+import { getCollection } from 'astro:content';
+import { navLinks } from '../lib/nav';
+import '../styles/site.css';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description } = Astro.props;
+
+// The nav is built from the collection at build time, so a new Markdown
+// file with a navOrder appears in the header without touching this file.
+const links = navLinks(await getCollection('pages'));
+const currentPath = Astro.url.pathname.replace(/\/+$/, '') || '/';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} | LahtiAG</title>
+    {description && <meta name="description" content={description} />}
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="inner">
+        <a class="brand" href="/">LahtiAG</a>
+        <nav aria-label="Main">
+          <ul>
+            {links.map((link) => (
+              <li>
+                <a href={link.href} aria-current={currentPath === link.href ? 'page' : undefined}>
+                  {link.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </div>
+    </header>
+    <main class="site-main">
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <div class="inner">
+        <p>LahtiAG is a gaming association in Lahti, Finland. This site is maintained as Markdown in git.</p>
+      </div>
+    </footer>
+  </body>
+</html>
