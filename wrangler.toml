@@ -1,0 +1,17 @@
+# The dashboard Worker name must equal this `name` (Workers Builds requires it).
+name = "lahtiag-site"
+
+# With @astrojs/cloudflare 13+ the entrypoint is a package specifier; the
+# adapter resolves it during `astro build`. Do not point this at dist/.
+main = "@astrojs/cloudflare/entrypoints/server"
+
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "404-page"
+
+[observability]
+enabled = true
