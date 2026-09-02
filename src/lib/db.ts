@@ -269,6 +269,21 @@ export async function cancelEvent(db: D1Database, id: number, now: number): Prom
   return event;
 }
 
+// Full removal: the event and everything hanging off it (signups, ad-hoc
+// teams, bracket). Returns the deleted row so the caller can also remove
+// the Discord announcement. Cancel hides an event; delete erases it.
+export async function deleteEvent(db: D1Database, id: number): Promise<EventRow> {
+  const event = await getEvent(db, id);
+  if (!event) throw new RuleError('missing', `No event with id ${id}.`);
+  await db.batch([
+    db.prepare('DELETE FROM bracket_matches WHERE event_id = ?1').bind(id),
+    db.prepare('DELETE FROM signups WHERE event_id = ?1').bind(id),
+    db.prepare('DELETE FROM event_teams WHERE event_id = ?1').bind(id),
+    db.prepare('DELETE FROM events WHERE id = ?1').bind(id),
+  ]);
+  return event;
+}
+
 export async function setEventMessageId(db: D1Database, id: number, messageId: string): Promise<void> {
   await db.prepare('UPDATE events SET discord_message_id = ?1 WHERE id = ?2').bind(messageId, id).run();
 }
@@ -682,6 +697,7 @@ export async function listResults(db: D1Database, limit = 20): Promise<ResultRow
        FROM bracket_matches bm
        JOIN events e ON e.id = bm.event_id
        WHERE bm.winner IS NOT NULL
+         AND e.cancelled_at IS NULL
          AND bm.round = (SELECT MAX(round) FROM bracket_matches b2 WHERE b2.event_id = bm.event_id)
        ORDER BY e.starts_at DESC
        LIMIT ?1`,

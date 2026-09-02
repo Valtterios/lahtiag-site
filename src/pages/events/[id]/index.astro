@@ -214,9 +214,10 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         </section>
       )}
 
-      {session?.isAdmin && event.cancelled_at === null && (
+      {session?.isAdmin && (
         <section class="admin-panel">
           <h2>Admin</h2>
+          {event.cancelled_at === null && (
           <div class="signup-bar">
             <form method="post" action={`/events/${event.id}/close`}>
               <input type="hidden" name="csrf" value={csrf} />
@@ -237,6 +238,8 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
               <button class="btn btn-ghost" type="submit">Cancel this event</button>
             </form>
           </div>
+          )}
+          {event.cancelled_at === null && (
           <details class="admin-edit">
             <summary>Edit this event</summary>
             <form method="post" action={`/events/${event.id}/edit`} class="app-form">
@@ -262,6 +265,19 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
                 <p class="event-meta">Team size ({event.team_size}) can't change once teams exist.</p>
               )}
               <button class="btn btn-primary" type="submit">Save changes</button>
+            </form>
+          </details>
+          )}
+          <details class="admin-edit">
+            <summary>Danger zone</summary>
+            <p class="event-meta">
+              Deleting erases the event with its signups, teams and bracket,
+              and removes the Discord announcement. Cancelling (above) is the
+              right call for a real event that fell through.
+            </p>
+            <form method="post" action={`/events/${event.id}/delete`}>
+              <input type="hidden" name="csrf" value={csrf} />
+              <button class="btn btn-ghost" type="submit">Delete this event permanently</button>
             </form>
           </details>
         </section>

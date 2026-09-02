@@ -10,6 +10,11 @@ import {
   getBracket,
   setBracketWinner,
   deleteBracket,
+  deleteEvent,
+  cancelEvent as cancelEventRow,
+  listResults,
+  getEvent,
+  listSignups,
   RuleError,
 } from '../src/lib/db';
 
@@ -151,6 +156,28 @@ describe('setBracketWinner', () => {
     await generateBracket(db(), eventId);
     await deleteBracket(db(), eventId);
     expect(await getBracket(db(), eventId)).toHaveLength(0);
+  });
+});
+
+describe('results and deletion', () => {
+  it('a decided final lands in results, unless the event is cancelled', async () => {
+    const eventId = await soloEventWith(['a', 'b']);
+    await generateBracket(db(), eventId);
+    const match = (await getBracket(db(), eventId))[0];
+    await setBracketWinner(db(), eventId, 1, 0, match.side_a!);
+    expect((await listResults(db())).map((r) => r.event_id)).toContain(eventId);
+    await cancelEventRow(db(), eventId, NOW);
+    expect((await listResults(db())).map((r) => r.event_id)).not.toContain(eventId);
+  });
+
+  it('deleteEvent erases the event with signups and bracket', async () => {
+    const eventId = await soloEventWith(['a', 'b']);
+    await generateBracket(db(), eventId);
+    await deleteEvent(db(), eventId);
+    expect(await getEvent(db(), eventId)).toBeNull();
+    expect(await getBracket(db(), eventId)).toHaveLength(0);
+    expect(await listSignups(db(), eventId)).toHaveLength(0);
+    await expect(deleteEvent(db(), eventId)).rejects.toMatchObject({ code: 'missing' });
   });
 });
 

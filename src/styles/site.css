@@ -565,6 +565,29 @@ a:hover {
   margin: 0 0 1rem;
 }
 
+.admin-edit {
+  margin-top: 1.2rem;
+}
+
+.admin-edit summary {
+  cursor: pointer;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.admin-edit summary:hover {
+  color: var(--ink);
+}
+
+.admin-edit form,
+.admin-edit p {
+  margin-top: 1rem;
+}
+
 .app-form {
   display: grid;
   gap: 0.9rem;
