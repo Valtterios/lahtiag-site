@@ -896,6 +896,45 @@ a:hover {
   margin-bottom: 0;
 }
 
+/* ---------- bracket display mode (?display, for a venue screen) ---------- */
+
+.display-mode .site-header,
+.display-mode .site-footer,
+.display-mode .admin-panel,
+.display-mode .flash,
+.display-mode .event-meta {
+  display: none;
+}
+
+.display-mode .site-main {
+  max-width: none;
+  padding: 2rem 3rem;
+}
+
+.display-mode .prose h1 {
+  font-size: 3rem;
+}
+
+.display-mode .bracket-round {
+  min-width: 18rem;
+}
+
+.display-mode .bracket-side {
+  min-height: 3.2rem;
+}
+
+.display-mode .bracket-name {
+  font-size: 1.05rem;
+}
+
+.display-mode .champion {
+  font-size: 1.8rem;
+}
+
+.display-mode .bracket-win-btn {
+  display: none;
+}
+
 /* ---------- footer: white on blue, per the brand kit ---------- */
 
 .site-footer {

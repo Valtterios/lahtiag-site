@@ -86,10 +86,15 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
       <article class="prose">
         <p class="hero-eyebrow">{formatHelsinki(event.starts_at)}</p>
         <h1>{event.title}: bracket</h1>
-        <p class="event-meta"><a href={`/events/${event.id}`}>Back to the event page</a></p>
+        <p class="event-meta">
+          <a href={`/events/${event.id}`}>Back to the event page</a>
+          {' · '}
+          <a href={`/events/${event.id}/bracket?display`}>Open display mode</a>
+        </p>
       </article>
       {flash && <p class="flash">{flash}</p>}
 
+      <div id="bracket-live">
       {champion && (
         <p class="champion">
           🏆 <strong>{champion.name}</strong> takes it!
@@ -163,6 +168,8 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         </div>
       )}
 
+      </div>
+
       {session?.isAdmin && matches.length > 0 && (
         <section class="admin-panel">
           <h2>Admin</h2>
@@ -182,3 +189,27 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
     </>
   )}
 </Base>
+
+<script>
+  // Display mode (?display): hide the site chrome and refresh the chart
+  // every 10 seconds by fetching this same page and swapping the bracket
+  // region in place — no flicker, no full reload. Same-origin fetch, so
+  // the CSP connect-src 'self' covers it.
+  if (new URLSearchParams(location.search).has('display')) {
+    document.documentElement.classList.add('display-mode');
+    setInterval(async () => {
+      try {
+        const response = await fetch(location.href);
+        if (!response.ok) return;
+        const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const fresh = doc.querySelector('#bracket-live');
+        const current = document.querySelector('#bracket-live');
+        if (fresh && current && fresh.innerHTML !== current.innerHTML) {
+          current.innerHTML = fresh.innerHTML;
+        }
+      } catch {
+        // transient network errors: keep showing the last good chart
+      }
+    }, 10_000);
+  }
+</script>
