@@ -96,6 +96,11 @@ const { guildId = DISCORD_GUILD_ID } = Astro.props;
     background: var(--accent-dark);
     color: #fff;
   }
+  .dw-join-unavailable {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
   .dw-members {
     padding: 14px 16px;
     display: grid;
@@ -172,7 +177,10 @@ const { guildId = DISCORD_GUILD_ID } = Astro.props;
   import type { InviteResponse, WidgetResponse } from '../lib/discord-widget';
 
   async function getJson<T>(url: string): Promise<T> {
-    const response = await fetch(url);
+    // Without a timeout, a hang (rather than an error) from discord.com
+    // never rejects, so the outer catch never runs and the loading text
+    // stays up forever.
+    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!response.ok) throw new Error(`${url} -> ${response.status}`);
     return (await response.json()) as T;
   }
@@ -205,6 +213,15 @@ const { guildId = DISCORD_GUILD_ID } = Astro.props;
     if (widget.instant_invite) {
       joinEl.href = widget.instant_invite;
       joinEl.hidden = false;
+    } else {
+      // No invite channel is selected in the widget settings (a separate
+      // toggle from enabling the widget itself). Say so instead of quietly
+      // dropping the call to action.
+      console.warn('DiscordWidget: widget has no instant_invite; hiding join link');
+      const unavailable = document.createElement('p');
+      unavailable.className = 'dw-join-unavailable';
+      unavailable.textContent = 'Invite link unavailable.';
+      joinEl.replaceWith(unavailable);
     }
 
     // Members are online-only and capped at 100 by Discord.
@@ -255,7 +272,11 @@ const { guildId = DISCORD_GUILD_ID } = Astro.props;
   for (const root of document.querySelectorAll<HTMLElement>('.dw')) {
     load(root).catch((error: unknown) => {
       console.error(error);
-      child(root, '.dw-name').textContent = "Couldn't load the Discord widget";
+      // child() throws when the element is missing, which would turn this
+      // handled failure into an unhandled promise rejection. Use a plain
+      // querySelector with a null check instead.
+      const nameEl = root.querySelector<HTMLElement>('.dw-name');
+      if (nameEl) nameEl.textContent = "Couldn't load the Discord widget";
     });
   }
 </script>
