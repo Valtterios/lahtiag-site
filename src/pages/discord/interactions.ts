@@ -111,16 +111,23 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     if (interaction.data.custom_id === 't:create') {
       return json(createEventModal());
     }
+    if (interaction.data.custom_id === 't:announce') {
+      return json(announceModal());
+    }
     locals.cfContext.waitUntil(handleComponent(env, interaction, url.origin));
     return json({ type: 6 });
   }
 
   // Modal submits (type 5): defer, create, then edit the reply.
-  if (interaction.type === 5 && interaction.data?.custom_id === 't:modal:create') {
+  if (interaction.type === 5 && interaction.data?.custom_id?.startsWith('t:modal:')) {
     if (!isAdmin) {
       return json({ type: 4, data: { content: 'This needs the admin role.', flags: 64 } });
     }
-    locals.cfContext.waitUntil(handleCreateModal(env, interaction, url.origin));
+    locals.cfContext.waitUntil(
+      interaction.data.custom_id === 't:modal:create'
+        ? handleCreateModal(env, interaction, url.origin)
+        : handleAnnounceModal(env, interaction, url.origin),
+    );
     return json({ type: 5, data: { flags: 64 } });
   }
 
@@ -151,7 +158,29 @@ function controlPanel(): { content: string; components: unknown[] } {
           { type: 2, style: 3, label: 'Record winner', custom_id: 't:pick:winner', emoji: { name: '🏆' } },
         ],
       },
+      {
+        type: 1,
+        components: [
+          { type: 2, style: 1, label: 'Announce', custom_id: 't:announce', emoji: { name: '📣' } },
+          { type: 2, style: 4, label: 'Cancel event', custom_id: 't:pick:cancel', emoji: { name: '❌' } },
+        ],
+      },
     ],
+  };
+}
+
+function announceModal() {
+  const row = (component: Record<string, unknown>) => ({ type: 1, components: [component] });
+  return {
+    type: 9,
+    data: {
+      custom_id: 't:modal:announce',
+      title: 'Publish an announcement',
+      components: [
+        row({ type: 4, custom_id: 'title', style: 1, label: 'Title', required: true, max_length: 120 }),
+        row({ type: 4, custom_id: 'text', style: 2, label: 'Text (Markdown)', required: true, max_length: 2000 }),
+      ],
+    },
   };
 }
 
@@ -221,6 +250,15 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
       if (action === 'close' || action === 'reopen') {
         await setSignupsClosed(env.DB, eventId, action === 'close', now);
         await edit(action === 'close' ? `Signups closed for event #${eventId}.` : `Signups reopened for event #${eventId}.`);
+      } else if (action === 'cancel') {
+        const event = await cancelEvent(env.DB, eventId, now);
+        if (env.DISCORD_WEBHOOK_URL) {
+          await postWebhook(
+            env.DISCORD_WEBHOOK_URL,
+            `❌ Cancelled: **${event.title}** (was ${formatHelsinki(event.starts_at)})`,
+          );
+        }
+        await edit(`Cancelled event #${eventId}: **${event.title}**.`);
       } else if (action === 'bracket') {
         await generateBracket(env.DB, eventId);
         await edit(`Bracket generated: ${origin}/events/${eventId}/bracket`);
@@ -323,6 +361,44 @@ async function handleCreateModal(env: WorkerEnv, interaction: Interaction, origi
       if (messageId) await setEventMessageId(env.DB, id, messageId);
     }
     await reply(`Created event #${id}: **${title.trim()}**\n${origin}/events/${id}`);
+  } catch (error) {
+    await reply(error instanceof RuleError ? error.message : 'Something went wrong.');
+  }
+}
+
+async function handleAnnounceModal(env: WorkerEnv, interaction: Interaction, origin: string): Promise<void> {
+  const reply = (content: string) =>
+    editInteractionReply(interaction.application_id, interaction.token, content);
+  try {
+    const fields = new Map<string, string>();
+    for (const modalRow of interaction.data!.components ?? []) {
+      for (const component of modalRow.components) {
+        fields.set(component.custom_id, component.value ?? '');
+      }
+    }
+    const invoker = interaction.member!.user!;
+    const now = Math.floor(Date.now() / 1000);
+    await upsertMember(
+      env.DB,
+      {
+        discord_id: invoker.id,
+        username: interaction.member?.nick ?? invoker.global_name ?? invoker.username,
+        avatar_hash: invoker.avatar,
+      },
+      now,
+    );
+    const title = fields.get('title') ?? '';
+    const text = fields.get('text') ?? '';
+    const id = await createAnnouncement(
+      env.DB,
+      { title, body_md: text, author_id: invoker.id, source: 'discord' },
+      now,
+    );
+    if (env.DISCORD_WEBHOOK_URL) {
+      const messageId = await postWebhook(env.DISCORD_WEBHOOK_URL, `📣 **${title.trim()}**\n${text}`);
+      if (messageId) await setAnnouncementMessageId(env.DB, id, messageId);
+    }
+    await reply(`Published: **${title.trim()}**, ${origin}/announcements`);
   } catch (error) {
     await reply(error instanceof RuleError ? error.message : 'Something went wrong.');
   }
