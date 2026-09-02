@@ -26,6 +26,23 @@ not_found_handling = "404-page"
 # server match the links it already generates instead of the other way
 # around.
 html_handling = "drop-trailing-slash"
+# Cloudflare's asset router answers browser NAVIGATION requests (the ones
+# carrying Sec-Fetch-Mode: navigate) for unmatched paths with the 404 page
+# itself, never invoking the Worker — which 404'd every server route in real
+# browsers while curl (no Sec-Fetch headers) sailed through. These routes
+# must reach the Worker. Keep in sync with [env.preview.assets] below.
+run_worker_first = [
+  "/login",
+  "/logout",
+  "/auth/callback",
+  "/events",
+  "/events/*",
+  "/teams",
+  "/teams/*",
+  "/announcements",
+  "/announcements/*",
+  "/discord/*",
+]
 
 # Production domain. The apex only: the user decided against a www redirect
 # (www.lahtiag.fi previously pointed at the retired Google Sites page and is
@@ -66,6 +83,18 @@ directory = "./dist/client"
 binding = "ASSETS"
 not_found_handling = "404-page"
 html_handling = "drop-trailing-slash"
+run_worker_first = [
+  "/login",
+  "/logout",
+  "/auth/callback",
+  "/events",
+  "/events/*",
+  "/teams",
+  "/teams/*",
+  "/announcements",
+  "/announcements/*",
+  "/discord/*",
+]
 
 [env.preview.observability]
 enabled = true
