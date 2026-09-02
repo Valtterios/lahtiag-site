@@ -210,7 +210,8 @@ a:hover {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
   gap: 3rem;
-  align-items: center;
+  /* top-aligned: centering let a tall widget rise above the name line */
+  align-items: start;
   padding: 2rem 0 3rem;
 }
 
@@ -291,6 +292,13 @@ a:hover {
 
 .hero-side .dw {
   margin-top: 0;
+}
+
+/* the online-member grid can hold up to 100 avatars; scroll it instead of
+   letting it stretch the hero */
+.hero-side .dw .dw-members {
+  max-height: 15rem;
+  overflow-y: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {
