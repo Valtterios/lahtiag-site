@@ -93,18 +93,30 @@ export async function fetchGuildMember(
   accessToken: string,
   guildId: string,
 ): Promise<GuildMembership> {
-  let response: Response;
-  try {
-    response = await fetch(`${API}/users/@me/guilds/${guildId}/member`, {
-      headers: { authorization: `Bearer ${accessToken}` },
-    });
-  } catch {
-    return { status: 'error' };
+  // Admin writes re-verify on every request, so rapid clicking (recording
+  // bracket winners) can trip Discord's per-token rate limit. A 429 is not
+  // "Discord is down": wait out the advertised cooldown once and retry.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(`${API}/users/@me/guilds/${guildId}/member`, {
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+    } catch {
+      return { status: 'error' };
+    }
+    if (response.status === 404) return { status: 'not_member' };
+    if (response.status === 429 && attempt === 0) {
+      const body = (await response.json().catch(() => ({}))) as { retry_after?: number };
+      const waitMs = Math.min((body.retry_after ?? 1) * 1000, 2500);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      continue;
+    }
+    if (!response.ok) return { status: 'error' };
+    const data = (await response.json()) as { roles?: string[]; nick?: string | null };
+    return { status: 'member', roles: data.roles ?? [], nick: data.nick ?? null };
   }
-  if (response.status === 404) return { status: 'not_member' };
-  if (!response.ok) return { status: 'error' };
-  const data = (await response.json()) as { roles?: string[]; nick?: string | null };
-  return { status: 'member', roles: data.roles ?? [], nick: data.nick ?? null };
+  return { status: 'error' };
 }
 
 export function hasAdminRole(roles: string[], adminRoleIds: string): boolean {

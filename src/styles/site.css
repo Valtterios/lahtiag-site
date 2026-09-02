@@ -935,6 +935,11 @@ a:hover {
   display: none;
 }
 
+.display-mode .bracket-scroll {
+  display: flex;
+  justify-content: center;
+}
+
 /* live message from the /tournament panel; presenter-screen only */
 .display-note {
   display: none;

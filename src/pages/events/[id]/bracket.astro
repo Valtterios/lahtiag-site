@@ -203,21 +203,20 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
   if (new URLSearchParams(location.search).has('display')) {
     document.documentElement.classList.add('display-mode');
 
+    // CSS zoom, not transform: zoom takes part in layout, so the scroll
+    // container and centering behave without any manual geometry. Never
+    // shrinks below natural size (min 1).
     const fit = () => {
       const chart = document.querySelector<HTMLElement>('.bracket');
-      const scroll = document.querySelector<HTMLElement>('.bracket-scroll');
-      if (!chart || !scroll) return;
-      chart.style.transform = '';
-      const rect = chart.getBoundingClientRect();
+      if (!chart) return;
+      chart.style.zoom = '';
+      const width = chart.offsetWidth;
+      const height = chart.offsetHeight;
+      if (!width || !height) return;
       const availWidth = window.innerWidth - 64;
-      const availHeight = window.innerHeight - scroll.getBoundingClientRect().top - 32;
-      if (rect.width === 0 || rect.height === 0) return;
-      const scale = Math.min(availWidth / rect.width, availHeight / rect.height, 4);
-      const offset = Math.max(0, (availWidth - rect.width * scale) / 2);
-      chart.style.transformOrigin = 'top left';
-      chart.style.transform = `translateX(${offset}px) scale(${scale})`;
-      scroll.style.height = `${rect.height * scale}px`;
-      scroll.style.overflow = 'visible';
+      const availHeight = window.innerHeight - chart.getBoundingClientRect().top - 32;
+      const scale = Math.max(1, Math.min(availWidth / width, availHeight / height, 4));
+      chart.style.zoom = String(scale);
     };
 
     const refresh = async () => {
@@ -237,9 +236,11 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
     };
 
     window.addEventListener('resize', fit);
-    // fonts settle a beat after load; fit twice to land on the final size
+    window.addEventListener('load', fit);
+    // fonts settle a beat after load; fit repeatedly to land on final size
     fit();
     setTimeout(fit, 400);
+    setTimeout(fit, 1500);
     setInterval(refresh, 10_000);
   }
 </script>
