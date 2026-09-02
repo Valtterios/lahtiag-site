@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import {
   editInteractionReply,
+  eventAnnouncement,
   hasAdminRole,
   postWebhook,
   verifyInteractionSignature,
@@ -119,9 +120,15 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
         await reply('Date or time did not parse. Use `YYYY-MM-DD` and `HH:MM` (Helsinki time).');
         return;
       }
+      let endsAt: number | null = null;
+      if (opts.has('end_time')) {
+        endsAt = helsinkiToUnix(String(opts.get('date') ?? ''), String(opts.get('end_time')));
+        if (endsAt !== null && endsAt <= startsAt) endsAt += 86400;
+      }
       const capacity = opts.has('capacity') ? Number(opts.get('capacity')) : null;
       const teamSize = opts.has('team_size') ? Number(opts.get('team_size')) : null;
       const organizers = opts.has('organizers') ? String(opts.get('organizers')) : null;
+      const linkUrl = opts.has('link') ? String(opts.get('link')) : null;
       const title = String(opts.get('name') ?? '');
       const id = await createEvent(
         env.DB,
@@ -129,19 +136,26 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
           title,
           description: null,
           starts_at: startsAt,
+          ends_at: endsAt,
           capacity,
           team_size: teamSize,
           organizers,
+          link_url: linkUrl,
           created_by: invoker.id,
         },
         now,
       );
       if (env.DISCORD_WEBHOOK_URL) {
-        const byLine = organizers ? `\nOrganized by ${organizers}` : '';
-        const teamsLine = teamSize ? `\nTeams of ${teamSize}, form yours on the site!` : '';
         const messageId = await postWebhook(
           env.DISCORD_WEBHOOK_URL,
-          `📅 **${title.trim()}**\n${formatHelsinki(startsAt)}${byLine}${teamsLine}\nSign up: ${origin}/events/${id}`,
+          eventAnnouncement({
+            title,
+            startsAt,
+            endsAt,
+            organizers,
+            teamSize,
+            url: `${origin}/events/${id}`,
+          }),
         );
         if (messageId) await setEventMessageId(env.DB, id, messageId);
       }

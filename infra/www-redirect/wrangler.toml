@@ -1,0 +1,10 @@
+name = "lahtiag-www-redirect"
+main = "worker.js"
+compatibility_date = "2026-08-01"
+
+# A route (not a custom domain): the proxied www DNS record exists
+# separately (AAAA 100::, the blackhole address, proxied — the Worker
+# answers before it ever matters).
+routes = [
+  { pattern = "www.lahtiag.fi/*", zone_name = "lahtiag.fi" },
+]

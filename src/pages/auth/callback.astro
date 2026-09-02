@@ -28,9 +28,20 @@ sign: {
 
   const code = Astro.url.searchParams.get('code');
   const state = Astro.url.searchParams.get('state');
-  const stateCookie = Astro.cookies.get('__Host-oauth-state')?.value;
+  const stateCookie = Astro.cookies.get('__Host-oauth-state')?.value ?? '';
   Astro.cookies.delete('__Host-oauth-state', { path: '/' });
-  if (!code || !state || !stateCookie || state !== stateCookie) {
+  const dot = stateCookie.lastIndexOf('.');
+  const expectedState = dot >= 0 ? stateCookie.slice(0, dot) : stateCookie;
+  const wasSilent = stateCookie.endsWith('.silent');
+  if (!state || !expectedState || state !== expectedState) {
+    outcome = 'expired';
+    break sign;
+  }
+  if (!code) {
+    // The silent prompt=none attempt bounced (never authorized, or Discord
+    // wants interaction): retry once with the real consent screen. A
+    // code-less return from the consent flow is the user cancelling.
+    if (wasSilent) return Astro.redirect('/login?retry=1');
     outcome = 'expired';
     break sign;
   }

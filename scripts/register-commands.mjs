@@ -30,10 +30,12 @@ const commands = [
         options: [
           { type: STRING, name: 'name', description: 'Event title', required: true },
           { type: STRING, name: 'date', description: 'YYYY-MM-DD (Helsinki)', required: true },
-          { type: STRING, name: 'time', description: 'HH:MM (Helsinki)', required: true },
+          { type: STRING, name: 'time', description: 'Start HH:MM (Helsinki)', required: true },
+          { type: STRING, name: 'end_time', description: 'End HH:MM (Helsinki; past midnight rolls to next day)', required: false },
           { type: INTEGER, name: 'capacity', description: 'Max signups (people, or teams for a team event)', required: false, min_value: 1 },
           { type: INTEGER, name: 'team_size', description: 'Players per team; set to make this a team event', required: false, min_value: 1 },
           { type: STRING, name: 'organizers', description: 'Organizer names, comma separated', required: false },
+          { type: STRING, name: 'link', description: 'Stream or info link (https)', required: false },
         ],
       },
       {

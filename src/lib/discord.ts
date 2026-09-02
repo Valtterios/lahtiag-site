@@ -5,18 +5,42 @@
 
 const API = 'https://discord.com/api/v10';
 
+import { formatHelsinkiRange } from './time';
+
+// The one true shape of an event announcement, shared by create (web and
+// slash command) and edit so an edited event's message stays consistent.
+export function eventAnnouncement(input: {
+  title: string;
+  startsAt: number;
+  endsAt: number | null;
+  organizers: string | null;
+  teamSize: number | null;
+  url: string;
+}): string {
+  const byLine = input.organizers ? `\nOrganized by ${input.organizers}` : '';
+  const teamsLine = input.teamSize ? `\nTeams of ${input.teamSize}, form yours on the site!` : '';
+  return `📅 **${input.title.trim()}**\n${formatHelsinkiRange(input.startsAt, input.endsAt)}${byLine}${teamsLine}\nSign up: ${input.url}`;
+}
+
 export const OAUTH_SCOPES = 'identify guilds.members.read';
 
-export function authorizeUrl(clientId: string, redirectUri: string, state: string): string {
+export function authorizeUrl(
+  clientId: string,
+  redirectUri: string,
+  state: string,
+  silent: boolean,
+): string {
   const url = new URL('https://discord.com/oauth2/authorize');
   url.searchParams.set('client_id', clientId);
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', OAUTH_SCOPES);
   url.searchParams.set('state', state);
-  // No `prompt` param: `none` bounces first-time users straight back with
-  // an error before they ever see the consent screen. The default shows
-  // the authorize page, a single click for anyone already authorized.
+  // Silent first: `prompt=none` signs previously-authorized members in with
+  // no Discord UI at all. For someone who never authorized, Discord bounces
+  // straight back with an error — the callback detects that and retries via
+  // /login?retry=1, which omits the param and shows the consent screen.
+  if (silent) url.searchParams.set('prompt', 'none');
   return url.toString();
 }
 
@@ -126,6 +150,21 @@ export function avatarUrl(discordId: string, avatarHash: string | null): string 
 // needed — used when an announcement is deleted on the site.
 export async function deleteWebhookMessage(webhookUrl: string, messageId: string): Promise<void> {
   await fetch(`${webhookUrl}/messages/${messageId}`, { method: 'DELETE' }).catch(() => {});
+}
+
+// ...and edited in place — the whole reason discord_message_id is stored
+// (spec): an edited event updates its original announcement instead of
+// posting again.
+export async function editWebhookMessage(
+  webhookUrl: string,
+  messageId: string,
+  content: string,
+): Promise<void> {
+  await fetch(`${webhookUrl}/messages/${messageId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ content }),
+  }).catch(() => {});
 }
 
 // --- HTTP interactions -----------------------------------------------------

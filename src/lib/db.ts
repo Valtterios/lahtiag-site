@@ -33,10 +33,12 @@ export interface EventRow {
   title: string;
   description: string | null;
   starts_at: number;
+  ends_at: number | null;
   capacity: number | null; // people on a solo event, TEAMS on a team event
   team_id: number | null; // legacy, unused: organizers replaced it
   team_size: number | null; // set = tournament-style team signups
   organizers: string | null; // comma-separated free-text names
+  link_url: string | null; // optional stream/info link
   created_by: string;
   created_at: number;
   cancelled_at: number | null;
@@ -123,7 +125,11 @@ const EVENT_COUNTS = `
 
 export async function listUpcomingEvents(db: D1Database, now: number): Promise<EventWithCounts[]> {
   const { results } = await db
-    .prepare(`${EVENT_COUNTS} WHERE e.cancelled_at IS NULL AND e.starts_at >= ?1 ORDER BY e.starts_at ASC`)
+    .prepare(
+      `${EVENT_COUNTS} WHERE e.cancelled_at IS NULL
+       AND (e.starts_at >= ?1 OR (e.ends_at IS NOT NULL AND e.ends_at > ?1))
+       ORDER BY e.starts_at ASC`,
+    )
     .bind(now)
     .all<EventWithCounts>();
   return results;
@@ -136,7 +142,9 @@ export async function listPastEvents(
 ): Promise<EventWithCounts[]> {
   const { results } = await db
     .prepare(
-      `${EVENT_COUNTS} WHERE e.cancelled_at IS NULL AND e.starts_at < ?1 ORDER BY e.starts_at DESC LIMIT ?2`,
+      `${EVENT_COUNTS} WHERE e.cancelled_at IS NULL AND e.starts_at < ?1
+       AND (e.ends_at IS NULL OR e.ends_at <= ?1)
+       ORDER BY e.starts_at DESC LIMIT ?2`,
     )
     .bind(now, limit)
     .all<EventWithCounts>();
@@ -147,15 +155,27 @@ export async function getEvent(db: D1Database, id: number): Promise<EventWithCou
   return db.prepare(`${EVENT_COUNTS} WHERE e.id = ?1`).bind(id).first<EventWithCounts>();
 }
 
+// Optional external link: http(s) only, nothing else renders as an href.
+function normalizeLink(raw: string | null | undefined): string | null {
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
+  if (!/^https?:\/\/\S+$/.test(trimmed) || trimmed.length > 300) {
+    throw new RuleError('bad_input', 'The link must be an http(s) URL.');
+  }
+  return trimmed;
+}
+
 export async function createEvent(
   db: D1Database,
   input: {
     title: string;
     description: string | null;
     starts_at: number;
+    ends_at?: number | null;
     capacity: number | null;
     team_size?: number | null;
     organizers?: string | null;
+    link_url?: string | null;
     created_by: string;
   },
   now: number,
@@ -169,23 +189,76 @@ export async function createEvent(
     throw new RuleError('bad_input', 'Team size must be a positive whole number.');
   }
   const organizers = input.organizers?.trim() || null;
+  const endsAt = input.ends_at ?? null;
+  if (endsAt !== null && endsAt <= input.starts_at) {
+    throw new RuleError('bad_input', 'The end must be after the start.');
+  }
+  const linkUrl = normalizeLink(input.link_url);
   const row = await db
     .prepare(
-      `INSERT INTO events (title, description, starts_at, capacity, team_size, organizers, created_by, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) RETURNING id`,
+      `INSERT INTO events (title, description, starts_at, ends_at, capacity, team_size, organizers, link_url, created_by, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10) RETURNING id`,
     )
     .bind(
       input.title.trim(),
       input.description,
       input.starts_at,
+      endsAt,
       input.capacity,
       teamSize,
       organizers,
+      linkUrl,
       input.created_by,
       now,
     )
     .first<{ id: number }>();
   return row!.id;
+}
+
+// Everything except team_size is editable: changing the shape of team
+// signups under existing teams would corrupt them, so that one is fixed at
+// creation. Signups survive edits; a capacity lowered below the current
+// count keeps existing signups and only blocks new ones.
+export async function updateEvent(
+  db: D1Database,
+  id: number,
+  input: {
+    title: string;
+    description: string | null;
+    starts_at: number;
+    ends_at: number | null;
+    capacity: number | null;
+    organizers: string | null;
+    link_url: string | null;
+  },
+): Promise<EventWithCounts> {
+  const event = await getEvent(db, id);
+  if (!event) throw new RuleError('missing', `No event with id ${id}.`);
+  if (event.cancelled_at !== null) throw new RuleError('cancelled', 'This event is cancelled.');
+  if (!input.title.trim()) throw new RuleError('bad_input', 'An event needs a title.');
+  if (input.capacity !== null && (!Number.isInteger(input.capacity) || input.capacity < 1)) {
+    throw new RuleError('bad_input', 'Capacity must be a positive whole number.');
+  }
+  if (input.ends_at !== null && input.ends_at <= input.starts_at) {
+    throw new RuleError('bad_input', 'The end must be after the start.');
+  }
+  await db
+    .prepare(
+      `UPDATE events SET title = ?2, description = ?3, starts_at = ?4, ends_at = ?5, capacity = ?6, organizers = ?7, link_url = ?8
+       WHERE id = ?1`,
+    )
+    .bind(
+      id,
+      input.title.trim(),
+      input.description,
+      input.starts_at,
+      input.ends_at,
+      input.capacity,
+      input.organizers?.trim() || null,
+      normalizeLink(input.link_url),
+    )
+    .run();
+  return (await getEvent(db, id))!;
 }
 
 export async function cancelEvent(db: D1Database, id: number, now: number): Promise<EventRow> {

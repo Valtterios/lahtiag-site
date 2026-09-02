@@ -50,6 +50,44 @@ export function helsinkiToUnix(date: string, time: string): number | null {
   return ts;
 }
 
+// unix seconds -> the {date, time} strings the event forms use, in
+// Helsinki time — for prefilled edit forms.
+export function unixToHelsinkiInputs(unixSeconds: number): { date: string; time: string } {
+  const parts: Record<string, string> = {};
+  for (const part of new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(unixSeconds * 1000))) {
+    parts[part.type] = part.value;
+  }
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${String(Number(parts.hour) % 24).padStart(2, '0')}:${parts.minute}`,
+  };
+}
+
+// "Sat 12 Sep 2026, 18:00 to 22:00" (same day) or both full timestamps
+// when the event runs past midnight. No end time: just the start.
+export function formatHelsinkiRange(start: number, end: number | null): string {
+  const startText = formatHelsinki(start);
+  if (end === null) return startText;
+  const sameDay = unixToHelsinkiInputs(start).date === unixToHelsinkiInputs(end).date;
+  const endText = sameDay
+    ? new Intl.DateTimeFormat('en-GB', {
+        timeZone: TZ,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(new Date(end * 1000))
+    : formatHelsinki(end);
+  return `${startText} to ${endText}`;
+}
+
 // unix seconds -> "Sat 12 Sep 2026, 18:00" in Helsinki time.
 export function formatHelsinki(unixSeconds: number): string {
   return new Intl.DateTimeFormat('en-GB', {

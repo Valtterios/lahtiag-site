@@ -1,15 +1,28 @@
 ---
+import { env } from 'cloudflare:workers';
 import { getEntry, render } from 'astro:content';
 import Base from '../layouts/Base.astro';
 import DiscordWidget from '../components/DiscordWidget.astro';
+import { listUpcomingEvents, type EventWithCounts } from '../lib/db';
+import { formatHelsinkiRange } from '../lib/time';
 
-export const prerender = true;
+// Server-rendered since the "coming up" strip reads D1. A database hiccup
+// must never take the front page down, so the query degrades to an empty
+// strip instead of an error.
 
 const entry = await getEntry('pages', 'home');
 if (!entry) {
   throw new Error('src/content/pages/home.md is required: it is the site root.');
 }
 const { Content } = await render(entry);
+
+const now = Math.floor(Date.now() / 1000);
+let upcoming: EventWithCounts[] = [];
+try {
+  upcoming = (await listUpcomingEvents(env.DB, now)).slice(0, 4);
+} catch {
+  // strip stays empty; the page stays up
+}
 ---
 <Base title={entry.data.title} description={entry.data.description}>
   <section class="hero">
@@ -33,6 +46,22 @@ const { Content } = await render(entry);
       <DiscordWidget />
     </div>
   </section>
+
+  {upcoming.length > 0 && (
+    <section class="upnext">
+      <article class="prose"><h2>Coming up</h2></article>
+      <ul class="upnext-list">
+        {upcoming.map((event) => (
+          <li>
+            {event.starts_at <= now && <span class="live-badge">Happening now</span>}
+            <a href={`/events/${event.id}`}>{event.title}</a>
+            <span class="event-meta">{formatHelsinkiRange(event.starts_at, event.ends_at)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )}
+
   <article class="prose">
     <Content />
   </article>

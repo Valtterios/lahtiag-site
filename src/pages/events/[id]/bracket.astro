@@ -44,6 +44,15 @@ const totalRounds = matches.reduce((max, m) => Math.max(max, m.round), 0);
 const rounds = Array.from({ length: totalRounds }, (_, i) =>
   matches.filter((m) => m.round === i + 1),
 );
+// Matches paired two-and-two: each pair feeds one next-round match, and the
+// CSS draws the connector bracket around the pair.
+const pairedRounds = rounds.map((roundMatches) => {
+  const pairs = [];
+  for (let i = 0; i < roundMatches.length; i += 2) {
+    pairs.push(roundMatches.slice(i, i + 2));
+  }
+  return pairs;
+});
 function roundLabel(round: number): string {
   const fromEnd = totalRounds - round;
   if (fromEnd === 0) return 'Final';
@@ -99,10 +108,12 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
       ) : (
         <div class="bracket-scroll">
           <div class="bracket">
-            {rounds.map((roundMatches, roundIndex) => (
+            {pairedRounds.map((pairs, roundIndex) => (
               <div class="bracket-round">
                 <p class="bracket-round-label">{roundLabel(roundIndex + 1)}</p>
-                {roundMatches.map((match) => (
+                {pairs.map((pair) => (
+                <div class={`bracket-pair${pair.length === 2 ? ' pair-linked' : ''}`}>
+                {pair.map((match) => (
                   <div class="bracket-match">
                     {(['side_a', 'side_b'] as const).map((sideName) => {
                       const key = match[sideName];
@@ -143,6 +154,8 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
                       );
                     })}
                   </div>
+                ))}
+                </div>
                 ))}
               </div>
             ))}

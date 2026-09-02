@@ -4,7 +4,9 @@ import Base from '../../../layouts/Base.astro';
 import SessionBox from '../../../components/SessionBox.astro';
 import { currentSession, ensureCsrf } from '../../../lib/guard';
 import { getEvent, listSignups, listEventTeams, getBracket } from '../../../lib/db';
-import { formatHelsinki } from '../../../lib/time';
+import { formatHelsinkiRange, unixToHelsinkiInputs } from '../../../lib/time';
+
+const nowSeconds = Math.floor(Date.now() / 1000);
 
 const id = Number(Astro.params.id);
 const event = Number.isInteger(id) ? await getEvent(env.DB, id) : null;
@@ -42,6 +44,7 @@ const FLASH: Record<string, string> = {
   not_team_event: 'This event does not take team signups.',
   cancelled: 'This event has been cancelled and signups are closed.',
   closed: 'Signups are closed for this event.',
+  bad_time: "That date and time didn't parse.",
   signin: 'Sign in with Discord first.',
   csrf: 'The form was stale. Try again.',
   bad_input: "That didn't work. A team name is 1 to 40 characters.",
@@ -53,7 +56,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
 ---
 <Base
   title={event ? event.title : 'Event not found'}
-  description={event ? `${event.title}, ${formatHelsinki(event.starts_at)}` : undefined}
+  description={event ? `${event.title}, ${formatHelsinkiRange(event.starts_at, event.ends_at)}` : undefined}
 >
   {!event ? (
     <article class="prose">
@@ -63,7 +66,12 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
   ) : (
     <>
       <article class="prose">
-        <p class="hero-eyebrow">{formatHelsinki(event.starts_at)}</p>
+        <p class="hero-eyebrow">
+          {event.starts_at <= nowSeconds && event.ends_at !== null && event.ends_at > nowSeconds && (
+            <span class="live-badge">Happening now</span>
+          )}
+          {formatHelsinkiRange(event.starts_at, event.ends_at)}
+        </p>
         <h1>{event.title}</h1>
         {event.cancelled_at !== null && <p class="flash">This event is cancelled.</p>}
         {signupsClosed && event.cancelled_at === null && (
@@ -73,6 +81,9 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
           <p><a class="btn btn-primary" href={`/events/${event.id}/bracket`}>View the bracket</a></p>
         )}
         {event.organizers && <p class="event-meta">Organized by {event.organizers}</p>}
+        {event.link_url && (
+          <p><a class="btn btn-ghost" href={event.link_url} rel="noopener">Stream / info link</a></p>
+        )}
         {event.description && <p>{event.description}</p>}
         <p class="event-meta">
           {isTeamEvent ? (
@@ -226,6 +237,33 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
               <button class="btn btn-ghost" type="submit">Cancel this event</button>
             </form>
           </div>
+          <details class="admin-edit">
+            <summary>Edit this event</summary>
+            <form method="post" action={`/events/${event.id}/edit`} class="app-form">
+              <input type="hidden" name="csrf" value={csrf} />
+              <label>Title <input name="title" required maxlength="120" value={event.title} /></label>
+              <label>Date <input name="date" type="date" required value={unixToHelsinkiInputs(event.starts_at).date} /></label>
+              <label>Starts (Helsinki) <input name="time" type="time" required value={unixToHelsinkiInputs(event.starts_at).time} /></label>
+              <label>Ends <input name="end_time" type="time" required value={event.ends_at !== null ? unixToHelsinkiInputs(event.ends_at).time : ''} /></label>
+              <label>
+                Capacity
+                <input name="capacity" type="number" min="1" value={event.capacity ?? ''} placeholder="unlimited" />
+              </label>
+              <label>
+                Organizers
+                <input name="organizers" maxlength="120" value={event.organizers ?? ''} placeholder="LahtiAG, Kapital" />
+              </label>
+              <label>
+                Link
+                <input name="link_url" type="url" maxlength="300" value={event.link_url ?? ''} placeholder="https:// stream, rules, venue…" />
+              </label>
+              <label>Description <textarea name="description" rows="3">{event.description ?? ''}</textarea></label>
+              {event.team_size !== null && (
+                <p class="event-meta">Team size ({event.team_size}) can't change once teams exist.</p>
+              )}
+              <button class="btn btn-primary" type="submit">Save changes</button>
+            </form>
+          </details>
         </section>
       )}
     </>

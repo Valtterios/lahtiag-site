@@ -2,8 +2,8 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
 import { createEvent, setEventMessageId, RuleError } from '../../lib/db';
-import { helsinkiToUnix, formatHelsinki } from '../../lib/time';
-import { postWebhook } from '../../lib/discord';
+import { helsinkiToUnix } from '../../lib/time';
+import { postWebhook, eventAnnouncement } from '../../lib/discord';
 
 export const POST: APIRoute = async ({ request, redirect, url }) => {
   const admin = await requireAdmin(request, env);
@@ -14,10 +14,15 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
 
   const startsAt = helsinkiToUnix(String(form.get('date') ?? ''), String(form.get('time') ?? ''));
   if (startsAt === null) return redirect('/events?err=bad_time', 303);
+  let endsAt = helsinkiToUnix(String(form.get('date') ?? ''), String(form.get('end_time') ?? ''));
+  if (endsAt === null) return redirect('/events?err=bad_time', 303);
+  // An end at or before the start means the event runs past midnight.
+  if (endsAt <= startsAt) endsAt += 86400;
 
   const capacityRaw = String(form.get('capacity') ?? '').trim();
   const teamSizeRaw = String(form.get('team_size') ?? '').trim();
   const organizers = String(form.get('organizers') ?? '').trim();
+  const linkUrl = String(form.get('link_url') ?? '').trim();
   const description = String(form.get('description') ?? '').trim();
 
   try {
@@ -29,9 +34,11 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
         title: String(form.get('title') ?? ''),
         description: description || null,
         starts_at: startsAt,
+        ends_at: endsAt,
         capacity: capacityRaw ? Number(capacityRaw) : null,
         team_size: teamSize,
         organizers: organizers || null,
+        link_url: linkUrl || null,
         created_by: admin.session.discordId,
       },
       now,
@@ -40,11 +47,16 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
     // originated (spec): website writes mirror to Discord when the webhook
     // is configured, and the message id is kept for later edits.
     if (env.DISCORD_WEBHOOK_URL) {
-      const teamsLine = teamSize ? `\nTeams of ${teamSize}, form yours on the site!` : '';
-      const byLine = organizers ? `\nOrganized by ${organizers}` : '';
       const messageId = await postWebhook(
         env.DISCORD_WEBHOOK_URL,
-        `📅 **${String(form.get('title') ?? '').trim()}**\n${formatHelsinki(startsAt)}${byLine}${teamsLine}\nSign up: ${url.origin}/events/${id}`,
+        eventAnnouncement({
+          title: String(form.get('title') ?? ''),
+          startsAt,
+          endsAt,
+          organizers: organizers || null,
+          teamSize,
+          url: `${url.origin}/events/${id}`,
+        }),
       );
       if (messageId) await setEventMessageId(env.DB, id, messageId);
     }

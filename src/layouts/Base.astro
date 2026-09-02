@@ -24,8 +24,14 @@ const pathname = Astro.url.pathname;
     {description && <meta name="description" content={description} />}
     <meta property="og:title" content={`${title} | LahtiAG`} />
     {description && <meta property="og:description" content={description} />}
+    <meta property="og:site_name" content="LahtiAG" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content={new URL('/brand/og.png', Astro.site)} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
     <meta name="theme-color" content="#4169e1" />
     <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link
       rel="preload"
       href="/fonts/chakra-italic-latin.woff2"

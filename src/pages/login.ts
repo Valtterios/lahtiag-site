@@ -13,11 +13,15 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
   }
 
   // CSRF on the OAuth redirect (spec): a random state, kept in a short-lived
-  // cookie and compared on the way back.
+  // cookie and compared on the way back. The cookie also records whether
+  // this attempt was the silent (prompt=none) one, so the callback knows a
+  // code-less bounce means "retry with the consent screen" rather than a
+  // failed login. ?retry=1 is that retry.
+  const silent = url.searchParams.get('retry') !== '1';
   const stateBytes = new Uint8Array(16);
   crypto.getRandomValues(stateBytes);
   const state = Array.from(stateBytes, (b) => b.toString(16).padStart(2, '0')).join('');
-  cookies.set('__Host-oauth-state', state, {
+  cookies.set('__Host-oauth-state', `${state}.${silent ? 'silent' : 'consent'}`, {
     path: '/',
     maxAge: 600,
     httpOnly: true,
@@ -25,5 +29,5 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
     sameSite: 'lax',
   });
 
-  return redirect(authorizeUrl(env.DISCORD_CLIENT_ID, `${url.origin}/auth/callback`, state));
+  return redirect(authorizeUrl(env.DISCORD_CLIENT_ID, `${url.origin}/auth/callback`, state, silent));
 };
