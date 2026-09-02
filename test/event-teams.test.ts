@@ -11,6 +11,9 @@ import {
   listSignups,
   setSignup,
   removeSignup,
+  adminRemoveSignup,
+  purgeMember,
+  setSignupsClosed,
 } from '../src/lib/db';
 
 // Tournament team signups against real D1: forming, joining, switching,
@@ -167,5 +170,52 @@ describe('leaving and free agents', () => {
     await removeSignup(db(), eventId, 'a');
     expect(await listSignups(db(), eventId)).toHaveLength(0);
     expect(await listEventTeams(db(), eventId)).toHaveLength(0);
+  });
+});
+
+describe('admin participant management', () => {
+  it('adminRemoveSignup works even when signups are closed and disbands empties', async () => {
+    const eventId = await teamEvent(2, null);
+    await member('a');
+    await createEventTeam(db(), eventId, 'Duo', 'a', NOW);
+    await setSignupsClosed(db(), eventId, true, NOW);
+    await adminRemoveSignup(db(), eventId, 'a');
+    expect(await listSignups(db(), eventId)).toHaveLength(0);
+    expect(await listEventTeams(db(), eventId)).toHaveLength(0);
+  });
+
+  it('purgeMember erases signups everywhere and deletes a referenced-nowhere member', async () => {
+    const e1 = await teamEvent(2, null);
+    await member('victim');
+    await member('friend');
+    const teamId = await createEventTeam(db(), e1, 'Duo', 'friend', NOW);
+    await joinEventTeam(db(), e1, teamId, 'victim', NOW);
+    const e2 = await createEvent(
+      db(),
+      { title: 'Solo', description: null, starts_at: NOW + 1, capacity: null, created_by: 'admin' },
+      NOW,
+    );
+    await setSignup(db(), e2, 'victim', 'yes', NOW);
+    expect(await purgeMember(db(), 'victim')).toBe('deleted');
+    expect((await listSignups(db(), e1)).map((s) => s.discord_id)).toEqual(['friend']);
+    expect(await listSignups(db(), e2)).toHaveLength(0);
+    const row = await db()
+      .prepare("SELECT COUNT(*) AS n FROM members WHERE discord_id = 'victim'")
+      .first<{ n: number }>();
+    expect(row!.n).toBe(0);
+  });
+
+  it('purgeMember anonymizes a member whom foreign keys still reference', async () => {
+    await member('creator');
+    await createEvent(
+      db(),
+      { title: 'Theirs', description: null, starts_at: NOW + 1, capacity: null, created_by: 'creator' },
+      NOW,
+    );
+    expect(await purgeMember(db(), 'creator')).toBe('anonymized');
+    const row = await db()
+      .prepare("SELECT username FROM members WHERE discord_id = 'creator'")
+      .first<{ username: string }>();
+    expect(row!.username).toBe('Deleted member');
   });
 });

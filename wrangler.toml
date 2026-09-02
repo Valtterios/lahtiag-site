@@ -42,6 +42,7 @@ run_worker_first = [
   "/announcements",
   "/announcements/*",
   "/discord/*",
+  "/members/purge",
   "/history",
   "/sitemap.xml",
 ]
@@ -96,6 +97,7 @@ run_worker_first = [
   "/announcements",
   "/announcements/*",
   "/discord/*",
+  "/members/purge",
   "/history",
   "/sitemap.xml",
 ]

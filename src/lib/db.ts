@@ -346,6 +346,44 @@ export async function setDisplayNote(
   await db.prepare('UPDATE events SET display_note = ?2 WHERE id = ?1').bind(eventId, note).run();
 }
 
+// Admin removal skips the signups-closed guard: pruning a no-show or a
+// banned member off the roster is exactly a closed-signups activity.
+export async function adminRemoveSignup(
+  db: D1Database,
+  eventId: number,
+  discordId: string,
+): Promise<void> {
+  await db
+    .prepare('DELETE FROM signups WHERE event_id = ?1 AND discord_id = ?2')
+    .bind(eventId, discordId)
+    .run();
+  await dropEmptyEventTeams(db, eventId);
+}
+
+// Erase a member everywhere: every signup and team membership goes, empty
+// teams disband, and the cached member row is deleted — or anonymized when
+// foreign keys still need it (they created events, teams, or announcements).
+// Bracket history keeps the slot but renders as Unknown. This is both the
+// ban cleanup and the GDPR-erasure path.
+export async function purgeMember(db: D1Database, discordId: string): Promise<'deleted' | 'anonymized'> {
+  const { results: affected } = await db
+    .prepare('SELECT DISTINCT event_id AS id FROM signups WHERE discord_id = ?1')
+    .bind(discordId)
+    .all<{ id: number }>();
+  await db.prepare('DELETE FROM signups WHERE discord_id = ?1').bind(discordId).run();
+  for (const row of affected) await dropEmptyEventTeams(db, row.id);
+  try {
+    await db.prepare('DELETE FROM members WHERE discord_id = ?1').bind(discordId).run();
+    return 'deleted';
+  } catch {
+    await db
+      .prepare("UPDATE members SET username = 'Deleted member', avatar_hash = NULL WHERE discord_id = ?1")
+      .bind(discordId)
+      .run();
+    return 'anonymized';
+  }
+}
+
 export async function setSignupsClosed(
   db: D1Database,
   eventId: number,

@@ -134,10 +134,32 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         <section class="prose">
           <h2>Who's coming</h2>
           {going.length > 0 && (
-            <p><strong>Going:</strong> {going.map((s) => s.username).join(', ')}</p>
+            <p><strong>Going:</strong> {session?.isAdmin
+              ? going.map((s) => (
+                  <span class="member-chip">
+                    {s.username}
+                    <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="discord_id" value={s.discord_id} />
+                      <button class="chip-remove" type="submit" title="Remove signup">×</button>
+                    </form>
+                  </span>
+                ))
+              : going.map((s) => s.username).join(', ')}</p>
           )}
           {maybe.length > 0 && (
-            <p><strong>Maybe:</strong> {maybe.map((s) => s.username).join(', ')}</p>
+            <p><strong>Maybe:</strong> {session?.isAdmin
+              ? maybe.map((s) => (
+                  <span class="member-chip">
+                    {s.username}
+                    <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="discord_id" value={s.discord_id} />
+                      <button class="chip-remove" type="submit" title="Remove signup">×</button>
+                    </form>
+                  </span>
+                ))
+              : maybe.map((s) => s.username).join(', ')}</p>
           )}
         </section>
       )}
@@ -158,7 +180,21 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
                   {team.name}
                   <span class="event-meta"> {members.length} / {event.team_size}</span>
                 </h3>
-                <p>{members.map((m) => m.username).join(', ') || 'Empty'}</p>
+                <p>
+                  {members.length === 0 && 'Empty'}
+                  {session?.isAdmin
+                    ? members.map((m) => (
+                        <span class="member-chip">
+                          {m.username}
+                          <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
+                            <input type="hidden" name="csrf" value={csrf} />
+                            <input type="hidden" name="discord_id" value={m.discord_id} />
+                            <button class="chip-remove" type="submit" title="Remove signup">×</button>
+                          </form>
+                        </span>
+                      ))
+                    : members.map((m) => m.username).join(', ')}
+                </p>
                 {session && open && !inThisTeam && slotsLeft > 0 && (
                   <form method="post" action={`/events/${event.id}/team`} class="inline-form">
                     <input type="hidden" name="csrf" value={csrf} />
@@ -179,7 +215,18 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
           })}
 
           {freeAgents.length > 0 && (
-            <p><strong>Looking for a team:</strong> {freeAgents.map((s) => s.username).join(', ')}</p>
+            <p><strong>Looking for a team:</strong> {session?.isAdmin
+              ? freeAgents.map((s) => (
+                  <span class="member-chip">
+                    {s.username}
+                    <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="discord_id" value={s.discord_id} />
+                      <button class="chip-remove" type="submit" title="Remove signup">×</button>
+                    </form>
+                  </span>
+                ))
+              : freeAgents.map((s) => s.username).join(', ')}</p>
           )}
 
           {session && open && (

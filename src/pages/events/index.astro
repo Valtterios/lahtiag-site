@@ -25,7 +25,11 @@ const FLASH: Record<string, string> = {
   bad_time: "That date and time didn't parse. Use YYYY-MM-DD and HH:MM.",
   csrf: 'The form was stale. Try again.',
 };
-const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
+const OK: Record<string, string> = {
+  purged: 'Member removed from every event and signup list.',
+};
+const flash =
+  FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
 ---
 <Base title="Events" description="Upcoming LahtiAG events, tournaments and meetups, with signups.">
   <article class="prose">
@@ -129,6 +133,19 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         <label>Description <textarea name="description" rows="3"></textarea></label>
         <button class="btn btn-primary" type="submit">Create event</button>
       </form>
+      <details class="admin-edit">
+        <summary>Remove a member everywhere</summary>
+        <p class="event-meta">
+          Deletes every signup and team membership of one member across all
+          events (ban cleanup, or a member asking to be erased). Get the
+          Discord id via Developer Mode: right-click the user, Copy ID.
+        </p>
+        <form method="post" action="/members/purge" class="app-form">
+          <input type="hidden" name="csrf" value={csrf} />
+          <label>Discord id <input name="discord_id" required pattern="\d{5,25}" /></label>
+          <button class="btn btn-ghost" type="submit">Remove everywhere</button>
+        </form>
+      </details>
     </section>
   )}
 </Base>
