@@ -80,6 +80,10 @@ const commands = [
     ],
   },
   {
+    name: 'tournament',
+    description: 'Interactive tournament controls (buttons and menus)',
+  },
+  {
     name: 'announce',
     description: 'Publish an announcement to the site',
     options: [{ type: STRING, name: 'text', description: 'Announcement text (Markdown)', required: true }],

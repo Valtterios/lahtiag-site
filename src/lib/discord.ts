@@ -210,10 +210,11 @@ export async function editInteractionReply(
   applicationId: string,
   interactionToken: string,
   content: string,
+  components: unknown[] = [],
 ): Promise<void> {
   await fetch(`${API}/webhooks/${applicationId}/${interactionToken}/messages/@original`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, components }),
   }).catch(() => {});
 }
