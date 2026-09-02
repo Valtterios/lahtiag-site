@@ -27,6 +27,14 @@ not_found_handling = "404-page"
 # around.
 html_handling = "drop-trailing-slash"
 
+# Production domain. The apex only: the user decided against a www redirect
+# (www.lahtiag.fi previously pointed at the retired Google Sites page and is
+# left unattached). Custom domains match exactly. The zone's MX/SPF records
+# carry live Google Workspace mail and are unrelated to this route.
+[[routes]]
+pattern = "lahtiag.fi"
+custom_domain = true
+
 [observability]
 enabled = true
 
