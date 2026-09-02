@@ -938,6 +938,20 @@ a:hover {
 .display-mode .bracket-scroll {
   display: flex;
   justify-content: center;
+  margin-bottom: 0;
+}
+
+/* a venue screen never scrolls: the chart is fitted, everything else is
+   hidden, and any leftover pixel rounding gets clipped instead of
+   producing a scrollbar */
+html.display-mode,
+.display-mode body {
+  overflow: hidden;
+  height: 100%;
+}
+
+.display-mode .site-main {
+  padding-bottom: 0;
 }
 
 /* live message from the /tournament panel; presenter-screen only */
