@@ -12,6 +12,13 @@ compatibility_flags = ["nodejs_compat"]
 directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "404-page"
+# src/lib/nav.ts's pagePath() emits extensionless links ("/about", no
+# trailing slash) for every non-home page. The default asset handling
+# (auto-trailing-slash) would redirect those to "/about/" before serving
+# about/index.html, costing every nav click a round trip. This makes the
+# server match the links it already generates instead of the other way
+# around.
+html_handling = "drop-trailing-slash"
 
 [observability]
 enabled = true
