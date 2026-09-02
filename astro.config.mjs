@@ -7,5 +7,11 @@ import cloudflare from '@astrojs/cloudflare';
 // server routes by simply not exporting prerender.
 export default defineConfig({
   output: 'server',
+  // The spec's Architecture section says "No KV, R2 or Durable Objects.
+  // Sessions are stateless"; auth in a later phase uses HMAC-signed cookies
+  // with no server-side store. @astrojs/cloudflare enables KV-backed
+  // sessions by default, which would provision an unused KV namespace on
+  // first deploy. Do not re-enable this without revisiting that constraint.
+  session: false,
   adapter: cloudflare(),
 });
