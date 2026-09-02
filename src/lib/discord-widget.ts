@@ -2,7 +2,11 @@
 // in src/components/DiscordWidget.astro; everything that can be unit-tested
 // lives here.
 
-export const DISCORD_GUILD_ID = '1210598510999633971';
+// Re-exported so existing imports of DISCORD_GUILD_ID from this module keep
+// working. The canonical definition lives in src/lib/config.ts, which is a
+// more natural home for a constant that later server code (not just this
+// widget) will also need to read.
+export { DISCORD_GUILD_ID } from './config';
 
 export type PresenceStatus = 'online' | 'idle' | 'dnd' | 'offline';
 
