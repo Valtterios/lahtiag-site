@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- LahtiAG: amber d-pad on the clubroom's night blue -->
-  <rect width="64" height="64" rx="14" fill="#12152b"/>
-  <path d="M26 12h12v14h14v12H38v14H26V38H12V26h14z" fill="#ffb454"/>
-  <rect x="28" y="28" width="8" height="8" rx="2" fill="#12152b"/>
-</svg>

@@ -33,6 +33,7 @@ const { session, csrf } = Astro.props;
 </div>
 
 <style is:global>
+  /* surface, border and the notched corner come from site.css */
   .session-box {
     display: flex;
     align-items: center;
@@ -41,9 +42,6 @@ const { session, csrf } = Astro.props;
     flex-wrap: wrap;
     padding: 0.7rem 1rem;
     margin-bottom: 2rem;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
     font-size: 0.9rem;
     color: var(--muted);
   }
@@ -51,16 +49,16 @@ const { session, csrf } = Astro.props;
     margin: 0;
   }
   .session-box strong {
-    color: var(--text);
+    color: var(--ink);
   }
   .session-admin {
-    font-family: var(--mono);
+    font-family: var(--display);
+    font-weight: 600;
     font-size: 0.68rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--accent);
-    border: 1px solid var(--accent);
-    border-radius: 5px;
+    color: var(--blue);
+    border: 1px solid var(--blue);
     padding: 0.1rem 0.4rem;
     margin-left: 0.5rem;
   }
@@ -68,13 +66,13 @@ const { session, csrf } = Astro.props;
     background: none;
     border: none;
     padding: 0;
-    color: var(--link);
+    color: var(--blue);
     font: inherit;
     cursor: pointer;
     text-decoration: underline;
   }
   .btn-link:hover {
-    color: var(--text);
+    color: var(--blue-dark);
   }
   .btn-sm {
     padding: 0.45rem 0.95rem;

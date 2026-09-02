@@ -40,10 +40,9 @@ enabled = true
 
 # DISCORD_GUILD_ID is deliberately NOT here (src/lib/config.ts is its single
 # home, baked in at build time, per the design spec). ADMIN_ROLE_ID is the
-# spec's one plain var; "0" fails every admin check closed until the real
-# role id is supplied.
+# spec's one plain var: the Board member role in the LahtiAG guild.
 [vars]
-ADMIN_ROLE_ID = "0"
+ADMIN_ROLE_ID = "1299000982218211469"
 
 [[d1_databases]]
 binding = "DB"
@@ -72,7 +71,7 @@ html_handling = "drop-trailing-slash"
 enabled = true
 
 [env.preview.vars]
-ADMIN_ROLE_ID = "0"
+ADMIN_ROLE_ID = "1299000982218211469"
 
 [[env.preview.d1_databases]]
 binding = "DB"

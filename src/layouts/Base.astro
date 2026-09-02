@@ -24,11 +24,11 @@ const pathname = Astro.url.pathname;
     {description && <meta name="description" content={description} />}
     <meta property="og:title" content={`${title} | LahtiAG`} />
     {description && <meta property="og:description" content={description} />}
-    <meta name="theme-color" content="#12152b" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#4169e1" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <link
       rel="preload"
-      href="/fonts/bricolage-latin.woff2"
+      href="/fonts/chakra-italic-latin.woff2"
       as="font"
       type="font/woff2"
       crossorigin
@@ -38,7 +38,9 @@ const pathname = Astro.url.pathname;
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="site-header">
       <div class="inner">
-        <a class="brand" href="/">Lahti<b>AG</b></a>
+        <a class="brand" href="/" aria-label="LahtiAG home">
+          <img src="/brand/wordmark-blue.png" alt="Lahti AG" width="308" height="96" />
+        </a>
         <nav aria-label="Main">
           <ul>
             {links.map((link) => (
@@ -83,7 +85,10 @@ const pathname = Astro.url.pathname;
             <li><a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a></li>
           </ul>
         </div>
-        <p class="footer-note">© {new Date().getFullYear()} Lahti Association of Gaming LAG ry</p>
+        <p class="footer-note">
+          <img src="/brand/wordmark-white.png" alt="" width="307" height="96" />
+          <span>© {new Date().getFullYear()} Lahti Association of Gaming LAG ry</span>
+        </p>
       </div>
     </footer>
   </body>
