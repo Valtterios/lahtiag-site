@@ -42,7 +42,7 @@ enabled = true
 # home, baked in at build time, per the design spec). ADMIN_ROLE_ID is the
 # spec's one plain var: the Board member role in the LahtiAG guild.
 [vars]
-ADMIN_ROLE_ID = "1299000982218211469"
+ADMIN_ROLE_ID = "1299000982218211469,1210626196354895932"
 
 [[d1_databases]]
 binding = "DB"
@@ -71,7 +71,7 @@ html_handling = "drop-trailing-slash"
 enabled = true
 
 [env.preview.vars]
-ADMIN_ROLE_ID = "1299000982218211469"
+ADMIN_ROLE_ID = "1299000982218211469,1210626196354895932"
 
 [[env.preview.d1_databases]]
 binding = "DB"

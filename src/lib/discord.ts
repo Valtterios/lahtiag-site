@@ -81,10 +81,15 @@ export async function fetchGuildMember(
   return { status: 'member', roles: data.roles ?? [], nick: data.nick ?? null };
 }
 
-export function hasAdminRole(roles: string[], adminRoleId: string): boolean {
-  // "0" is the fail-closed placeholder in wrangler.toml [vars]; no real role
-  // ever has that id.
-  return adminRoleId !== '0' && adminRoleId !== '' && roles.includes(adminRoleId);
+export function hasAdminRole(roles: string[], adminRoleIds: string): boolean {
+  // The var holds one role id or a comma-separated list. "0" is the
+  // fail-closed placeholder from wrangler.toml [vars]; no real role ever
+  // has that id.
+  const allowed = adminRoleIds
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id !== '' && id !== '0');
+  return allowed.some((id) => roles.includes(id));
 }
 
 // Post to the announcements channel webhook. `?wait=true` makes Discord
