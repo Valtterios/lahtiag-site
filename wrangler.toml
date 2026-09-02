@@ -1,0 +1,35 @@
+# The dashboard Worker name must equal this `name` (Workers Builds requires it).
+name = "lahtiag-site"
+
+# With @astrojs/cloudflare 13+ the entrypoint is a package specifier; the
+# adapter resolves it during `astro build`. Do not point this at dist/.
+main = "@astrojs/cloudflare/entrypoints/server"
+
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+# The @astrojs/cloudflare adapter rewrites this to "../client" (relative to
+# the generated dist/server/wrangler.json) at build time, so this value is
+# not what actually gets deployed via `astro build` + Workers Builds. It
+# only matters if someone runs `wrangler deploy --config wrangler.toml`
+# directly against the repo root; pointing it at dist/client keeps that path
+# safe too, since dist/server (which includes entry.mjs) must never be
+# uploaded as public static assets.
+directory = "./dist/client"
+binding = "ASSETS"
+not_found_handling = "404-page"
+# src/lib/nav.ts's pagePath() emits extensionless links ("/about", no
+# trailing slash) for every non-home page. The default asset handling
+# (auto-trailing-slash) would redirect those to "/about/" before serving
+# about/index.html, costing every nav click a round trip. This makes the
+# server match the links it already generates instead of the other way
+# around.
+html_handling = "drop-trailing-slash"
+
+[observability]
+enabled = true
+
+# No [vars] section: DISCORD_GUILD_ID (src/lib/config.ts) is deliberately a
+# build-time constant baked into the Worker bundle, not a Worker var, per
+# the design spec.

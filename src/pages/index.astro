@@ -1,0 +1,20 @@
+---
+import { getEntry, render } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import DiscordWidget from '../components/DiscordWidget.astro';
+
+export const prerender = true;
+
+const entry = await getEntry('pages', 'home');
+if (!entry) {
+  throw new Error('src/content/pages/home.md is required: it is the site root.');
+}
+const { Content } = await render(entry);
+---
+<Base title={entry.data.title} description={entry.data.description}>
+  <article class="prose">
+    <h1>{entry.data.title}</h1>
+    <Content />
+  </article>
+  <DiscordWidget />
+</Base>
