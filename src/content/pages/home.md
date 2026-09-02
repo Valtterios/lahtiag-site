@@ -7,7 +7,7 @@ navOrder: 1
 <!-- PLACEHOLDER COPY: replace or migrate from Google Sites. Decision pending (spec open question 2). -->
 
 LahtiAG is a gaming association based in Lahti. This paragraph is placeholder
-text that describes, in one or two sentences, who we are and what we do. It is
+text that describes, in one or two sentences, who we are, what we do and how to join. It is
 marked for replacement and must not ship past Phase 1 review.
 
 ## What we do
