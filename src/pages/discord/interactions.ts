@@ -146,23 +146,23 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
 
 function controlPanel(): { content: string; components: unknown[] } {
   return {
-    content: '**Tournament controls** — what needs doing?',
+    content: '<:lahtiag:1544775220458430565> **Tournament controls** — what needs doing?',
     components: [
       {
         type: 1,
         components: [
-          { type: 2, style: 1, label: 'Create event', custom_id: 't:create', emoji: { name: '📅' } },
-          { type: 2, style: 2, label: 'Close signups', custom_id: 't:pick:close', emoji: { name: '🔒' } },
-          { type: 2, style: 2, label: 'Reopen signups', custom_id: 't:pick:reopen', emoji: { name: '🔓' } },
-          { type: 2, style: 2, label: 'Generate bracket', custom_id: 't:pick:bracket', emoji: { name: '🎲' } },
-          { type: 2, style: 3, label: 'Record winner', custom_id: 't:pick:winner', emoji: { name: '🏆' } },
+          { type: 2, style: 1, label: 'Create event', custom_id: 't:create', emoji: { id: '1544775323722195184', name: 'lag_event' } },
+          { type: 2, style: 2, label: 'Close signups', custom_id: 't:pick:close', emoji: { id: '1544775303543656448', name: 'lag_lock' } },
+          { type: 2, style: 2, label: 'Reopen signups', custom_id: 't:pick:reopen', emoji: { id: '1544775287210774609', name: 'lag_unlock' } },
+          { type: 2, style: 2, label: 'Generate bracket', custom_id: 't:pick:bracket', emoji: { id: '1544775271486586890', name: 'lag_bracket' } },
+          { type: 2, style: 3, label: 'Record winner', custom_id: 't:pick:winner', emoji: { id: '1544775246429556808', name: 'lag_trophy' } },
         ],
       },
       {
         type: 1,
         components: [
-          { type: 2, style: 1, label: 'Announce', custom_id: 't:announce', emoji: { name: '📣' } },
-          { type: 2, style: 4, label: 'Cancel event', custom_id: 't:pick:cancel', emoji: { name: '❌' } },
+          { type: 2, style: 1, label: 'Announce', custom_id: 't:announce', emoji: { id: '1544775849738502174', name: 'lag_news' } },
+          { type: 2, style: 4, label: 'Cancel event', custom_id: 't:pick:cancel', emoji: { id: '1544775875592196137', name: 'lag_cancel' } },
         ],
       },
     ],
