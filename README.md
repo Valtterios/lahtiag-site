@@ -6,8 +6,9 @@ static assets.
 
 ## Adding or editing a page
 
-1. Add `src/content/pages/<name>.md`. The page is served at `/<name>`.
-   `home.md` is special: it is the site root, `/`.
+1. Add `src/content/pages/<name>.md`, directly in that folder with no
+   subdirectories. The page is served at `/<name>`. `home.md` is special: it
+   is the site root, `/`.
 2. Frontmatter fields:
    - `title` (required): page heading, browser title and nav label.
    - `description` (optional): meta description.
