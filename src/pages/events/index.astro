@@ -79,6 +79,23 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
     </section>
   )}
 
+  <section class="calendar-box">
+    <div>
+      <p><strong>Get events in your calendar</strong></p>
+      <p class="event-meta">
+        One subscription, every future event, updates included.
+      </p>
+    </div>
+    <div>
+      <a class="btn btn-primary" href={`webcal://${Astro.url.host}/events.ics`}>Subscribe</a>
+    </div>
+    <p class="calendar-manual event-meta">
+      On Android or Google Calendar the button may not work: open Google
+      Calendar settings, choose <em>Add calendar → From URL</em>, and paste
+      <code>{Astro.url.origin}/events.ics</code>
+    </p>
+  </section>
+
   <p class="app-empty">
     Looking for the older event stories, like Game Fest and the Mario Kart
     Tournament? They live on the <a href="/history">history page</a>.

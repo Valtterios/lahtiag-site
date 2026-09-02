@@ -565,6 +565,33 @@ a:hover {
   margin: 0 0 1rem;
 }
 
+.calendar-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  clip-path: var(--cut);
+  padding: 1rem 1.3rem;
+  margin: 0 0 2rem;
+}
+
+.calendar-box p {
+  margin: 0 0 0.2rem;
+}
+
+.calendar-manual {
+  flex-basis: 100%;
+  border-top: 1px solid var(--line);
+  padding-top: 0.7rem;
+}
+
+.calendar-manual code {
+  user-select: all;
+}
+
 .admin-edit {
   margin-top: 1.2rem;
 }
