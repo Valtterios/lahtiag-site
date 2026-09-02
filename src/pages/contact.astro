@@ -1,0 +1,55 @@
+---
+import { getEntry, render } from 'astro:content';
+import Base from '../layouts/Base.astro';
+
+// Takes the /contact path over from [id].astro so the board list can carry
+// real email addresses without putting them in the HTML as scrapable text:
+// the address parts sit in data attributes and a tiny script assembles the
+// mailto links in the browser. Without JavaScript the "name [at] lahtiag.fi"
+// fallback text still tells a human what to type.
+export const prerender = true;
+
+const entry = await getEntry('pages', 'contact');
+if (!entry) {
+  throw new Error('src/content/pages/contact.md is required by this page.');
+}
+const { Content } = await render(entry);
+
+// The current board. Update this list (and contact.md's title year) when
+// the board changes.
+const BOARD = [
+  { role: 'Chairperson', name: 'Hanna Tóth-Mogyorósi', user: 'hanna.toth-mogyorosi' },
+  { role: 'Vice-chairperson', name: 'Phuc Quach', user: 'phuc.quach' },
+  { role: 'Treasurer and Tech Lead', name: 'Cristian-Mihai Radu', user: 'cristian.radu' },
+  { role: 'Secretary and Communications Manager', name: 'Sara Teräsvuori', user: 'sara.terasvuori' },
+  { role: 'Corporate Relations and Events Manager', name: 'Ádám Zsidákovits', user: 'adam.zsidakovits' },
+  { role: 'Community Manager', name: 'Edgars Karēlis', user: 'edgars.kareelis' },
+];
+---
+<Base title={entry.data.title} description={entry.data.description}>
+  <article class="prose">
+    <h1>{entry.data.title}</h1>
+
+    <h2>Board 2026</h2>
+    <ul>
+      {BOARD.map((member) => (
+        <li>
+          <strong>{member.role}:</strong> {member.name},
+          <a href="#contact" class="board-mail" data-u={member.user} data-d="lahtiag.fi">
+            {member.user} [at] lahtiag.fi
+          </a>
+        </li>
+      ))}
+    </ul>
+
+    <Content />
+  </article>
+</Base>
+
+<script>
+  for (const link of document.querySelectorAll<HTMLAnchorElement>('a.board-mail')) {
+    const address = `${link.dataset.u}@${link.dataset.d}`;
+    link.href = `mailto:${address}`;
+    link.textContent = address;
+  }
+</script>

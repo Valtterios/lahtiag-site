@@ -4,19 +4,11 @@ description: The LahtiAG board and how to reach them.
 navOrder: 6
 ---
 
-## Board 2026
-
-- **Chairperson:** Hanna Tóth-Mogyorósi
-- **Vice-chairperson:** Phuc Quach
-- **Treasurer and Tech Lead:** Cristian-Mihai Radu
-- **Secretary and Communications Manager:** Sara Teräsvuori
-- **Corporate Relations and Events Manager:** Ádám Zsidákovits
-- **Community Manager:** Edgars Karēlis
-
 ## Reach us
 
-You can contact the whole board at [board@lahtiag.fi](mailto:board@lahtiag.fi),
-or an individual board member at `firstname.lastname@lahtiag.fi`.
+For anything addressed to the whole board, write to
+[board@lahtiag.fi](mailto:board@lahtiag.fi). For a specific board member,
+use their address above.
 
 ## Address
 
