@@ -134,7 +134,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         <section class="prose">
           <h2>Who's coming</h2>
           {going.length > 0 && (
-            <p><strong>Going:</strong> {session?.isAdmin
+            <div class="member-line"><strong>Going:</strong> {session?.isAdmin
               ? going.map((s) => (
                   <span class="member-chip">
                     {s.username}
@@ -145,10 +145,10 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
                     </form>
                   </span>
                 ))
-              : going.map((s) => s.username).join(', ')}</p>
+              : going.map((s) => s.username).join(', ')}</div>
           )}
           {maybe.length > 0 && (
-            <p><strong>Maybe:</strong> {session?.isAdmin
+            <div class="member-line"><strong>Maybe:</strong> {session?.isAdmin
               ? maybe.map((s) => (
                   <span class="member-chip">
                     {s.username}
@@ -159,7 +159,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
                     </form>
                   </span>
                 ))
-              : maybe.map((s) => s.username).join(', ')}</p>
+              : maybe.map((s) => s.username).join(', ')}</div>
           )}
         </section>
       )}
@@ -180,7 +180,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
                   {team.name}
                   <span class="event-meta"> {members.length} / {event.team_size}</span>
                 </h3>
-                <p>
+                <div class="member-line">
                   {members.length === 0 && 'Empty'}
                   {session?.isAdmin
                     ? members.map((m) => (
@@ -194,7 +194,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
                         </span>
                       ))
                     : members.map((m) => m.username).join(', ')}
-                </p>
+                </div>
                 {session && open && !inThisTeam && slotsLeft > 0 && (
                   <form method="post" action={`/events/${event.id}/team`} class="inline-form">
                     <input type="hidden" name="csrf" value={csrf} />
@@ -215,7 +215,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
           })}
 
           {freeAgents.length > 0 && (
-            <p><strong>Looking for a team:</strong> {session?.isAdmin
+            <div class="member-line"><strong>Looking for a team:</strong> {session?.isAdmin
               ? freeAgents.map((s) => (
                   <span class="member-chip">
                     {s.username}
@@ -226,7 +226,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
                     </form>
                   </span>
                 ))
-              : freeAgents.map((s) => s.username).join(', ')}</p>
+              : freeAgents.map((s) => s.username).join(', ')}</div>
           )}
 
           {session && open && (

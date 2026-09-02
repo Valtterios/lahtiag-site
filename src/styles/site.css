@@ -669,7 +669,19 @@ a:hover {
   margin-left: 0.5rem;
 }
 
-/* admin participant management: name chips with a remove control */
+/* admin participant management: name chips with a remove control.
+   .member-line is a div, not a p — a <form> inside <p> makes the browser
+   close the paragraph early and orphan the first chip's button. */
+.member-line {
+  margin: 0 0 0.8rem;
+  max-width: var(--prose-measure);
+  line-height: 1.9;
+}
+
+.member-line strong {
+  margin-right: 0.35rem;
+}
+
 .member-chip {
   display: inline-flex;
   align-items: center;
