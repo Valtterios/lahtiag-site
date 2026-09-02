@@ -1,6 +1,7 @@
 ---
 import { getEntry, render } from 'astro:content';
 import Base from '../layouts/Base.astro';
+import DiscordWidget from '../components/DiscordWidget.astro';
 
 export const prerender = true;
 
@@ -15,4 +16,5 @@ const { Content } = await render(entry);
     <h1>{entry.data.title}</h1>
     <Content />
   </article>
+  <DiscordWidget />
 </Base>

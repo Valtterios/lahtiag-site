@@ -1,0 +1,252 @@
+---
+import { DISCORD_GUILD_ID } from '../lib/discord-widget';
+
+interface Props {
+  guildId?: string;
+}
+
+const { guildId = DISCORD_GUILD_ID } = Astro.props;
+---
+<section class="dw" data-guild-id={guildId} aria-label="LahtiAG on Discord">
+  <div class="dw-header">
+    <div class="dw-icon"></div>
+    <div class="dw-meta">
+      <p class="dw-name">Loading Discord widget</p>
+      <p class="dw-counts"></p>
+    </div>
+    <a class="dw-join" target="_blank" rel="noopener" hidden>Join Server</a>
+  </div>
+  <div class="dw-members"></div>
+  <p class="dw-intro">
+    Our Discord is where we announce events, share updates and keep everyone
+    informed about what is happening in the association.
+  </p>
+</section>
+
+<!--
+  is:global on purpose: Astro scopes component styles by stamping a data
+  attribute onto elements in this template. Avatars are created by the script
+  below at runtime and would not carry that attribute, so scoped rules would
+  never reach them. All selectors are prefixed dw- to stay out of the way.
+-->
+<style is:global>
+  .dw {
+    margin-top: 2rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
+  .dw p {
+    margin: 0;
+  }
+  .dw-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .dw-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    flex: 0 0 auto;
+    background: var(--accent);
+    overflow: hidden;
+  }
+  .dw-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .dw-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .dw-name {
+    font-weight: 600;
+    font-size: 0.9375rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dw-counts {
+    color: var(--muted);
+  }
+  .dw-counts b {
+    color: #23a55a;
+    font-weight: 400;
+  }
+  .dw-join {
+    flex: 0 0 auto;
+    padding: 9px 18px;
+    background: var(--accent);
+    color: #fff;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .dw-join:hover {
+    background: var(--accent-dark);
+    color: #fff;
+  }
+  .dw-members {
+    padding: 14px 16px;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  }
+  .dw-members:empty {
+    display: none;
+  }
+  .dw-avatar {
+    position: relative;
+    height: 38px;
+  }
+  .dw-avatar img {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: block;
+    background: var(--line);
+  }
+  .dw-dot {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--surface);
+    background: #80848e;
+  }
+  .dw-dot.online {
+    background: #23a55a;
+  }
+  .dw-dot.idle {
+    background: #f0b232;
+  }
+  .dw-dot.dnd {
+    background: #f23f43;
+  }
+  .dw-intro {
+    padding: 10px 16px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.75rem;
+  }
+  @media (max-width: 420px) {
+    .dw-header {
+      padding: 10px 12px;
+      gap: 10px;
+    }
+    .dw-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+    }
+    .dw-join {
+      padding: 7px 12px;
+      font-size: 0.8125rem;
+    }
+  }
+</style>
+
+<script>
+  import {
+    DISCORD_GUILD_ID,
+    widgetUrl,
+    inviteUrl,
+    inviteCodeFrom,
+    guildIconUrl,
+    totalMemberCount,
+    countsLabel,
+    statusClass,
+  } from '../lib/discord-widget';
+  import type { InviteResponse, WidgetResponse } from '../lib/discord-widget';
+
+  async function getJson<T>(url: string): Promise<T> {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`${url} -> ${response.status}`);
+    return (await response.json()) as T;
+  }
+
+  function child<T extends HTMLElement>(root: HTMLElement, selector: string): T {
+    const element = root.querySelector<T>(selector);
+    if (!element) throw new Error(`DiscordWidget: missing ${selector}`);
+    return element;
+  }
+
+  function setCounts(target: HTMLElement, online: number, total?: number): void {
+    const dot = document.createElement('b');
+    dot.textContent = '●';
+    target.replaceChildren(dot, ` ${countsLabel(online, total)}`);
+  }
+
+  async function load(root: HTMLElement): Promise<void> {
+    const guildId = root.dataset.guildId || DISCORD_GUILD_ID;
+    const nameEl = child(root, '.dw-name');
+    const countsEl = child(root, '.dw-counts');
+    const joinEl = child<HTMLAnchorElement>(root, '.dw-join');
+    const membersEl = child(root, '.dw-members');
+    const iconEl = child(root, '.dw-icon');
+
+    // Hop 1: presence, member sample, server name and the current invite.
+    const widget = await getJson<WidgetResponse>(widgetUrl(guildId));
+    nameEl.textContent = widget.name;
+    setCounts(countsEl, widget.presence_count);
+
+    if (widget.instant_invite) {
+      joinEl.href = widget.instant_invite;
+      joinEl.hidden = false;
+    }
+
+    // Members are online-only and capped at 100 by Discord.
+    for (const member of widget.members ?? []) {
+      const avatar = document.createElement('div');
+      avatar.className = 'dw-avatar';
+      avatar.title = member.game ? `${member.username}, playing ${member.game.name}` : member.username;
+
+      const img = document.createElement('img');
+      img.src = member.avatar_url; // signed, single-use CDN url; never cache it
+      img.alt = '';
+      img.loading = 'lazy';
+
+      const dot = document.createElement('span');
+      dot.className = `dw-dot ${statusClass(member.status)}`;
+
+      avatar.append(img, dot);
+      membersEl.append(avatar);
+    }
+
+    // Hop 2: the widget endpoint omits the server icon and the total member
+    // count; the invite endpoint carries both and allows CORS. The invite
+    // code expires, so it is taken from hop 1 each load, never hardcoded.
+    const code = inviteCodeFrom(widget.instant_invite);
+    if (!code) return;
+    const invite = await getJson<InviteResponse>(inviteUrl(code));
+
+    const total = totalMemberCount(invite);
+    if (total) setCounts(countsEl, widget.presence_count, total);
+
+    const hash = invite.guild?.icon;
+    if (!hash) return;
+    const icon = document.createElement('img');
+    icon.src = guildIconUrl(guildId, hash);
+    icon.alt = '';
+    iconEl.replaceChildren(icon);
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>('.dw')) {
+    load(root).catch((error: unknown) => {
+      console.error(error);
+      child(root, '.dw-name').textContent = "Couldn't load the Discord widget";
+    });
+  }
+</script>
