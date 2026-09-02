@@ -34,10 +34,8 @@ const BOARD = [
     <ul>
       {BOARD.map((member) => (
         <li>
-          <strong>{member.role}:</strong> {member.name},
-          <a href="#contact" class="board-mail" data-u={member.user} data-d="lahtiag.fi">
-            {member.user} [at] lahtiag.fi
-          </a>
+          <strong>{member.role}:</strong> {member.name},{' '}
+          <a href="#contact" class="board-mail" data-u={member.user} data-d="lahtiag.fi">{member.user} [at] lahtiag.fi</a>
         </li>
       ))}
     </ul>
