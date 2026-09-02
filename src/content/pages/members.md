@@ -1,6 +1,6 @@
 ---
 title: Members
-description: Membership in LahtiAG is free — perks, how to join, and how to get involved.
+description: Membership in LahtiAG is free. Perks, how to join, and how to get involved.
 navOrder: 5
 ---
 
@@ -14,7 +14,7 @@ Joining simply means you're helping us grow and thrive while staying in the
 loop about exciting developments. Members play a key role in the success of
 LahtiAG's initiatives.
 
-- **It's free!** Joining is encouraged — membership costs nothing.
+- **It's free!** Joining is encouraged, membership costs nothing.
 - **Price perks on future events.** Members get better prices at upcoming events, so join to not miss out.
 - **A growing community.** Connect with others who share your interests on our Discord server.
 
@@ -26,7 +26,7 @@ As a LahtiAG active, you'll get the latest updates on events, ideas, and
 meetings through our Telegram channel. Be the first to hear about upcoming
 activities, share your ideas, and help us organize exciting events!
 
-Signing up doesn't commit you to anything — it simply shows that you're
+Signing up doesn't commit you to anything. It simply shows that you're
 interested in staying informed and possibly getting involved. More
 information in the LahtiAG Telegram group.
 

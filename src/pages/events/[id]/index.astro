@@ -26,7 +26,7 @@ const isFull =
 
 const FLASH: Record<string, string> = {
   full: 'This event is full.',
-  cancelled: 'This event has been cancelled — signups are closed.',
+  cancelled: 'This event has been cancelled and signups are closed.',
   signin: 'Sign in with Discord first.',
   csrf: 'The form was stale. Try again.',
   forbidden: 'That needs the admin role in Discord.',
@@ -36,7 +36,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
 ---
 <Base
   title={event ? event.title : 'Event not found'}
-  description={event ? `${event.title} — ${formatHelsinki(event.starts_at)}` : undefined}
+  description={event ? `${event.title}, ${formatHelsinki(event.starts_at)}` : undefined}
 >
   {!event ? (
     <article class="prose">
@@ -46,7 +46,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
   ) : (
     <>
       <article class="prose">
-        <p class="hero-eyebrow">{formatHelsinki(event.starts_at)}{team && ` · ${team.name}`}</p>
+        <p class="hero-eyebrow">{formatHelsinki(event.starts_at)}{team && `, ${team.name}`}</p>
         <h1>{event.title}</h1>
         {event.cancelled_at !== null && <p class="flash">This event is cancelled.</p>}
         {event.description && <p>{event.description}</p>}

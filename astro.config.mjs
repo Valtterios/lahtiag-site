@@ -16,6 +16,14 @@ export default defineConfig({
     // of small stylesheets would violate it on every page.
     inlineStylesheets: 'never',
   },
+  vite: {
+    build: {
+      // Same reason for scripts: below this limit Vite inlines small
+      // component scripts (the Discord widget's) into the HTML, which CSP
+      // script-src 'self' blocks — the widget then sticks at "Loading".
+      assetsInlineLimit: 0,
+    },
+  },
   // The spec's Architecture section says "No KV, R2 or Durable Objects.
   // Sessions are stateless"; auth in a later phase uses HMAC-signed cookies
   // with no server-side store. @astrojs/cloudflare enables KV-backed

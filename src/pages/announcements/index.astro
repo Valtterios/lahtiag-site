@@ -27,7 +27,7 @@ const FLASH: Record<string, string> = {
 };
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
 ---
-<Base title="News" description="LahtiAG announcements — the same news that lands on Discord.">
+<Base title="News" description="LahtiAG announcements, the same news that lands on Discord.">
   <article class="prose">
     <h1>News</h1>
   </article>
@@ -36,7 +36,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
 
   {rendered.length === 0 ? (
     <p class="app-empty">
-      Nothing posted yet — announcements land on
+      Nothing posted yet. Announcements land on
       <a href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Discord</a> first.
     </p>
   ) : (
@@ -44,8 +44,8 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
       <article class="news-card prose">
         <p class="event-when">
           {formatHelsinki(item.published_at)}
-          {item.author_name && ` · ${item.author_name}`}
-          {item.source === 'discord' && ' · via Discord'}
+          {item.author_name && `, ${item.author_name}`}
+          {item.source === 'discord' && ', via Discord'}
         </p>
         <h2>{item.title}</h2>
         <div set:html={item.html} />

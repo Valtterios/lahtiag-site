@@ -143,11 +143,11 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
       if (env.DISCORD_WEBHOOK_URL) {
         const messageId = await postWebhook(
           env.DISCORD_WEBHOOK_URL,
-          `📅 **${title.trim()}** — ${formatHelsinki(startsAt)}\nSign up: ${origin}/events/${id}`,
+          `📅 **${title.trim()}**\n${formatHelsinki(startsAt)}\nSign up: ${origin}/events/${id}`,
         );
         if (messageId) await setEventMessageId(env.DB, id, messageId);
       }
-      await reply(`Created event #${id}: **${title.trim()}** — ${formatHelsinki(startsAt)}\n${origin}/events/${id}`);
+      await reply(`Created event #${id}: **${title.trim()}**, ${formatHelsinki(startsAt)}\n${origin}/events/${id}`);
     } else if (name === 'event cancel') {
       const id = Number(opts.get('id'));
       const event = await cancelEvent(env.DB, id, now);
@@ -170,7 +170,7 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
         const messageId = await postWebhook(env.DISCORD_WEBHOOK_URL, `📣 ${text}`);
         if (messageId) await setAnnouncementMessageId(env.DB, id, messageId);
       }
-      await reply(`Published: **${title}** — ${origin}/announcements`);
+      await reply(`Published: **${title}**, ${origin}/announcements`);
     } else if (name === 'roster add' || name === 'roster remove') {
       const userId = String(opts.get('user') ?? '');
       const teamNameOption = String(opts.get('team') ?? '');

@@ -6,12 +6,12 @@ navOrder: 6
 
 ## Board 2026
 
-- **Chairperson** — Hanna Tóth-Mogyorósi
-- **Vice-chairperson** — Phuc Quach
-- **Treasurer and Tech Lead** — Cristian-Mihai Radu
-- **Secretary and Communications Manager** — Sara Teräsvuori
-- **Corporate Relations and Events Manager** — Ádám Zsidákovits
-- **Community Manager** — Edgars Karēlis
+- **Chairperson:** Hanna Tóth-Mogyorósi
+- **Vice-chairperson:** Phuc Quach
+- **Treasurer and Tech Lead:** Cristian-Mihai Radu
+- **Secretary and Communications Manager:** Sara Teräsvuori
+- **Corporate Relations and Events Manager:** Ádám Zsidákovits
+- **Community Manager:** Edgars Karēlis
 
 ## Reach us
 

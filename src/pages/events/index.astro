@@ -29,7 +29,7 @@ const FLASH: Record<string, string> = {
 };
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
 ---
-<Base title="Events" description="Upcoming LahtiAG events, tournaments and meetups — with signups.">
+<Base title="Events" description="Upcoming LahtiAG events, tournaments and meetups, with signups.">
   <article class="prose">
     <h1>Events</h1>
   </article>
@@ -38,7 +38,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
 
   {upcoming.length === 0 ? (
     <p class="app-empty">
-      Nothing scheduled right now — announcements land on
+      Nothing scheduled right now. Announcements land on
       <a href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Discord</a> first.
     </p>
   ) : (
@@ -49,7 +49,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
           <h2><a href={`/events/${event.id}`}>{event.title}</a></h2>
           <p class="event-meta">
             {event.team_id !== null && teamName.has(event.team_id) && (
-              <span>{teamName.get(event.team_id)} · </span>
+              <span>{teamName.get(event.team_id)}, </span>
             )}
             <span>
               {event.yes_count}{event.capacity !== null ? ` / ${event.capacity}` : ''} going
@@ -67,7 +67,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
       <ul>
         {past.map((event) => (
           <li>
-            <a href={`/events/${event.id}`}>{event.title}</a> — {formatHelsinki(event.starts_at)}
+            <a href={`/events/${event.id}`}>{event.title}</a> ({formatHelsinki(event.starts_at)})
           </li>
         ))}
       </ul>
@@ -75,7 +75,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
   )}
 
   <p class="app-empty">
-    Looking for the older event stories — Game Fest, the Mario Kart
+    Looking for the older event stories, like Game Fest and the Mario Kart
     Tournament? They live on the <a href="/history">history page</a>.
   </p>
 

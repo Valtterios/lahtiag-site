@@ -39,7 +39,7 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
     if (env.DISCORD_WEBHOOK_URL) {
       const messageId = await postWebhook(
         env.DISCORD_WEBHOOK_URL,
-        `📅 **${String(form.get('title') ?? '').trim()}** — ${formatHelsinki(startsAt)}\nSign up: ${url.origin}/events/${id}`,
+        `📅 **${String(form.get('title') ?? '').trim()}**\n${formatHelsinki(startsAt)}\nSign up: ${url.origin}/events/${id}`,
       );
       if (messageId) await setEventMessageId(env.DB, id, messageId);
     }

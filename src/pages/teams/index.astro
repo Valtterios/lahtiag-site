@@ -55,7 +55,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
                 {(roster.get(team.id) ?? []).map((member) => (
                   <li>
                     {member.username}
-                    {member.position && <span class="event-meta"> — {member.position}</span>}
+                    {member.position && <span class="event-meta">, {member.position}</span>}
                     {session?.isAdmin && (
                       <form method="post" action="/teams/manage" class="inline-form">
                         <input type="hidden" name="csrf" value={csrf} />
