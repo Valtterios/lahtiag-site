@@ -1,0 +1,171 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../../layouts/Base.astro';
+import { currentSession, ensureCsrf } from '../../../lib/guard';
+import { getEvent, getBracket, listSignups, listEventTeams } from '../../../lib/db';
+import { avatarUrl } from '../../../lib/discord';
+import { formatHelsinki } from '../../../lib/time';
+
+const id = Number(Astro.params.id);
+const event = Number.isInteger(id) ? await getEvent(env.DB, id) : null;
+if (!event) {
+  Astro.response.status = 404;
+}
+
+const session = await currentSession(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+const matches = event ? await getBracket(env.DB, event.id) : [];
+const signups = event ? await listSignups(env.DB, event.id) : [];
+const eventTeams = event?.team_size != null ? await listEventTeams(env.DB, event.id) : [];
+
+// Resolve participant keys to names and avatar stacks.
+interface Participant {
+  name: string;
+  avatars: string[];
+}
+const participants = new Map<string, Participant>();
+for (const signup of signups) {
+  participants.set(`u:${signup.discord_id}`, {
+    name: signup.username,
+    avatars: [avatarUrl(signup.discord_id, signup.avatar_hash)],
+  });
+}
+for (const team of eventTeams) {
+  const members = signups.filter((s) => s.event_team_id === team.id);
+  participants.set(`t:${team.id}`, {
+    name: team.name,
+    avatars: members.map((m) => avatarUrl(m.discord_id, m.avatar_hash)),
+  });
+}
+const nameOf = (key: string | null) =>
+  key === null ? null : (participants.get(key) ?? { name: 'Unknown', avatars: [] });
+
+const totalRounds = matches.reduce((max, m) => Math.max(max, m.round), 0);
+const rounds = Array.from({ length: totalRounds }, (_, i) =>
+  matches.filter((m) => m.round === i + 1),
+);
+function roundLabel(round: number): string {
+  const fromEnd = totalRounds - round;
+  if (fromEnd === 0) return 'Final';
+  if (fromEnd === 1) return 'Semifinals';
+  if (fromEnd === 2) return 'Quarterfinals';
+  return `Round ${round}`;
+}
+const final = matches.find((m) => m.round === totalRounds);
+const champion = final?.winner ? nameOf(final.winner) : null;
+
+const FLASH: Record<string, string> = {
+  bad_input: 'That result could not be recorded.',
+  missing: 'No such match.',
+  forbidden: 'That needs the admin role in Discord.',
+  discord_down: "Discord didn't answer while re-checking your role. Try again.",
+  csrf: 'The form was stale. Try again.',
+};
+const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
+---
+<Base
+  title={event ? `${event.title}: bracket` : 'Event not found'}
+  description={event ? `Tournament bracket for ${event.title}` : undefined}
+>
+  {!event ? (
+    <article class="prose">
+      <h1>No such event</h1>
+      <p>Nothing lives at this id. Back to <a href="/events">events</a>.</p>
+    </article>
+  ) : (
+    <>
+      <article class="prose">
+        <p class="hero-eyebrow">{formatHelsinki(event.starts_at)}</p>
+        <h1>{event.title}: bracket</h1>
+        <p class="event-meta"><a href={`/events/${event.id}`}>Back to the event page</a></p>
+      </article>
+      {flash && <p class="flash">{flash}</p>}
+
+      {champion && (
+        <p class="champion">
+          🏆 <strong>{champion.name}</strong> takes it!
+          {champion.avatars.map((src) => (
+            <img src={src} alt="" width="28" height="28" loading="lazy" />
+          ))}
+        </p>
+      )}
+
+      {matches.length === 0 ? (
+        <p class="app-empty">
+          No bracket yet. {session?.isAdmin
+            ? 'Generate one from the event page once signups are in.'
+            : 'It appears here once the organizers generate it.'}
+        </p>
+      ) : (
+        <div class="bracket-scroll">
+          <div class="bracket">
+            {rounds.map((roundMatches, roundIndex) => (
+              <div class="bracket-round">
+                <p class="bracket-round-label">{roundLabel(roundIndex + 1)}</p>
+                {roundMatches.map((match) => (
+                  <div class="bracket-match">
+                    {(['side_a', 'side_b'] as const).map((sideName) => {
+                      const key = match[sideName];
+                      const side = nameOf(key);
+                      const won = match.winner !== null && match.winner === key;
+                      const decided = match.winner !== null;
+                      const clickable =
+                        session?.isAdmin && key !== null && match.side_a !== null && match.side_b !== null;
+                      return (
+                        <div class={`bracket-side${won ? ' won' : ''}${decided && !won ? ' lost' : ''}`}>
+                          {side ? (
+                            <>
+                              <span class="bracket-avatars">
+                                {side.avatars.slice(0, 4).map((src) => (
+                                  <img src={src} alt="" width="24" height="24" loading="lazy" />
+                                ))}
+                              </span>
+                              <span class="bracket-name">{side.name}</span>
+                              {clickable && (
+                                <form method="post" action={`/events/${event.id}/bracket-action`} class="inline-form">
+                                  <input type="hidden" name="csrf" value={csrf} />
+                                  <input type="hidden" name="action" value="winner" />
+                                  <input type="hidden" name="round" value={match.round} />
+                                  <input type="hidden" name="slot" value={match.slot} />
+                                  <input type="hidden" name="winner" value={key} />
+                                  <button class="bracket-win-btn" type="submit" title="Mark as winner">
+                                    {won ? '✓' : 'W'}
+                                  </button>
+                                </form>
+                              )}
+                            </>
+                          ) : (
+                            <span class="bracket-name bracket-tbd">
+                              {match.round === 1 ? 'Bye' : 'TBD'}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {session?.isAdmin && matches.length > 0 && (
+        <section class="admin-panel">
+          <h2>Admin</h2>
+          <p class="event-meta">
+            Click W on a side to record the winner. Changing an earlier result
+            clears everything that followed from it.
+          </p>
+          <form method="post" action={`/events/${event.id}/bracket-action`}>
+            <input type="hidden" name="csrf" value={csrf} />
+            <input type="hidden" name="action" value="regenerate" />
+            <button class="btn btn-ghost" type="submit">
+              Regenerate bracket (new random seeding, results reset)
+            </button>
+          </form>
+        </section>
+      )}
+    </>
+  )}
+</Base>

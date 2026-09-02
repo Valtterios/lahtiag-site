@@ -112,6 +112,16 @@ export async function postWebhook(webhookUrl: string, content: string): Promise<
   }
 }
 
+// CDN URL for a member's avatar; the index-based default avatar when they
+// have none. Both hosts are already in the CSP img-src allowlist.
+export function avatarUrl(discordId: string, avatarHash: string | null): string {
+  if (avatarHash) {
+    return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=64`;
+  }
+  const index = Number(BigInt(discordId) >> 22n) % 6;
+  return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+}
+
 // Webhook messages can be deleted through the webhook itself, no bot token
 // needed — used when an announcement is deleted on the site.
 export async function deleteWebhookMessage(webhookUrl: string, messageId: string): Promise<void> {

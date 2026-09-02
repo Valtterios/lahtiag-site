@@ -619,6 +619,145 @@ a:hover {
   margin-left: 0.5rem;
 }
 
+/* ---------- tournament bracket ---------- */
+
+.champion {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 1.25rem;
+  text-transform: uppercase;
+  padding: 0.8rem 1.1rem;
+  background: var(--yellow);
+  color: var(--ink);
+  clip-path: var(--cut);
+  max-width: fit-content;
+}
+
+.champion img {
+  border-radius: 50%;
+}
+
+/* wide charts scroll inside their own container, the page never does */
+.bracket-scroll {
+  overflow-x: auto;
+  margin: 1.5rem 0 2rem;
+  padding-bottom: 0.5rem;
+}
+
+.bracket {
+  display: flex;
+  gap: 2.2rem;
+  align-items: stretch;
+  min-width: min-content;
+}
+
+.bracket-round {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 1rem;
+  min-width: 15rem;
+}
+
+.bracket-round-label {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--blue);
+  margin: 0;
+}
+
+.bracket-match {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  clip-path: var(--cut-s);
+}
+
+.bracket-side {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.7rem;
+  min-height: 2.6rem;
+}
+
+.bracket-side + .bracket-side {
+  border-top: 1px solid var(--line);
+}
+
+.bracket-side.won {
+  background: var(--yellow-soft);
+  font-weight: 600;
+}
+
+.bracket-side.lost {
+  opacity: 0.55;
+}
+
+.bracket-avatars {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.bracket-avatars img {
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  margin-right: -8px;
+}
+
+.bracket-avatars img:last-child {
+  margin-right: 0;
+}
+
+.bracket-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+.bracket-tbd {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.bracket-win-btn {
+  flex-shrink: 0;
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 1px solid var(--blue);
+  background: none;
+  color: var(--blue);
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.bracket-win-btn:hover {
+  background: var(--blue);
+  color: #fff;
+}
+
+.team-actions {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.team-actions .signup-bar {
+  margin-bottom: 0;
+}
+
 /* ---------- footer: white on blue, per the brand kit ---------- */
 
 .site-footer {

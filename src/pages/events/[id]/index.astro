@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import Base from '../../../layouts/Base.astro';
 import SessionBox from '../../../components/SessionBox.astro';
 import { currentSession, ensureCsrf } from '../../../lib/guard';
-import { getEvent, listSignups, listEventTeams } from '../../../lib/db';
+import { getEvent, listSignups, listEventTeams, getBracket } from '../../../lib/db';
 import { formatHelsinki } from '../../../lib/time';
 
 const id = Number(Astro.params.id);
@@ -18,6 +18,7 @@ const csrf = ensureCsrf(Astro.cookies);
 
 const signups = event ? await listSignups(env.DB, event.id) : [];
 const eventTeams = event?.team_size != null ? await listEventTeams(env.DB, event.id) : [];
+const hasBracket = event ? (await getBracket(env.DB, event.id)).length > 0 : false;
 
 const going = signups.filter((signup) => signup.status === 'yes');
 const maybe = signups.filter((signup) => signup.status === 'maybe');
@@ -31,7 +32,8 @@ const isFull = !isTeamEvent
   ? event?.capacity != null &&
     going.filter((s) => s.discord_id !== session?.discordId).length >= event.capacity
   : event?.capacity != null && eventTeams.length >= event.capacity;
-const open = event ? event.cancelled_at === null : false;
+const signupsClosed = event?.signups_closed_at != null;
+const open = event ? event.cancelled_at === null && !signupsClosed : false;
 
 const FLASH: Record<string, string> = {
   full: 'This event is full.',
@@ -39,6 +41,7 @@ const FLASH: Record<string, string> = {
   dup_name: 'A team with that name already exists.',
   not_team_event: 'This event does not take team signups.',
   cancelled: 'This event has been cancelled and signups are closed.',
+  closed: 'Signups are closed for this event.',
   signin: 'Sign in with Discord first.',
   csrf: 'The form was stale. Try again.',
   bad_input: "That didn't work. A team name is 1 to 40 characters.",
@@ -63,6 +66,12 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         <p class="hero-eyebrow">{formatHelsinki(event.starts_at)}</p>
         <h1>{event.title}</h1>
         {event.cancelled_at !== null && <p class="flash">This event is cancelled.</p>}
+        {signupsClosed && event.cancelled_at === null && (
+          <p class="flash">Signups are closed.</p>
+        )}
+        {hasBracket && (
+          <p><a class="btn btn-primary" href={`/events/${event.id}/bracket`}>View the bracket</a></p>
+        )}
         {event.organizers && <p class="event-meta">Organized by {event.organizers}</p>}
         {event.description && <p>{event.description}</p>}
         <p class="event-meta">
@@ -194,13 +203,29 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         </section>
       )}
 
-      {session?.isAdmin && open && (
+      {session?.isAdmin && event.cancelled_at === null && (
         <section class="admin-panel">
           <h2>Admin</h2>
-          <form method="post" action={`/events/${event.id}/cancel`}>
-            <input type="hidden" name="csrf" value={csrf} />
-            <button class="btn btn-ghost" type="submit">Cancel this event</button>
-          </form>
+          <div class="signup-bar">
+            <form method="post" action={`/events/${event.id}/close`}>
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="action" value={signupsClosed ? 'reopen' : 'close'} />
+              <button class="btn btn-ghost" type="submit">
+                {signupsClosed ? 'Reopen signups' : 'Close signups'}
+              </button>
+            </form>
+            <form method="post" action={`/events/${event.id}/bracket-action`}>
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="action" value="generate" />
+              <button class="btn btn-ghost" type="submit">
+                {hasBracket ? 'Regenerate bracket' : 'Generate bracket'}
+              </button>
+            </form>
+            <form method="post" action={`/events/${event.id}/cancel`}>
+              <input type="hidden" name="csrf" value={csrf} />
+              <button class="btn btn-ghost" type="submit">Cancel this event</button>
+            </form>
+          </div>
         </section>
       )}
     </>

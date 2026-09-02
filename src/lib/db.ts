@@ -14,7 +14,8 @@ export class RuleError extends Error {
       | 'bad_input'
       | 'team_full'
       | 'dup_name'
-      | 'not_team_event',
+      | 'not_team_event'
+      | 'closed',
     message: string,
   ) {
     super(message);
@@ -39,6 +40,7 @@ export interface EventRow {
   created_by: string;
   created_at: number;
   cancelled_at: number | null;
+  signups_closed_at: number | null;
   discord_message_id: string | null;
 }
 
@@ -214,6 +216,7 @@ export async function setSignup(
   const event = await getEvent(db, eventId);
   if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
   if (event.cancelled_at !== null) throw new RuleError('cancelled', 'This event is cancelled.');
+  if (event.signups_closed_at !== null) throw new RuleError('closed', 'Signups are closed.');
   if (status === 'yes' && event.capacity !== null && event.team_size === null) {
     const taken = await db
       .prepare(
@@ -235,11 +238,27 @@ export async function setSignup(
 }
 
 export async function removeSignup(db: D1Database, eventId: number, discordId: string): Promise<void> {
+  const event = await getEvent(db, eventId);
+  if (event?.signups_closed_at != null) throw new RuleError('closed', 'Signups are closed.');
   await db
     .prepare('DELETE FROM signups WHERE event_id = ?1 AND discord_id = ?2')
     .bind(eventId, discordId)
     .run();
   await dropEmptyEventTeams(db, eventId);
+}
+
+export async function setSignupsClosed(
+  db: D1Database,
+  eventId: number,
+  closed: boolean,
+  now: number,
+): Promise<void> {
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  await db
+    .prepare('UPDATE events SET signups_closed_at = ?2 WHERE id = ?1')
+    .bind(eventId, closed ? now : null)
+    .run();
 }
 
 // --- tournament team signups -----------------------------------------------
@@ -248,6 +267,7 @@ async function requireOpenTeamEvent(db: D1Database, eventId: number): Promise<Ev
   const event = await getEvent(db, eventId);
   if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
   if (event.cancelled_at !== null) throw new RuleError('cancelled', 'This event is cancelled.');
+  if (event.signups_closed_at !== null) throw new RuleError('closed', 'Signups are closed.');
   if (event.team_size === null) {
     throw new RuleError('not_team_event', 'This event does not take team signups.');
   }
@@ -349,6 +369,8 @@ export async function joinEventTeam(
 
 // Leaving a team keeps the member signed up as a free agent.
 export async function leaveEventTeam(db: D1Database, eventId: number, discordId: string): Promise<void> {
+  const event = await getEvent(db, eventId);
+  if (event?.signups_closed_at != null) throw new RuleError('closed', 'Signups are closed.');
   await db
     .prepare(
       'UPDATE signups SET event_team_id = NULL WHERE event_id = ?1 AND discord_id = ?2',
@@ -369,6 +391,204 @@ export async function listSignups(db: D1Database, eventId: number): Promise<Sign
     .bind(eventId)
     .all<SignupRow>();
   return results;
+}
+
+// --- tournament brackets ---------------------------------------------------
+// Single elimination. Participant keys: 'u:<discord_id>' / 't:<event_team_id>'.
+
+export interface BracketMatch {
+  event_id: number;
+  round: number;
+  slot: number;
+  side_a: string | null;
+  side_b: string | null;
+  winner: string | null;
+}
+
+export async function getBracket(db: D1Database, eventId: number): Promise<BracketMatch[]> {
+  const { results } = await db
+    .prepare('SELECT * FROM bracket_matches WHERE event_id = ?1 ORDER BY round, slot')
+    .bind(eventId)
+    .all<BracketMatch>();
+  return results;
+}
+
+export async function deleteBracket(db: D1Database, eventId: number): Promise<void> {
+  await db.prepare('DELETE FROM bracket_matches WHERE event_id = ?1').bind(eventId).run();
+}
+
+async function getMatch(db: D1Database, eventId: number, round: number, slot: number) {
+  return db
+    .prepare('SELECT * FROM bracket_matches WHERE event_id = ?1 AND round = ?2 AND slot = ?3')
+    .bind(eventId, round, slot)
+    .first<BracketMatch>();
+}
+
+// Removes a participant from every later-round position it had advanced to;
+// used when an earlier result changes so stale progress never lingers.
+async function removeFromDownstream(
+  db: D1Database,
+  eventId: number,
+  round: number,
+  slot: number,
+  key: string,
+  totalRounds: number,
+): Promise<void> {
+  if (round >= totalRounds) return;
+  const nextRound = round + 1;
+  const nextSlot = slot >> 1;
+  const side = slot % 2 === 0 ? 'side_a' : 'side_b';
+  const match = await getMatch(db, eventId, nextRound, nextSlot);
+  if (!match || match[side as 'side_a' | 'side_b'] !== key) return;
+  await db
+    .prepare(
+      `UPDATE bracket_matches SET ${side} = NULL, winner = CASE WHEN winner = ?4 THEN NULL ELSE winner END
+       WHERE event_id = ?1 AND round = ?2 AND slot = ?3`,
+    )
+    .bind(eventId, nextRound, nextSlot, key)
+    .run();
+  await removeFromDownstream(db, eventId, nextRound, nextSlot, key, totalRounds);
+}
+
+// Places `key` on its side of the next-round match, evicting (and cascading
+// away) whoever a changed result had put there before.
+async function advance(
+  db: D1Database,
+  eventId: number,
+  round: number,
+  slot: number,
+  key: string,
+  totalRounds: number,
+): Promise<void> {
+  if (round >= totalRounds) return;
+  const nextRound = round + 1;
+  const nextSlot = slot >> 1;
+  const side = slot % 2 === 0 ? 'side_a' : 'side_b';
+  const match = await getMatch(db, eventId, nextRound, nextSlot);
+  if (!match) return;
+  const occupant = match[side as 'side_a' | 'side_b'];
+  if (occupant === key) return;
+  await db
+    .prepare(
+      `UPDATE bracket_matches SET ${side} = ?4, winner = CASE WHEN winner = ?5 THEN NULL ELSE winner END
+       WHERE event_id = ?1 AND round = ?2 AND slot = ?3`,
+    )
+    .bind(eventId, nextRound, nextSlot, key, occupant ?? '')
+    .run();
+  if (occupant) await removeFromDownstream(db, eventId, nextRound, nextSlot, occupant, totalRounds);
+}
+
+// Builds the whole bracket from the event's current participants: full
+// 'yes' signups on a solo event, formed teams on a team event. Replaces any
+// existing bracket. Byes auto-advance immediately.
+export async function generateBracket(db: D1Database, eventId: number): Promise<void> {
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+
+  let keys: string[];
+  if (event.team_size !== null) {
+    keys = (await listEventTeams(db, eventId)).map((team) => `t:${team.id}`);
+  } else {
+    keys = (await listSignups(db, eventId))
+      .filter((signup) => signup.status === 'yes')
+      .map((signup) => `u:${signup.discord_id}`);
+  }
+  if (keys.length < 2) {
+    throw new RuleError('bad_input', 'A bracket needs at least two participants.');
+  }
+
+  // Random seeding.
+  for (let i = keys.length - 1; i > 0; i--) {
+    const j = Math.floor((crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32) * (i + 1));
+    [keys[i], keys[j]] = [keys[j], keys[i]];
+  }
+
+  let size = 1;
+  while (size < keys.length) size *= 2;
+  const totalRounds = Math.log2(size);
+
+  await deleteBracket(db, eventId);
+
+  // Spread byes one per match from the end, so no match is a double bye.
+  const matches: Array<[string | null, string | null]> = [];
+  const byes = size - keys.length;
+  let cursor = 0;
+  for (let slot = 0; slot < size / 2; slot++) {
+    const hasBye = slot >= size / 2 - byes;
+    const a = keys[cursor++];
+    const b = hasBye ? null : keys[cursor++];
+    matches.push([a, b]);
+  }
+
+  const statements = [];
+  for (let slot = 0; slot < size / 2; slot++) {
+    const [a, b] = matches[slot];
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO bracket_matches (event_id, round, slot, side_a, side_b, winner)
+           VALUES (?1, 1, ?2, ?3, ?4, NULL)`,
+        )
+        .bind(eventId, slot, a, b),
+    );
+  }
+  for (let round = 2; round <= totalRounds; round++) {
+    for (let slot = 0; slot < size / 2 ** round; slot++) {
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO bracket_matches (event_id, round, slot, side_a, side_b, winner)
+             VALUES (?1, ?2, ?3, NULL, NULL, NULL)`,
+          )
+          .bind(eventId, round, slot),
+      );
+    }
+  }
+  await db.batch(statements);
+
+  // Byes advance on the spot.
+  for (let slot = 0; slot < size / 2; slot++) {
+    const [a, b] = matches[slot];
+    if (a !== null && b === null) {
+      await db
+        .prepare(
+          'UPDATE bracket_matches SET winner = ?4 WHERE event_id = ?1 AND round = 1 AND slot = ?2 AND side_a = ?3',
+        )
+        .bind(eventId, slot, a, a)
+        .run();
+      await advance(db, eventId, 1, slot, a, totalRounds);
+    }
+  }
+}
+
+export async function setBracketWinner(
+  db: D1Database,
+  eventId: number,
+  round: number,
+  slot: number,
+  winnerKey: string,
+): Promise<void> {
+  const match = await getMatch(db, eventId, round, slot);
+  if (!match) throw new RuleError('missing', 'No such match.');
+  if (match.side_a === null || match.side_b === null) {
+    throw new RuleError('bad_input', 'Both sides of the match must be known first.');
+  }
+  if (winnerKey !== match.side_a && winnerKey !== match.side_b) {
+    throw new RuleError('bad_input', 'The winner must be one of the two sides.');
+  }
+  if (match.winner === winnerKey) return;
+  const totals = await db
+    .prepare('SELECT MAX(round) AS n FROM bracket_matches WHERE event_id = ?1')
+    .bind(eventId)
+    .first<{ n: number }>();
+  const totalRounds = totals!.n;
+  await db
+    .prepare(
+      'UPDATE bracket_matches SET winner = ?4 WHERE event_id = ?1 AND round = ?2 AND slot = ?3',
+    )
+    .bind(eventId, round, slot, winnerKey)
+    .run();
+  await advance(db, eventId, round, slot, winnerKey, totalRounds);
 }
 
 export async function listAnnouncements(db: D1Database, limit = 20): Promise<AnnouncementRow[]> {
