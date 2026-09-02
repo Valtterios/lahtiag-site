@@ -4,11 +4,12 @@ import Base from '../layouts/Base.astro';
 
 export const prerender = true;
 
-// One static path per Markdown file, except `home`, which index.astro owns.
+// One static path per Markdown file, except `home` (index.astro) and
+// `history` (history.astro renders it with the results archive on top).
 export async function getStaticPaths() {
   const pages = await getCollection('pages');
   return pages
-    .filter((page) => page.id !== 'home')
+    .filter((page) => page.id !== 'home' && page.id !== 'history')
     .map((page) => ({ params: { id: page.id }, props: { entry: page } }));
 }
 

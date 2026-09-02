@@ -664,6 +664,72 @@ export async function setBracketWinner(
   await advance(db, eventId, round, slot, winnerKey, totalRounds);
 }
 
+// Decided finals, newest first — the results archive. The champion is
+// resolved to a display name plus the avatars to show (team members' for a
+// team champion, the player's own otherwise).
+export interface ResultRow {
+  event_id: number;
+  title: string;
+  starts_at: number;
+  champion_name: string;
+  avatars: { discord_id: string; avatar_hash: string | null }[];
+}
+
+export async function listResults(db: D1Database, limit = 20): Promise<ResultRow[]> {
+  const { results: finals } = await db
+    .prepare(
+      `SELECT bm.event_id, bm.winner, e.title, e.starts_at
+       FROM bracket_matches bm
+       JOIN events e ON e.id = bm.event_id
+       WHERE bm.winner IS NOT NULL
+         AND bm.round = (SELECT MAX(round) FROM bracket_matches b2 WHERE b2.event_id = bm.event_id)
+       ORDER BY e.starts_at DESC
+       LIMIT ?1`,
+    )
+    .bind(limit)
+    .all<{ event_id: number; winner: string; title: string; starts_at: number }>();
+
+  const rows: ResultRow[] = [];
+  for (const final of finals) {
+    if (final.winner.startsWith('t:')) {
+      const teamId = Number(final.winner.slice(2));
+      const team = await db
+        .prepare('SELECT name FROM event_teams WHERE id = ?1')
+        .bind(teamId)
+        .first<{ name: string }>();
+      const { results: members } = await db
+        .prepare(
+          `SELECT m.discord_id, m.avatar_hash FROM signups s
+           JOIN members m ON m.discord_id = s.discord_id
+           WHERE s.event_id = ?1 AND s.event_team_id = ?2`,
+        )
+        .bind(final.event_id, teamId)
+        .all<{ discord_id: string; avatar_hash: string | null }>();
+      rows.push({
+        event_id: final.event_id,
+        title: final.title,
+        starts_at: final.starts_at,
+        champion_name: team?.name ?? 'Unknown team',
+        avatars: members,
+      });
+    } else {
+      const discordId = final.winner.slice(2);
+      const member = await db
+        .prepare('SELECT username, avatar_hash FROM members WHERE discord_id = ?1')
+        .bind(discordId)
+        .first<{ username: string; avatar_hash: string | null }>();
+      rows.push({
+        event_id: final.event_id,
+        title: final.title,
+        starts_at: final.starts_at,
+        champion_name: member?.username ?? 'Unknown',
+        avatars: member ? [{ discord_id: discordId, avatar_hash: member.avatar_hash }] : [],
+      });
+    }
+  }
+  return rows;
+}
+
 export async function listAnnouncements(db: D1Database, limit = 20): Promise<AnnouncementRow[]> {
   const { results } = await db
     .prepare(

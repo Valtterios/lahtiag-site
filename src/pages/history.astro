@@ -1,0 +1,85 @@
+---
+import { env } from 'cloudflare:workers';
+import { getEntry, render } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import { listResults, type ResultRow } from '../lib/db';
+import { avatarUrl } from '../lib/discord';
+import { formatHelsinki } from '../lib/time';
+
+// This file takes the /history path over from the generic [id].astro so the
+// page can prepend the tournament results archive to the Markdown stories.
+// The archive writes itself: every decided bracket final lands here.
+
+const entry = await getEntry('pages', 'history');
+if (!entry) {
+  throw new Error('src/content/pages/history.md is required by this page.');
+}
+const { Content } = await render(entry);
+
+let results: ResultRow[] = [];
+try {
+  results = await listResults(env.DB);
+} catch {
+  // archive stays empty; the stories stay up
+}
+---
+<Base title={entry.data.title} description={entry.data.description}>
+  <article class="prose">
+    <h1>{entry.data.title}</h1>
+
+    {results.length > 0 && (
+      <>
+        <h2>Hall of fame</h2>
+        <ul class="results-list">
+          {results.map((result) => (
+            <li>
+              <span class="results-avatars">
+                {result.avatars.slice(0, 4).map((a) => (
+                  <img src={avatarUrl(a.discord_id, a.avatar_hash)} alt="" width="28" height="28" loading="lazy" />
+                ))}
+              </span>
+              <span>
+                🏆 <strong>{result.champion_name}</strong> won
+                <a href={`/events/${result.event_id}/bracket`}> {result.title}</a>
+                <span class="event-meta"> ({formatHelsinki(result.starts_at)})</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </>
+    )}
+
+    <Content />
+  </article>
+</Base>
+
+<style is:global>
+  .results-list {
+    list-style: none;
+    margin: 0 0 1.5rem;
+    padding: 0;
+    display: grid;
+    gap: 0.6rem;
+  }
+  .results-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    clip-path: var(--cut-s);
+    padding: 0.55rem 0.9rem;
+  }
+  .results-avatars {
+    display: flex;
+    flex-shrink: 0;
+  }
+  .results-avatars img {
+    border-radius: 50%;
+    border: 2px solid var(--surface);
+    margin-right: -8px;
+  }
+  .results-avatars img:last-child {
+    margin-right: 0;
+  }
+</style>

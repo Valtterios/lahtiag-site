@@ -11,8 +11,14 @@ import {
   cancelEvent,
   createAnnouncement,
   createEvent,
+  generateBracket,
+  getBracket,
+  listEventTeams,
+  listSignups,
   setAnnouncementMessageId,
+  setBracketWinner,
   setEventMessageId,
+  setSignupsClosed,
   upsertMember,
   RuleError,
 } from '../../lib/db';
@@ -170,6 +176,43 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
         );
       }
       await reply(`Cancelled event #${id}: **${event.title}**.`);
+    } else if (name === 'event close' || name === 'event reopen') {
+      const id = Number(opts.get('id'));
+      const closing = name === 'event close';
+      await setSignupsClosed(env.DB, id, closing, now);
+      await reply(closing ? `Signups closed for event #${id}.` : `Signups reopened for event #${id}.`);
+    } else if (name === 'bracket generate') {
+      const id = Number(opts.get('event'));
+      await generateBracket(env.DB, id);
+      await reply(`Bracket generated: ${origin}/events/${id}/bracket`);
+    } else if (name === 'bracket win') {
+      const id = Number(opts.get('event'));
+      const who = String(opts.get('name') ?? '').trim().toLowerCase();
+      // Resolve the participant by team name or member name, then decide
+      // their lowest undecided match.
+      let key: string | null = null;
+      for (const team of await listEventTeams(env.DB, id)) {
+        if (team.name.toLowerCase() === who) key = `t:${team.id}`;
+      }
+      if (!key) {
+        for (const signup of await listSignups(env.DB, id)) {
+          if (signup.username.toLowerCase() === who) key = `u:${signup.discord_id}`;
+        }
+      }
+      if (!key) {
+        await reply(`No team or player called "${opts.get('name')}" on event #${id}.`);
+        return;
+      }
+      const match = (await getBracket(env.DB, id))
+        .filter((m) => m.winner === null && m.side_a !== null && m.side_b !== null)
+        .filter((m) => m.side_a === key || m.side_b === key)
+        .sort((a, b) => a.round - b.round)[0];
+      if (!match) {
+        await reply(`No undecided match for "${opts.get('name')}" right now.`);
+        return;
+      }
+      await setBracketWinner(env.DB, id, match.round, match.slot, key);
+      await reply(`Recorded: **${opts.get('name')}** wins round ${match.round}. ${origin}/events/${id}/bracket`);
     } else if (name === 'announce') {
       const text = String(opts.get('text') ?? '');
       const title = text.split('\n')[0].replace(/[#*_`>]/g, '').trim().slice(0, 120) || 'Announcement';

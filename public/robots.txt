@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /auth/
+Disallow: /login
+Disallow: /logout
+
+Sitemap: https://lahtiag.fi/sitemap.xml

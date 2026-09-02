@@ -44,6 +44,39 @@ const commands = [
         description: 'Cancel an event',
         options: [{ type: INTEGER, name: 'id', description: 'Event id', required: true }],
       },
+      {
+        type: SUB_COMMAND,
+        name: 'close',
+        description: 'Close signups (before generating the bracket)',
+        options: [{ type: INTEGER, name: 'id', description: 'Event id', required: true }],
+      },
+      {
+        type: SUB_COMMAND,
+        name: 'reopen',
+        description: 'Reopen signups',
+        options: [{ type: INTEGER, name: 'id', description: 'Event id', required: true }],
+      },
+    ],
+  },
+  {
+    name: 'bracket',
+    description: 'Run a tournament bracket',
+    options: [
+      {
+        type: SUB_COMMAND,
+        name: 'generate',
+        description: 'Generate (or re-seed) the bracket from signups',
+        options: [{ type: INTEGER, name: 'event', description: 'Event id', required: true }],
+      },
+      {
+        type: SUB_COMMAND,
+        name: 'win',
+        description: 'Record a match winner by team or player name',
+        options: [
+          { type: INTEGER, name: 'event', description: 'Event id', required: true },
+          { type: STRING, name: 'name', description: 'Winning team or player name', required: true },
+        ],
+      },
     ],
   },
   {
