@@ -99,6 +99,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
       {flash && <p class="flash">{flash}</p>}
 
       <div id="bracket-live">
+      {event.display_note && <p class="display-note">{event.display_note}</p>}
       {champion && (
         <p class="champion">
           🏆 <strong>{champion.name}</strong> takes it!
@@ -195,13 +196,31 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
 </Base>
 
 <script>
-  // Display mode (?display): hide the site chrome and refresh the chart
-  // every 10 seconds by fetching this same page and swapping the bracket
-  // region in place — no flicker, no full reload. Same-origin fetch, so
-  // the CSP connect-src 'self' covers it.
+  // Display mode (?display): hide the site chrome, scale the chart to fill
+  // the screen, and refresh it every 10 seconds by fetching this same page
+  // and swapping the bracket region in place — no flicker, no full reload.
+  // Same-origin fetch, so the CSP connect-src 'self' covers it.
   if (new URLSearchParams(location.search).has('display')) {
     document.documentElement.classList.add('display-mode');
-    setInterval(async () => {
+
+    const fit = () => {
+      const chart = document.querySelector<HTMLElement>('.bracket');
+      const scroll = document.querySelector<HTMLElement>('.bracket-scroll');
+      if (!chart || !scroll) return;
+      chart.style.transform = '';
+      const rect = chart.getBoundingClientRect();
+      const availWidth = window.innerWidth - 64;
+      const availHeight = window.innerHeight - scroll.getBoundingClientRect().top - 32;
+      if (rect.width === 0 || rect.height === 0) return;
+      const scale = Math.min(availWidth / rect.width, availHeight / rect.height, 4);
+      const offset = Math.max(0, (availWidth - rect.width * scale) / 2);
+      chart.style.transformOrigin = 'top left';
+      chart.style.transform = `translateX(${offset}px) scale(${scale})`;
+      scroll.style.height = `${rect.height * scale}px`;
+      scroll.style.overflow = 'visible';
+    };
+
+    const refresh = async () => {
       try {
         const response = await fetch(location.href);
         if (!response.ok) return;
@@ -210,10 +229,17 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         const current = document.querySelector('#bracket-live');
         if (fresh && current && fresh.innerHTML !== current.innerHTML) {
           current.innerHTML = fresh.innerHTML;
+          fit();
         }
       } catch {
         // transient network errors: keep showing the last good chart
       }
-    }, 10_000);
+    };
+
+    window.addEventListener('resize', fit);
+    // fonts settle a beat after load; fit twice to land on the final size
+    fit();
+    setTimeout(fit, 400);
+    setInterval(refresh, 10_000);
   }
 </script>

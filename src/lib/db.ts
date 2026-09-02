@@ -39,6 +39,7 @@ export interface EventRow {
   team_size: number | null; // set = tournament-style team signups
   organizers: string | null; // comma-separated free-text names
   link_url: string | null; // optional stream/info link
+  display_note: string | null; // live message for the venue display
   created_by: string;
   created_at: number;
   cancelled_at: number | null;
@@ -333,6 +334,16 @@ export async function removeSignup(db: D1Database, eventId: number, discordId: s
     .bind(eventId, discordId)
     .run();
   await dropEmptyEventTeams(db, eventId);
+}
+
+export async function setDisplayNote(
+  db: D1Database,
+  eventId: number,
+  note: string | null,
+): Promise<void> {
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  await db.prepare('UPDATE events SET display_note = ?2 WHERE id = ?1').bind(eventId, note).run();
 }
 
 export async function setSignupsClosed(

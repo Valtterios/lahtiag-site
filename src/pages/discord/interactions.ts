@@ -18,6 +18,7 @@ import {
   listUpcomingEvents,
   setAnnouncementMessageId,
   setBracketWinner,
+  setDisplayNote,
   setEventMessageId,
   setSignupsClosed,
   upsertMember,
@@ -114,6 +115,9 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     if (interaction.data.custom_id === 't:announce') {
       return json(announceModal());
     }
+    if (interaction.data.custom_id === 't:do:screen') {
+      return json(screenModal(String(interaction.data.values?.[0])));
+    }
     locals.cfContext.waitUntil(handleComponent(env, interaction, url.origin));
     return json({ type: 6 });
   }
@@ -123,10 +127,13 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     if (!isAdmin) {
       return json({ type: 4, data: { content: 'This needs the admin role.', flags: 64 } });
     }
+    const modalId = interaction.data.custom_id;
     locals.cfContext.waitUntil(
-      interaction.data.custom_id === 't:modal:create'
+      modalId === 't:modal:create'
         ? handleCreateModal(env, interaction, url.origin)
-        : handleAnnounceModal(env, interaction, url.origin),
+        : modalId.startsWith('t:modal:screen:')
+          ? handleScreenModal(env, interaction)
+          : handleAnnounceModal(env, interaction, url.origin),
     );
     return json({ type: 5, data: { flags: 64 } });
   }
@@ -162,6 +169,7 @@ function controlPanel(): { content: string; components: unknown[] } {
         type: 1,
         components: [
           { type: 2, style: 1, label: 'Announce', custom_id: 't:announce', emoji: { id: '1544775849738502174', name: 'lag_news' } },
+          { type: 2, style: 2, label: 'Screen message', custom_id: 't:pick:screen', emoji: { name: '💬' } },
           { type: 2, style: 4, label: 'Cancel event', custom_id: 't:pick:cancel', emoji: { id: '1544775875592196137', name: 'lag_cancel' } },
         ],
       },
@@ -179,6 +187,31 @@ function announceModal() {
       components: [
         row({ type: 4, custom_id: 'title', style: 1, label: 'Title', required: true, max_length: 120 }),
         row({ type: 4, custom_id: 'text', style: 2, label: 'Text (Markdown)', required: true, max_length: 2000 }),
+      ],
+    },
+  };
+}
+
+function screenModal(eventId: string) {
+  return {
+    type: 9,
+    data: {
+      custom_id: `t:modal:screen:${eventId}`,
+      title: 'Message on the venue screen',
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 4,
+              custom_id: 'text',
+              style: 2,
+              label: 'Message (leave empty to clear)',
+              required: false,
+              max_length: 200,
+            },
+          ],
+        },
       ],
     },
   };
@@ -361,6 +394,28 @@ async function handleCreateModal(env: WorkerEnv, interaction: Interaction, origi
       if (messageId) await setEventMessageId(env.DB, id, messageId);
     }
     await reply(`Created event #${id}: **${title.trim()}**\n${origin}/events/${id}`);
+  } catch (error) {
+    await reply(error instanceof RuleError ? error.message : 'Something went wrong.');
+  }
+}
+
+async function handleScreenModal(env: WorkerEnv, interaction: Interaction): Promise<void> {
+  const reply = (content: string) =>
+    editInteractionReply(interaction.application_id, interaction.token, content);
+  try {
+    const eventId = Number(interaction.data!.custom_id!.slice('t:modal:screen:'.length));
+    let text = '';
+    for (const modalRow of interaction.data!.components ?? []) {
+      for (const component of modalRow.components) {
+        if (component.custom_id === 'text') text = component.value ?? '';
+      }
+    }
+    await setDisplayNote(env.DB, eventId, text.trim() || null);
+    await reply(
+      text.trim()
+        ? `On screen within ten seconds: "${text.trim()}"`
+        : 'Screen message cleared.',
+    );
   } catch (error) {
     await reply(error instanceof RuleError ? error.message : 'Something went wrong.');
   }

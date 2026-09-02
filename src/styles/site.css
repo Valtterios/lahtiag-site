@@ -935,6 +935,25 @@ a:hover {
   display: none;
 }
 
+/* live message from the /tournament panel; presenter-screen only */
+.display-note {
+  display: none;
+}
+
+.display-mode .display-note {
+  display: block;
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 2rem;
+  text-transform: uppercase;
+  background: var(--yellow);
+  color: var(--ink);
+  clip-path: var(--cut);
+  padding: 0.8rem 1.4rem;
+  margin: 0 0 1.5rem;
+}
+
 /* ---------- footer: white on blue, per the brand kit ---------- */
 
 .site-footer {
