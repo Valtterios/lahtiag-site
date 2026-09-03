@@ -12,6 +12,8 @@ import {
   setSignup,
   removeSignup,
   adminRemoveSignup,
+  adminUpdateSignup,
+  addManualParticipant,
   purgeMember,
   setSignupsClosed,
 } from '../src/lib/db';
@@ -217,5 +219,121 @@ describe('admin participant management', () => {
       .prepare("SELECT username FROM members WHERE discord_id = 'creator'")
       .first<{ username: string }>();
     expect(row!.username).toBe('Deleted member');
+  });
+});
+
+describe('adminUpdateSignup', () => {
+  it('changes status and moves between teams even when signups are closed', async () => {
+    const eventId = await teamEvent(2, null);
+    await member('a');
+    await member('b');
+    const t1 = await createEventTeam(db(), eventId, 'One', 'a', NOW);
+    await setSignup(db(), eventId, 'b', 'yes', NOW); // free agent
+    await setSignupsClosed(db(), eventId, true, NOW);
+    await adminUpdateSignup(db(), eventId, 'b', 'yes', t1);
+    let signups = await listSignups(db(), eventId);
+    expect(signups.find((s) => s.discord_id === 'b')!.event_team_id).toBe(t1);
+    // Pulling the founder out to 'maybe' clears their team; team survives via b.
+    await adminUpdateSignup(db(), eventId, 'a', 'maybe', null);
+    signups = await listSignups(db(), eventId);
+    const a = signups.find((s) => s.discord_id === 'a')!;
+    expect(a.status).toBe('maybe');
+    expect(a.event_team_id).toBeNull();
+    expect(await listEventTeams(db(), eventId)).toHaveLength(1);
+  });
+
+  it('forces yes when a team is picked, and still respects team size', async () => {
+    const eventId = await teamEvent(2, null);
+    await member('a');
+    await member('b');
+    await member('c');
+    const t1 = await createEventTeam(db(), eventId, 'Duo', 'a', NOW);
+    await joinEventTeam(db(), eventId, t1, 'c', NOW); // full at 2
+    await setSignup(db(), eventId, 'b', 'maybe', NOW);
+    await expect(adminUpdateSignup(db(), eventId, 'b', 'maybe', t1)).rejects.toMatchObject({
+      code: 'team_full',
+    });
+    await adminRemoveSignup(db(), eventId, 'c'); // frees a slot
+    await adminUpdateSignup(db(), eventId, 'b', 'maybe', t1);
+    const b = (await listSignups(db(), eventId)).find((s) => s.discord_id === 'b')!;
+    expect(b.status).toBe('yes');
+    expect(b.event_team_id).toBe(t1);
+  });
+
+  it('rejects a missing signup, a foreign team, and teams on a solo event', async () => {
+    const eventId = await teamEvent(2, null);
+    await member('a');
+    await expect(adminUpdateSignup(db(), eventId, 'a', 'yes', null)).rejects.toMatchObject({
+      code: 'missing',
+    });
+    await setSignup(db(), eventId, 'a', 'yes', NOW);
+    await expect(adminUpdateSignup(db(), eventId, 'a', 'yes', 99999)).rejects.toMatchObject({
+      code: 'missing',
+    });
+    const soloId = await createEvent(
+      db(),
+      { title: 'Solo', description: null, starts_at: NOW + 1, capacity: null, created_by: 'admin' },
+      NOW,
+    );
+    await setSignup(db(), soloId, 'a', 'yes', NOW);
+    await expect(adminUpdateSignup(db(), soloId, 'a', 'yes', 1)).rejects.toMatchObject({
+      code: 'not_team_event',
+    });
+  });
+});
+
+describe('addManualParticipant', () => {
+  it('creates a synthetic member and signup, ignoring closed signups and capacity', async () => {
+    await member('admin');
+    const eventId = await createEvent(
+      db(),
+      { title: 'LAN', description: null, starts_at: NOW + 1, capacity: 1, created_by: 'admin' },
+      NOW,
+    );
+    await member('a');
+    await setSignup(db(), eventId, 'a', 'yes', NOW); // event now at capacity
+    await setSignupsClosed(db(), eventId, true, NOW);
+    const id = await addManualParticipant(db(), eventId, ' Walk-in Ville ', 'yes', null, NOW);
+    expect(id).toMatch(/^manual-[0-9a-f]{16}$/);
+    const signups = await listSignups(db(), eventId);
+    expect(signups).toHaveLength(2);
+    const manual = signups.find((s) => s.discord_id === id)!;
+    expect(manual.username).toBe('Walk-in Ville');
+    expect(manual.status).toBe('yes');
+  });
+
+  it('can land directly in a team (forced yes) but not overfill it', async () => {
+    const eventId = await teamEvent(2, null);
+    await member('a');
+    const t1 = await createEventTeam(db(), eventId, 'Duo', 'a', NOW);
+    const id = await addManualParticipant(db(), eventId, 'Guest', 'maybe', t1, NOW);
+    const manual = (await listSignups(db(), eventId)).find((s) => s.discord_id === id)!;
+    expect(manual.status).toBe('yes');
+    expect(manual.event_team_id).toBe(t1);
+    await expect(addManualParticipant(db(), eventId, 'Third', 'yes', t1, NOW)).rejects.toMatchObject(
+      { code: 'team_full' },
+    );
+  });
+
+  it('validates the name and the target team', async () => {
+    const eventId = await teamEvent(2, null);
+    await expect(addManualParticipant(db(), eventId, '   ', 'yes', null, NOW)).rejects.toMatchObject(
+      { code: 'bad_input' },
+    );
+    await expect(addManualParticipant(db(), eventId, 'X', 'yes', 424242, NOW)).rejects.toMatchObject(
+      { code: 'missing' },
+    );
+  });
+
+  it('a manual participant can be removed and purged like anyone else', async () => {
+    await member('admin');
+    const eventId = await createEvent(
+      db(),
+      { title: 'LAN', description: null, starts_at: NOW + 1, capacity: null, created_by: 'admin' },
+      NOW,
+    );
+    const id = await addManualParticipant(db(), eventId, 'Guest', 'yes', null, NOW);
+    expect(await purgeMember(db(), id)).toBe('deleted');
+    expect(await listSignups(db(), eventId)).toHaveLength(0);
   });
 });

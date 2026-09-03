@@ -346,6 +346,115 @@ export async function setDisplayNote(
   await db.prepare('UPDATE events SET display_note = ?2 WHERE id = ?1').bind(eventId, note).run();
 }
 
+// Admin roster edit: change a signup's answer or move it between teams.
+// Skips the signups-closed and capacity guards (fixing the roster on
+// tournament day is exactly a closed-signups activity), but a team's size
+// limit still holds. Picking a team implies 'yes': team members are always
+// going, and 'maybe' always means no team.
+export async function adminUpdateSignup(
+  db: D1Database,
+  eventId: number,
+  discordId: string,
+  status: 'yes' | 'maybe',
+  eventTeamId: number | null,
+): Promise<void> {
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  const existing = await db
+    .prepare('SELECT 1 AS x FROM signups WHERE event_id = ?1 AND discord_id = ?2')
+    .bind(eventId, discordId)
+    .first();
+  if (!existing) throw new RuleError('missing', 'No such signup on this event.');
+  let teamId = eventTeamId;
+  if (teamId !== null) {
+    if (event.team_size === null) {
+      throw new RuleError('not_team_event', 'This event does not take team signups.');
+    }
+    const team = await db
+      .prepare('SELECT id FROM event_teams WHERE id = ?1 AND event_id = ?2')
+      .bind(teamId, eventId)
+      .first();
+    if (!team) throw new RuleError('missing', 'No such team on this event.');
+    const members = await db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM signups
+         WHERE event_id = ?1 AND event_team_id = ?2 AND discord_id != ?3`,
+      )
+      .bind(eventId, teamId, discordId)
+      .first<{ n: number }>();
+    if ((members?.n ?? 0) >= event.team_size) {
+      throw new RuleError('team_full', 'That team is already full.');
+    }
+    status = 'yes';
+  } else if (status === 'maybe') {
+    teamId = null;
+  }
+  await db
+    .prepare(
+      'UPDATE signups SET status = ?3, event_team_id = ?4 WHERE event_id = ?1 AND discord_id = ?2',
+    )
+    .bind(eventId, discordId, status, teamId)
+    .run();
+  await dropEmptyEventTeams(db, eventId);
+}
+
+// Walk-in participants without Discord: a synthetic member row plus a
+// signup, admin-only. The id is "manual-<random hex>", which can never
+// collide with a Discord snowflake (those are all digits), and everything
+// downstream (brackets, purge, removal) already works by id string. Closed
+// signups and capacity don't apply; a team's size limit still does.
+export async function addManualParticipant(
+  db: D1Database,
+  eventId: number,
+  name: string,
+  status: 'yes' | 'maybe',
+  eventTeamId: number | null,
+  now: number,
+): Promise<string> {
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length > 60) {
+    throw new RuleError('bad_input', 'A participant name is 1 to 60 characters.');
+  }
+  if (eventTeamId !== null) {
+    if (event.team_size === null) {
+      throw new RuleError('not_team_event', 'This event does not take team signups.');
+    }
+    const team = await db
+      .prepare('SELECT id FROM event_teams WHERE id = ?1 AND event_id = ?2')
+      .bind(eventTeamId, eventId)
+      .first();
+    if (!team) throw new RuleError('missing', 'No such team on this event.');
+    const members = await db
+      .prepare('SELECT COUNT(*) AS n FROM signups WHERE event_id = ?1 AND event_team_id = ?2')
+      .bind(eventId, eventTeamId)
+      .first<{ n: number }>();
+    if ((members?.n ?? 0) >= event.team_size) {
+      throw new RuleError('team_full', 'That team is already full.');
+    }
+    status = 'yes';
+  }
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  const discordId = `manual-${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
+  await db
+    .prepare(
+      `INSERT INTO members (discord_id, username, avatar_hash, last_seen)
+       VALUES (?1, ?2, NULL, ?3)`,
+    )
+    .bind(discordId, trimmed, now)
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO signups (event_id, discord_id, status, created_at, event_team_id)
+       VALUES (?1, ?2, ?3, ?4, ?5)`,
+    )
+    .bind(eventId, discordId, status, now, eventTeamId)
+    .run();
+  return discordId;
+}
+
 // Admin removal skips the signups-closed guard: pruning a no-show or a
 // banned member off the roster is exactly a closed-signups activity.
 export async function adminRemoveSignup(
@@ -726,6 +835,36 @@ export async function setBracketWinner(
     .bind(eventId, round, slot, winnerKey)
     .run();
   await advance(db, eventId, round, slot, winnerKey, totalRounds);
+}
+
+// Reverts a recorded result: the match becomes undecided again and the
+// former winner is pulled back out of every later round it had advanced to
+// (including any results it won there, cascading). Bye "results" are
+// automatic, not recorded, so a match missing a side cannot be reverted.
+export async function clearBracketWinner(
+  db: D1Database,
+  eventId: number,
+  round: number,
+  slot: number,
+): Promise<void> {
+  const match = await getMatch(db, eventId, round, slot);
+  if (!match) throw new RuleError('missing', 'No such match.');
+  if (match.side_a === null || match.side_b === null) {
+    throw new RuleError('bad_input', 'A bye cannot be reverted.');
+  }
+  if (match.winner === null) return;
+  const totals = await db
+    .prepare('SELECT MAX(round) AS n FROM bracket_matches WHERE event_id = ?1')
+    .bind(eventId)
+    .first<{ n: number }>();
+  const key = match.winner;
+  await db
+    .prepare(
+      'UPDATE bracket_matches SET winner = NULL WHERE event_id = ?1 AND round = ?2 AND slot = ?3',
+    )
+    .bind(eventId, round, slot)
+    .run();
+  await removeFromDownstream(db, eventId, round, slot, key, totals!.n);
 }
 
 // Decided finals, newest first — the results archive. The champion is

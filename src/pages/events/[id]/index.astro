@@ -316,6 +316,58 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
           </details>
           )}
           <details class="admin-edit">
+            <summary>Manage participants</summary>
+            <p class="event-meta">
+              Changes here skip the signup rules: closed signups and capacity
+              don't apply. Picking a team sets the answer to Going. Adding by
+              name is for walk-ins without Discord; their signup can be
+              edited and removed like any other.
+            </p>
+            {signups.length > 0 && (
+              <ul class="participant-admin">
+                {signups.map((s) => (
+                  <li>
+                    <form method="post" action={`/events/${event.id}/edit-signup`} class="participant-row">
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="discord_id" value={s.discord_id} />
+                      <span class="participant-name">{s.username}</span>
+                      <select name="status">
+                        <option value="yes" selected={s.status === 'yes'}>Going</option>
+                        <option value="maybe" selected={s.status === 'maybe'}>Maybe</option>
+                      </select>
+                      {isTeamEvent && (
+                        <select name="event_team_id">
+                          <option value="" selected={s.event_team_id === null}>No team</option>
+                          {eventTeams.map((team) => (
+                            <option value={team.id} selected={s.event_team_id === team.id}>{team.name}</option>
+                          ))}
+                        </select>
+                      )}
+                      <button class="btn btn-ghost" type="submit">Save</button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <form method="post" action={`/events/${event.id}/add-participant`} class="participant-row">
+              <input type="hidden" name="csrf" value={csrf} />
+              <label>Name <input name="name" required maxlength="60" placeholder="Walk-in participant" /></label>
+              <select name="status">
+                <option value="yes">Going</option>
+                <option value="maybe">Maybe</option>
+              </select>
+              {isTeamEvent && eventTeams.length > 0 && (
+                <select name="event_team_id">
+                  <option value="">No team</option>
+                  {eventTeams.map((team) => (
+                    <option value={team.id}>{team.name}</option>
+                  ))}
+                </select>
+              )}
+              <button class="btn btn-primary" type="submit">Add participant</button>
+            </form>
+          </details>
+          <details class="admin-edit">
             <summary>Danger zone</summary>
             <p class="event-meta">
               Deleting erases the event with its signups, teams and bracket,

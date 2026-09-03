@@ -32,33 +32,44 @@ accounts to manage.
 ## Hosting a tournament, start to finish
 
 Everything can be run from Discord with `/tournament` (admin only, only you
-see the panel):
+see the panel). It opens on three categories — **Event**, **Bracket**, and
+**Announce & screen** — and each button below lives in one of them (Back
+returns to the categories):
 
-1. **📅 Create event** — fill the form. A team size makes it a
+1. **📅 Create event** (Event) — fill the form. A team size makes it a
    tournament-style event where members form their own teams on the site;
    empty means individual signups. The announcement posts itself to the
    webhook channel.
 2. Members sign up (and create/join teams) on the event page.
-3. **🔒 Close signups** when the field is set.
-4. **🎲 Generate bracket** — random seeding, byes handled automatically.
-   The same button re-seeds from scratch if needed.
+3. **🔒 Close signups** (Event) when the field is set.
+4. **🎲 Generate bracket** (Bracket) — random seeding, byes handled
+   automatically. The same button re-seeds from scratch if needed.
 5. Put the bracket on the venue screen: open the event's bracket page as an
    admin, click **Open presenter mode**, fullscreen it (F11). It scales to
    fill the display and refreshes itself every 10 seconds. The direct URL is
    `/events/<id>/bracket?display` if the display machine isn't signed in.
-6. **🏆 Record winner** after each match — the pick appears on the venue
-   screen within ten seconds. Repeat down to the champion; the banner and
-   the Hall of Fame on /history update themselves.
-7. **💬 Screen message** puts a one-line banner on the venue screen
-   ("Finals in 5 minutes!"); submit it empty to clear.
+6. **🏆 Record winner** (Bracket) after each match — the pick appears on
+   the venue screen within ten seconds. Repeat down to the champion; the
+   banner and the Hall of Fame on /history update themselves.
+   **↩️ Revert result** undoes a recorded win: the match becomes undecided
+   again and everything that followed from it is cleared. On the website
+   the ↺ button on the recorded winner does the same.
+7. **💬 Screen message** (Announce & screen) puts a one-line banner on the
+   venue screen ("Finals in 5 minutes!"); submit it empty to clear.
 8. **📣 Announce** publishes to the site's News page and the Discord channel
-   at once. **❌ Cancel event** if the day falls through.
+   at once. **❌ Cancel event** (Event) if the day falls through.
 
-Fixing a wrongly recorded result, editing event details (times, capacity,
-organizers, stream link, description), and permanently deleting an event are
-done on the website — event page → Admin. Delete (in the Danger zone)
-erases signups, teams, and bracket, and removes the Discord announcement;
-cancel keeps the history.
+Editing event details (times, capacity, organizers, stream link,
+description) and permanently deleting an event are done on the website —
+event page → Admin. Delete (in the Danger zone) erases signups, teams, and
+bracket, and removes the Discord announcement; cancel keeps the history.
+
+The Admin panel's **Manage participants** section edits the roster directly,
+skipping the normal signup rules (closed signups, capacity): change anyone's
+answer (Going/Maybe), move them between teams (team size still holds), or
+**add a walk-in participant by name** — someone without Discord. A manual
+participant behaves like any other signup afterwards: they land in brackets,
+can be edited, removed (× on their chip), and purged.
 
 Winner clicks on the *website* re-verify your role against Discord each
 time; the Discord panel doesn't need to and is immune to rate limits — on

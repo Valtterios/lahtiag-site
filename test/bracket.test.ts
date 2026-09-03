@@ -9,6 +9,7 @@ import {
   generateBracket,
   getBracket,
   setBracketWinner,
+  clearBracketWinner,
   deleteBracket,
   deleteEvent,
   cancelEvent as cancelEventRow,
@@ -148,6 +149,37 @@ describe('setBracketWinner', () => {
     });
     await expect(setBracketWinner(db(), eventId, 2, 0, 'u:a')).rejects.toMatchObject({
       code: 'bad_input',
+    });
+  });
+
+  it('clearBracketWinner reverts a result and pulls the winner back out of later rounds', async () => {
+    const eventId = await soloEventWith(['a', 'b', 'c', 'd']);
+    await generateBracket(db(), eventId);
+    const round1 = (await getBracket(db(), eventId)).filter((m) => m.round === 1);
+    await setBracketWinner(db(), eventId, 1, 0, round1[0].side_a!);
+    await setBracketWinner(db(), eventId, 1, 1, round1[1].side_a!);
+    await setBracketWinner(db(), eventId, 2, 0, round1[0].side_a!); // champion
+    await clearBracketWinner(db(), eventId, 1, 0);
+    const after = await getBracket(db(), eventId);
+    expect(after.find((m) => m.round === 1 && m.slot === 0)!.winner).toBeNull();
+    const final = after.find((m) => m.round === 2)!;
+    expect(final.side_a).toBeNull(); // the reverted winner is gone from the final
+    expect(final.side_b).toBe(round1[1].side_a); // the other semifinal stands
+    expect(final.winner).toBeNull();
+  });
+
+  it('clearBracketWinner is a no-op on an undecided match and rejects byes', async () => {
+    const eventId = await soloEventWith(['a', 'b', 'c']);
+    await generateBracket(db(), eventId);
+    const round1 = (await getBracket(db(), eventId)).filter((m) => m.round === 1);
+    const real = round1.find((m) => m.side_b !== null)!;
+    const bye = round1.find((m) => m.side_b === null)!;
+    await clearBracketWinner(db(), eventId, 1, real.slot); // undecided: no-op
+    await expect(clearBracketWinner(db(), eventId, 1, bye.slot)).rejects.toMatchObject({
+      code: 'bad_input',
+    });
+    await expect(clearBracketWinner(db(), eventId, 9, 9)).rejects.toMatchObject({
+      code: 'missing',
     });
   });
 

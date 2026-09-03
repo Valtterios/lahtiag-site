@@ -18,6 +18,7 @@ import {
   listUpcomingEvents,
   setAnnouncementMessageId,
   setBracketWinner,
+  clearBracketWinner,
   setDisplayNote,
   setEventMessageId,
   setSignupsClosed,
@@ -151,30 +152,75 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
 
 // --- /tournament interactive panel -----------------------------------------
 
+// Two levels: /tournament opens the category chooser, a category button
+// swaps the same ephemeral message to that category's actions, Back returns.
 function controlPanel(): { content: string; components: unknown[] } {
   return {
-    content: '<:lahtiag:1544775220458430565> **Tournament controls**. What needs doing?',
+    content: '<:lahtiag:1544775220458430565> **Tournament controls**. Pick a category:',
     components: [
       {
         type: 1,
         components: [
-          { type: 2, style: 1, label: 'Create event', custom_id: 't:create', emoji: { id: '1544775323722195184', name: 'lag_event' } },
-          { type: 2, style: 2, label: 'Close signups', custom_id: 't:pick:close', emoji: { id: '1544775303543656448', name: 'lag_lock' } },
-          { type: 2, style: 2, label: 'Reopen signups', custom_id: 't:pick:reopen', emoji: { id: '1544775287210774609', name: 'lag_unlock' } },
-          { type: 2, style: 2, label: 'Generate bracket', custom_id: 't:pick:bracket', emoji: { id: '1544775271486586890', name: 'lag_bracket' } },
-          { type: 2, style: 3, label: 'Record winner', custom_id: 't:pick:winner', emoji: { id: '1544775246429556808', name: 'lag_trophy' } },
-        ],
-      },
-      {
-        type: 1,
-        components: [
-          { type: 2, style: 1, label: 'Announce', custom_id: 't:announce', emoji: { id: '1544775849738502174', name: 'lag_news' } },
-          { type: 2, style: 2, label: 'Screen message', custom_id: 't:pick:screen', emoji: { name: '💬' } },
-          { type: 2, style: 4, label: 'Cancel event', custom_id: 't:pick:cancel', emoji: { id: '1544775875592196137', name: 'lag_cancel' } },
+          { type: 2, style: 1, label: 'Event', custom_id: 't:cat:event', emoji: { id: '1544775323722195184', name: 'lag_event' } },
+          { type: 2, style: 1, label: 'Bracket', custom_id: 't:cat:bracket', emoji: { id: '1544775271486586890', name: 'lag_bracket' } },
+          { type: 2, style: 1, label: 'Announce & screen', custom_id: 't:cat:comms', emoji: { id: '1544775849738502174', name: 'lag_news' } },
         ],
       },
     ],
   };
+}
+
+function categoryPanel(category: string): { content: string; components: unknown[] } {
+  const back = { type: 2, style: 2, label: 'Back', custom_id: 't:cat:home', emoji: { name: '◀️' } };
+  if (category === 'event') {
+    return {
+      content: '<:lag_event:1544775323722195184> **Event**. What needs doing?',
+      components: [
+        {
+          type: 1,
+          components: [
+            { type: 2, style: 1, label: 'Create event', custom_id: 't:create', emoji: { id: '1544775323722195184', name: 'lag_event' } },
+            { type: 2, style: 2, label: 'Close signups', custom_id: 't:pick:close', emoji: { id: '1544775303543656448', name: 'lag_lock' } },
+            { type: 2, style: 2, label: 'Reopen signups', custom_id: 't:pick:reopen', emoji: { id: '1544775287210774609', name: 'lag_unlock' } },
+            { type: 2, style: 4, label: 'Cancel event', custom_id: 't:pick:cancel', emoji: { id: '1544775875592196137', name: 'lag_cancel' } },
+            back,
+          ],
+        },
+      ],
+    };
+  }
+  if (category === 'bracket') {
+    return {
+      content: '<:lag_bracket:1544775271486586890> **Bracket**. What needs doing?',
+      components: [
+        {
+          type: 1,
+          components: [
+            { type: 2, style: 2, label: 'Generate bracket', custom_id: 't:pick:bracket', emoji: { id: '1544775271486586890', name: 'lag_bracket' } },
+            { type: 2, style: 3, label: 'Record winner', custom_id: 't:pick:winner', emoji: { id: '1544775246429556808', name: 'lag_trophy' } },
+            { type: 2, style: 2, label: 'Revert result', custom_id: 't:pick:undo', emoji: { name: '↩️' } },
+            back,
+          ],
+        },
+      ],
+    };
+  }
+  if (category === 'comms') {
+    return {
+      content: '<:lag_news:1544775849738502174> **Announce & screen**. What needs doing?',
+      components: [
+        {
+          type: 1,
+          components: [
+            { type: 2, style: 1, label: 'Announce', custom_id: 't:announce', emoji: { id: '1544775849738502174', name: 'lag_news' } },
+            { type: 2, style: 2, label: 'Screen message', custom_id: 't:pick:screen', emoji: { name: '💬' } },
+            back,
+          ],
+        },
+      ],
+    };
+  }
+  return controlPanel();
 }
 
 function announceModal() {
@@ -253,7 +299,13 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
   const now = Math.floor(Date.now() / 1000);
 
   try {
-    if (customId.startsWith('t:pick:')) {
+    if (customId.startsWith('t:cat:')) {
+      // Category navigation: swap the same ephemeral message between the
+      // chooser and a category's actions.
+      const category = customId.slice('t:cat:'.length);
+      const panel = category === 'home' ? controlPanel() : categoryPanel(category);
+      await edit(panel.content, panel.components);
+    } else if (customId.startsWith('t:pick:')) {
       // Step 2: choose which event the action applies to.
       const action = customId.slice('t:pick:'.length);
       const events = await listUpcomingEvents(env.DB, now);
@@ -261,7 +313,9 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
         await edit('No upcoming events to act on.');
         return;
       }
-      await edit(`Pick the event to **${action === 'winner' ? 'record a winner for' : action}**:`, [
+      const actionLabel =
+        action === 'winner' ? 'record a winner for' : action === 'undo' ? 'revert a result on' : action;
+      await edit(`Pick the event to **${actionLabel}**:`, [
         {
           type: 1,
           components: [
@@ -316,7 +370,34 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
         await edit('Who won their match?', [
           { type: 1, components: [{ type: 3, custom_id: `t:win:${eventId}`, options }] },
         ]);
+      } else if (action === 'undo') {
+        // Step 3: every recorded (non-bye) result can be reverted.
+        const names = await participantNames(env, eventId);
+        const nameOf = (key: string) => names.get(key) ?? 'Unknown';
+        const options = (await getBracket(env.DB, eventId))
+          .filter((m) => m.winner !== null && m.side_a !== null && m.side_b !== null)
+          .sort((a, b) => b.round - a.round || a.slot - b.slot)
+          .map((m) => ({
+            label: `Undo: ${nameOf(m.winner!)} won R${m.round}`.slice(0, 100),
+            description: `${nameOf(m.side_a!)} vs ${nameOf(m.side_b!)}`.slice(0, 100),
+            value: `${m.round}:${m.slot}`,
+          }))
+          .slice(0, 25);
+        if (options.length === 0) {
+          await edit(`No recorded results on event #${eventId}. ${origin}/events/${eventId}/bracket`);
+          return;
+        }
+        await edit('Which result should be reverted?', [
+          { type: 1, components: [{ type: 3, custom_id: `t:undo:${eventId}`, options }] },
+        ]);
       }
+    } else if (customId.startsWith('t:undo:')) {
+      const eventId = Number(customId.slice('t:undo:'.length));
+      const [round, slot] = String(interaction.data!.values?.[0]).split(':').map(Number);
+      await clearBracketWinner(env.DB, eventId, round, slot);
+      await edit(
+        `Reverted: the round ${round} match is undecided again, and everything that followed from it was cleared. ${origin}/events/${eventId}/bracket`,
+      );
     } else if (customId.startsWith('t:win:')) {
       const eventId = Number(customId.slice('t:win:'.length));
       const [round, slot, ...keyParts] = String(interaction.data!.values?.[0]).split(':');

@@ -145,12 +145,16 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
                               {clickable && (
                                 <form method="post" action={`/events/${event.id}/bracket-action`} class="inline-form">
                                   <input type="hidden" name="csrf" value={csrf} />
-                                  <input type="hidden" name="action" value="winner" />
+                                  <input type="hidden" name="action" value={won ? 'undo' : 'winner'} />
                                   <input type="hidden" name="round" value={match.round} />
                                   <input type="hidden" name="slot" value={match.slot} />
-                                  <input type="hidden" name="winner" value={key} />
-                                  <button class="bracket-win-btn" type="submit" title="Mark as winner">
-                                    {won ? '✓' : 'W'}
+                                  {!won && <input type="hidden" name="winner" value={key} />}
+                                  <button
+                                    class="bracket-win-btn"
+                                    type="submit"
+                                    title={won ? 'Undo this result' : 'Mark as winner'}
+                                  >
+                                    {won ? '↺' : 'W'}
                                   </button>
                                 </form>
                               )}
@@ -179,7 +183,8 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         <section class="admin-panel">
           <h2>Admin</h2>
           <p class="event-meta">
-            Click W on a side to record the winner. Changing an earlier result
+            Click W on a side to record the winner, or ↺ on the recorded winner
+            to revert the result. Changing or reverting an earlier result
             clears everything that followed from it.
           </p>
           <form method="post" action={`/events/${event.id}/bracket-action`}>

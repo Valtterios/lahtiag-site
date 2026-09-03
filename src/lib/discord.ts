@@ -154,7 +154,15 @@ export function avatarUrl(discordId: string, avatarHash: string | null): string 
   if (avatarHash) {
     return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=64`;
   }
-  const index = Number(BigInt(discordId) >> 22n) % 6;
+  // Manually added participants have synthetic non-numeric ids ("manual-…"),
+  // where the snowflake math would throw; hash the string instead.
+  let index: number;
+  try {
+    index = Number(BigInt(discordId) >> 22n) % 6;
+  } catch {
+    index = 0;
+    for (const char of discordId) index = (index + char.charCodeAt(0)) % 6;
+  }
   return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
 }
 
