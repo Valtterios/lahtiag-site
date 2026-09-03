@@ -11,7 +11,9 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   const form = await request.formData();
   if (!(await checkCsrf(request, form))) return redirect('/announcements?err=csrf', 303);
 
-  const deleted = await deleteAnnouncement(env.DB, Number(form.get('id')));
+  const id = Number(form.get('id'));
+  if (!Number.isInteger(id)) return redirect('/announcements', 303);
+  const deleted = await deleteAnnouncement(env.DB, id);
   // Clean up the mirrored Discord message too; the reverse direction does
   // not exist (deleting on Discord never reaches the site).
   if (deleted?.discord_message_id && env.DISCORD_WEBHOOK_URL) {

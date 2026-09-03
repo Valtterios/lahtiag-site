@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  signSession,
-  verifySession,
+  sealSession,
+  openSession,
   readCookie,
   csrfMatches,
   type Session,
@@ -24,48 +24,48 @@ function sampleSession(overrides: Partial<Session> = {}): Session {
 
 describe('session cookie', () => {
   it('round-trips through sign and verify', async () => {
-    const token = await signSession(sampleSession(), SECRET);
-    const session = await verifySession(token, SECRET, NOW);
+    const token = await sealSession(sampleSession(), SECRET);
+    const session = await openSession(token, SECRET, NOW);
     expect(session).not.toBeNull();
     expect(session!.discordId).toBe('123456789');
     expect(session!.isAdmin).toBe(false);
   });
 
   it('rejects an expired session', async () => {
-    const token = await signSession(sampleSession({ expiresAt: NOW - 1 }), SECRET);
-    expect(await verifySession(token, SECRET, NOW)).toBeNull();
+    const token = await sealSession(sampleSession({ expiresAt: NOW - 1 }), SECRET);
+    expect(await openSession(token, SECRET, NOW)).toBeNull();
   });
 
   it('rejects exactly-at-expiry as expired', async () => {
-    const token = await signSession(sampleSession({ expiresAt: NOW }), SECRET);
-    expect(await verifySession(token, SECRET, NOW)).toBeNull();
+    const token = await sealSession(sampleSession({ expiresAt: NOW }), SECRET);
+    expect(await openSession(token, SECRET, NOW)).toBeNull();
   });
 
   it('rejects a tampered payload', async () => {
-    const token = await signSession(sampleSession(), SECRET);
+    const token = await sealSession(sampleSession(), SECRET);
     // Flip one character inside the payload half.
     const tampered = (token[0] === 'A' ? 'B' : 'A') + token.slice(1);
-    expect(await verifySession(tampered, SECRET, NOW)).toBeNull();
+    expect(await openSession(tampered, SECRET, NOW)).toBeNull();
   });
 
   it('rejects a tampered signature', async () => {
-    const token = await signSession(sampleSession(), SECRET);
+    const token = await sealSession(sampleSession(), SECRET);
     const tampered = token.slice(0, -1) + (token.endsWith('A') ? 'B' : 'A');
-    expect(await verifySession(tampered, SECRET, NOW)).toBeNull();
+    expect(await openSession(tampered, SECRET, NOW)).toBeNull();
   });
 
   it('rejects a token signed with a different secret', async () => {
-    const token = await signSession(sampleSession(), 'some-other-secret');
-    expect(await verifySession(token, SECRET, NOW)).toBeNull();
+    const token = await sealSession(sampleSession(), 'some-other-secret');
+    expect(await openSession(token, SECRET, NOW)).toBeNull();
   });
 
   it.each(['', 'no-dot', 'a.b', '..', '%%%.%%%'])('rejects malformed input %j', async (bad) => {
-    expect(await verifySession(bad, SECRET, NOW)).toBeNull();
+    expect(await openSession(bad, SECRET, NOW)).toBeNull();
   });
 
   it('preserves the admin flag through the round-trip', async () => {
-    const token = await signSession(sampleSession({ isAdmin: true }), SECRET);
-    expect((await verifySession(token, SECRET, NOW))!.isAdmin).toBe(true);
+    const token = await sealSession(sampleSession({ isAdmin: true }), SECRET);
+    expect((await openSession(token, SECRET, NOW))!.isAdmin).toBe(true);
   });
 });
 

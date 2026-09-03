@@ -35,7 +35,9 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     if (action === 'create') {
       await createEventTeam(env.DB, id, String(form.get('name') ?? ''), session.discordId, now);
     } else if (action === 'join') {
-      await joinEventTeam(env.DB, id, Number(form.get('event_team_id')), session.discordId, now);
+      const teamId = Number(form.get('event_team_id'));
+      if (!Number.isInteger(teamId)) return redirect(`${back}?err=missing`, 303);
+      await joinEventTeam(env.DB, id, teamId, session.discordId, now);
     } else if (action === 'leave') {
       await leaveEventTeam(env.DB, id, session.discordId);
     } else {

@@ -66,6 +66,26 @@ export async function exchangeCode(
   return data.access_token ?? null;
 }
 
+// Best-effort revocation at logout: clearing the cookie signs the browser
+// out, but the Discord token sealed inside it would stay live at Discord
+// until it expires on its own.
+export async function revokeToken(
+  clientId: string,
+  clientSecret: string,
+  accessToken: string,
+): Promise<void> {
+  await fetch(`${API}/oauth2/token/revoke`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      token: accessToken,
+      token_type_hint: 'access_token',
+    }),
+  }).catch(() => {});
+}
+
 export interface DiscordUser {
   id: string;
   username: string;

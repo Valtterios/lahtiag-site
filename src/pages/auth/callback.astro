@@ -7,7 +7,7 @@ import {
   SESSION_COOKIE,
   CSRF_COOKIE,
   SESSION_TTL_SECONDS,
-  signSession,
+  sealSession,
   newCsrfToken,
 } from '../../lib/auth';
 import { upsertMember } from '../../lib/db';
@@ -78,7 +78,7 @@ sign: {
     now,
   );
 
-  const token = await signSession(
+  const token = await sealSession(
     {
       discordId: user.id,
       username,

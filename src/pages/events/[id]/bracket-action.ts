@@ -20,6 +20,11 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf`, 303);
 
   const action = String(form.get('action') ?? '');
+  const round = Number(form.get('round'));
+  const slot = Number(form.get('slot'));
+  if ((action === 'winner' || action === 'undo') && (!Number.isInteger(round) || !Number.isInteger(slot))) {
+    return redirect(`${back}?err=missing`, 303);
+  }
 
   try {
     if (action === 'generate' || action === 'regenerate') {
@@ -28,15 +33,9 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
       await deleteBracket(env.DB, id);
       return redirect(`/events/${id}`, 303);
     } else if (action === 'winner') {
-      await setBracketWinner(
-        env.DB,
-        id,
-        Number(form.get('round')),
-        Number(form.get('slot')),
-        String(form.get('winner') ?? ''),
-      );
+      await setBracketWinner(env.DB, id, round, slot, String(form.get('winner') ?? ''));
     } else if (action === 'undo') {
-      await clearBracketWinner(env.DB, id, Number(form.get('round')), Number(form.get('slot')));
+      await clearBracketWinner(env.DB, id, round, slot);
     } else {
       return redirect(`${back}?err=csrf`, 303);
     }

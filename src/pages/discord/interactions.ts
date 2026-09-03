@@ -26,6 +26,7 @@ import {
   RuleError,
 } from '../../lib/db';
 import { formatHelsinki, helsinkiToUnix } from '../../lib/time';
+import { DISCORD_GUILD_ID } from '../../lib/config';
 
 // The Discord bot: an HTTP Interactions endpoint inside the same Worker
 // (spec, Discord bot). No gateway, no second host, same database.
@@ -45,6 +46,7 @@ interface Interaction {
   type: number;
   application_id: string;
   token: string;
+  guild_id?: string;
   data?: {
     name?: string;
     options?: Option[];
@@ -87,10 +89,23 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   ) {
     return new Response('Bad signature.', { status: 401 });
   }
+  // A valid signature is replayable forever without a freshness bound.
+  if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) {
+    return new Response('Stale timestamp.', { status: 401 });
+  }
 
   const interaction = JSON.parse(body) as Interaction;
 
   if (interaction.type === 1) return json({ type: 1 }); // PING -> PONG
+
+  // Only the LahtiAG guild: an interaction Discord signed but that arrives
+  // from any other server (or a DM) is refused before any role check.
+  if (interaction.guild_id !== DISCORD_GUILD_ID) {
+    return json({
+      type: 4,
+      data: { content: 'This app only works inside the LahtiAG server.', flags: 64 },
+    });
+  }
 
   const isAdmin = hasAdminRole(interaction.member?.roles ?? [], env.ADMIN_ROLE_ID);
 
@@ -183,7 +198,7 @@ function categoryPanel(category: string): { content: string; components: unknown
             { type: 2, style: 2, label: 'Create event', custom_id: 't:create', emoji: { id: '1544775323722195184', name: 'lag_event' } },
             { type: 2, style: 2, label: 'Close signups', custom_id: 't:pick:close', emoji: { id: '1544775303543656448', name: 'lag_lock' } },
             { type: 2, style: 2, label: 'Reopen signups', custom_id: 't:pick:reopen', emoji: { id: '1544775287210774609', name: 'lag_unlock' } },
-            { type: 2, style: 4, label: 'Cancel event', custom_id: 't:pick:cancel', emoji: { id: '1544775875592196137', name: 'lag_cancel' } },
+            { type: 2, style: 2, label: 'Cancel event', custom_id: 't:pick:cancel', emoji: { id: '1544775875592196137', name: 'lag_cancel' } },
             back,
           ],
         },

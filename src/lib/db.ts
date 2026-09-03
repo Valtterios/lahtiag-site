@@ -156,6 +156,24 @@ export async function getEvent(db: D1Database, id: number): Promise<EventWithCou
   return db.prepare(`${EVENT_COUNTS} WHERE e.id = ?1`).bind(id).first<EventWithCounts>();
 }
 
+// Server-side length caps: the forms carry maxlength and Discord's modals
+// cap their fields, but neither binds a hand-crafted POST.
+function capLength(value: string | null, max: number, what: string): void {
+  if (value !== null && value.length > max) {
+    throw new RuleError('bad_input', `${what} is at most ${max} characters.`);
+  }
+}
+
+function checkEventText(input: {
+  title: string;
+  description: string | null;
+  organizers?: string | null;
+}): void {
+  capLength(input.title.trim(), 120, 'A title');
+  capLength(input.description, 2000, 'A description');
+  capLength(input.organizers ?? null, 120, 'The organizers line');
+}
+
 // Optional external link: http(s) only, nothing else renders as an href.
 function normalizeLink(raw: string | null | undefined): string | null {
   const trimmed = raw?.trim();
@@ -182,6 +200,7 @@ export async function createEvent(
   now: number,
 ): Promise<number> {
   if (!input.title.trim()) throw new RuleError('bad_input', 'An event needs a title.');
+  checkEventText(input);
   if (input.capacity !== null && (!Number.isInteger(input.capacity) || input.capacity < 1)) {
     throw new RuleError('bad_input', 'Capacity must be a positive whole number.');
   }
@@ -237,6 +256,7 @@ export async function updateEvent(
   if (!event) throw new RuleError('missing', `No event with id ${id}.`);
   if (event.cancelled_at !== null) throw new RuleError('cancelled', 'This event is cancelled.');
   if (!input.title.trim()) throw new RuleError('bad_input', 'An event needs a title.');
+  checkEventText(input);
   if (input.capacity !== null && (!Number.isInteger(input.capacity) || input.capacity < 1)) {
     throw new RuleError('bad_input', 'Capacity must be a positive whole number.');
   }
@@ -343,6 +363,7 @@ export async function setDisplayNote(
 ): Promise<void> {
   const event = await getEvent(db, eventId);
   if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  capLength(note, 200, 'A screen message');
   await db.prepare('UPDATE events SET display_note = ?2 WHERE id = ?1').bind(eventId, note).run();
 }
 
@@ -971,6 +992,8 @@ export async function createAnnouncement(
   if (!input.title.trim() || !input.body_md.trim()) {
     throw new RuleError('bad_input', 'An announcement needs a title and a body.');
   }
+  capLength(input.title.trim(), 120, 'A title');
+  capLength(input.body_md, 4000, 'An announcement body');
   const row = await db
     .prepare(
       `INSERT INTO announcements (title, body_md, published_at, author_id, source)

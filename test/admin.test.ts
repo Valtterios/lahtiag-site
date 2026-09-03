@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { signSession, sessionCookie, SESSION_TTL_SECONDS } from '../src/lib/auth';
+import { sealSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from '../src/lib/auth';
 import { requireAdmin } from '../src/lib/guard';
 import { hasAdminRole, type GuildMembership } from '../src/lib/discord';
 
@@ -14,7 +14,7 @@ const env = { SESSION_SECRET: SECRET, ADMIN_ROLE_ID: ADMIN_ROLE };
 
 async function requestWithSession(isAdmin: boolean): Promise<Request> {
   const now = Math.floor(Date.now() / 1000);
-  const token = await signSession(
+  const token = await sealSession(
     {
       discordId: '42',
       username: 'demoted',
@@ -25,9 +25,8 @@ async function requestWithSession(isAdmin: boolean): Promise<Request> {
     },
     SECRET,
   );
-  // sessionCookie() is a Set-Cookie value; its first pair is the cookie.
   return new Request('https://lahtiag.fi/events/new', {
-    headers: { cookie: sessionCookie(token).split(';')[0] },
+    headers: { cookie: `${SESSION_COOKIE}=${token}` },
   });
 }
 

@@ -11,7 +11,10 @@ function icsDate(unixSeconds: number): string {
 }
 
 function escapeText(text: string): string {
-  return text.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  // \r\n, bare \n AND bare \r all become literal \n: a lone carriage return
+  // slipping through would act as a line break in some parsers, letting a
+  // title inject extra iCal properties into subscribers' calendars.
+  return text.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r\n|\r|\n/g, '\\n');
 }
 
 export const GET: APIRoute = async ({ url }) => {

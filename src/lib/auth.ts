@@ -1,8 +1,11 @@
-// Stateless sessions (spec, Authentication): an HMAC-SHA256 signed cookie,
+// Stateless sessions (spec, Authentication): an AES-GCM encrypted cookie,
 // no server-side store. The payload carries the user's Discord access token
 // because admin writes must re-verify the role against Discord (the
 // demoted-admin case) and, with no session store and no bot token in the
 // design, the user's own token is the only credential available later.
+// Encrypted rather than sign-only so that token is unreadable to anyone who
+// obtains the cookie value without SESSION_SECRET; GCM's built-in auth tag
+// is the tamper check.
 
 export interface Session {
   discordId: string;
@@ -32,41 +35,49 @@ function b64urlDecode(text: string): Uint8Array | null {
   }
 }
 
-async function hmacKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign', 'verify'],
+// SESSION_SECRET is an arbitrary string; SHA-256 turns it into exactly the
+// 32 bytes AES-256 wants.
+async function sessionKey(secret: string): Promise<CryptoKey> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+  return crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, [
+    'encrypt',
+    'decrypt',
+  ]);
+}
+
+export async function sealSession(session: Session, secret: string): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    await sessionKey(secret),
+    new TextEncoder().encode(JSON.stringify(session)),
   );
+  return `${b64urlEncode(iv)}.${b64urlEncode(new Uint8Array(ciphertext))}`;
 }
 
-export async function signSession(session: Session, secret: string): Promise<string> {
-  const payload = new TextEncoder().encode(JSON.stringify(session));
-  const mac = await crypto.subtle.sign('HMAC', await hmacKey(secret), payload);
-  return `${b64urlEncode(payload)}.${b64urlEncode(new Uint8Array(mac))}`;
-}
-
-// Signature first, then expiry: a tampered token never gets its payload
-// parsed. Any malformed input returns null rather than throwing.
-export async function verifySession(
+// Authenticated decryption first, then expiry: a tampered token never gets
+// its payload parsed. Any malformed or foreign input (including cookies
+// from the pre-encryption format) returns null — signed out, not an error.
+export async function openSession(
   token: string,
   secret: string,
   now: number,
 ): Promise<Session | null> {
   const dot = token.indexOf('.');
   if (dot < 0) return null;
-  const payload = b64urlDecode(token.slice(0, dot));
-  const mac = b64urlDecode(token.slice(dot + 1));
-  if (!payload || !mac) return null;
-  const valid = await crypto.subtle.verify(
-    'HMAC',
-    await hmacKey(secret),
-    mac as unknown as ArrayBuffer,
-    payload as unknown as ArrayBuffer,
-  );
-  if (!valid) return null;
+  const iv = b64urlDecode(token.slice(0, dot));
+  const ciphertext = b64urlDecode(token.slice(dot + 1));
+  if (!iv || iv.length !== 12 || !ciphertext || ciphertext.length === 0) return null;
+  let payload: ArrayBuffer;
+  try {
+    payload = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv as unknown as ArrayBuffer },
+      await sessionKey(secret),
+      ciphertext as unknown as ArrayBuffer,
+    );
+  } catch {
+    return null;
+  }
   let session: Session;
   try {
     session = JSON.parse(new TextDecoder().decode(payload)) as Session;
@@ -95,11 +106,7 @@ export async function sessionFromRequest(
   if (!secret) return null;
   const token = readCookie(request.headers.get('cookie'), SESSION_COOKIE);
   if (!token) return null;
-  return verifySession(token, secret, now);
-}
-
-export function sessionCookie(token: string): string {
-  return `${SESSION_COOKIE}=${token}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; Secure; SameSite=Lax`;
+  return openSession(token, secret, now);
 }
 
 export function clearSessionCookie(): string {
