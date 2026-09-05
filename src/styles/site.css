@@ -2754,6 +2754,9 @@ details.admin-panel[open] > summary {
 @media (min-width: 900px) {
   .event-layout {
     grid-template-columns: minmax(0, 1fr) 24rem;
+    /* The side column spans three rows; any spare height goes to the
+       body row, so the body starts right under the header. */
+    grid-template-rows: auto auto 1fr auto;
     grid-template-areas:
       'head side'
       'view side'
