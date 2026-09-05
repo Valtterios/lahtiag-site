@@ -2,7 +2,8 @@
 import { env } from 'cloudflare:workers';
 import Base from '../../../layouts/Base.astro';
 import SessionBox from '../../../components/SessionBox.astro';
-import { currentSession, ensureCsrf } from '../../../lib/guard';
+import { currentSession, ensureCsrf, viewAs } from '../../../lib/guard';
+import ViewAs from '../../../components/ViewAs.astro';
 import {
   getEvent,
   listSignups,
@@ -33,7 +34,8 @@ if (!event) {
   Astro.response.status = 404;
 }
 
-const session = await currentSession(Astro.request, env);
+const view = viewAs(await currentSession(Astro.request, env), Astro.url);
+const session = view.session;
 const csrf = ensureCsrf(Astro.cookies);
 
 
@@ -95,6 +97,8 @@ const isFull = !isTeamEvent
 const signupsClosed = event?.signups_closed_at != null;
 const open = event ? event.cancelled_at === null && !signupsClosed : false;
 
+// Flashes from board actions open the (otherwise folded) board tools.
+const ADMIN_OPEN = new Set(['type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down']);
 const FLASH: Record<string, string> = {
   full: 'This event is full.',
   team_full: 'That team is already full.',
@@ -187,6 +191,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
         </p>
       </article>
 
+      <ViewAs mode={view.mode} path={`/events/${event.id}`} />
       <SessionBox session={session} csrf={csrf} />
       {flash && <p class="flash">{flash}</p>}
 
@@ -494,7 +499,8 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
       )}
 
       {session?.isAdmin && (
-        <section class="admin-panel">
+        <details class="admin-panel" open={ADMIN_OPEN.has(Astro.url.searchParams.get('ok') ?? '') || ADMIN_OPEN.has(Astro.url.searchParams.get('err') ?? '')}>
+          <summary>Board tools · sales, roster, questions, settings</summary>
           <h2>Admin</h2>
           {event.cancelled_at !== null && (
             <form method="post" action={`/events/${event.id}/cancel`} class="signup-bar">
@@ -711,7 +717,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               <button class="btn btn-danger" type="submit" data-confirm="Delete this event for good, with its signups, teams, bracket and tickets? This cannot be undone.">Delete this event permanently</button>
             </form>
           </details>
-        </section>
+        </details>
       )}
     </>
   )}

@@ -2,14 +2,16 @@
 import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
 import SessionBox from '../../components/SessionBox.astro';
-import { currentSession, ensureCsrf } from '../../lib/guard';
+import { currentSession, ensureCsrf, viewAs } from '../../lib/guard';
+import ViewAs from '../../components/ViewAs.astro';
 import { listUpcomingEvents, listPastEvents } from '../../lib/db';
 import { formatHelsinki, formatHelsinkiRange } from '../../lib/time';
 
 // Server-rendered: the events list lives in D1. The Phase 1 Markdown page
 // of event stories moved to /history when this route took the path over.
 
-const session = await currentSession(Astro.request, env);
+const view = viewAs(await currentSession(Astro.request, env), Astro.url);
+const session = view.session;
 const csrf = ensureCsrf(Astro.cookies);
 const now = Math.floor(Date.now() / 1000);
 
@@ -35,6 +37,7 @@ const flash =
   <article class="prose">
     <h1>Events</h1>
   </article>
+  <ViewAs mode={view.mode} path="/events" />
   <SessionBox session={session} csrf={csrf} />
   {flash && <p class="flash">{flash}</p>}
 
@@ -105,7 +108,8 @@ const flash =
   </p>
 
   {session?.isAdmin && (
-    <section class="admin-panel">
+    <details class="admin-panel" open={Boolean(Astro.url.searchParams.get('ok') || Astro.url.searchParams.get('err'))}>
+      <summary>Board tools · member check, new event</summary>
       <h2>At the door</h2>
       <p class="event-meta">
         Is someone a member? The member check shows names and status only; the full register is
@@ -158,6 +162,6 @@ const flash =
           <button class="btn btn-danger" type="submit" data-confirm="Remove this member from every event, signup and team? This cannot be undone.">Remove everywhere</button>
         </form>
       </details>
-    </section>
+    </details>
   )}
 </Base>

@@ -21,6 +21,19 @@ export async function currentSession(
   return sessionFromRequest(request, env.SESSION_SECRET);
 }
 
+// "View as": a board member may look at a page the way a member or a
+// visitor sees it (?view=member, ?view=visitor). Rendering only; the
+// routes behind the forms still check the real session.
+export type ViewMode = 'board' | 'member' | 'visitor';
+
+export function viewAs(session: Session | null, url: URL): { session: Session | null; mode: ViewMode | null } {
+  if (!session?.isAdmin) return { session, mode: null };
+  const wanted = url.searchParams.get('view');
+  if (wanted === 'visitor') return { session: null, mode: 'visitor' };
+  if (wanted === 'member') return { session: { ...session, isAdmin: false }, mode: 'member' };
+  return { session, mode: 'board' };
+}
+
 export async function checkCsrf(request: Request, form: FormData): Promise<boolean> {
   const cookie = readCookie(request.headers.get('cookie'), CSRF_COOKIE);
   const field = form.get('csrf');

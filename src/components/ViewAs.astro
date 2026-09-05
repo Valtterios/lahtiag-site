@@ -1,0 +1,25 @@
+---
+// For board members: see a page as a member or a visitor would, so what
+// goes on a projector or a phone at the door is the plain view. Only the
+// rendering changes; forms still act with the real account.
+import type { ViewMode } from '../lib/guard';
+
+interface Props {
+  mode: ViewMode | null;
+  path: string;
+}
+const { mode, path } = Astro.props;
+---
+{mode && (
+  <p class="view-as">
+    {mode === 'board' ? (
+      <>
+        <strong>Board view.</strong> See this page as a <a href={`${path}?view=member`}>member</a> or a <a href={`${path}?view=visitor`}>visitor</a>.
+      </>
+    ) : (
+      <>
+        <strong>Viewing as a {mode}.</strong> Board tools are hidden. <a href={path}>Back to the board view</a>.
+      </>
+    )}
+  </p>
+)}

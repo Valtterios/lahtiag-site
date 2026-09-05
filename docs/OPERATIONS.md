@@ -265,6 +265,13 @@ version:
   forming a team. Answers show on the admin roster, on the door page, in
   the tickets CSV and in "Export roster with answers". People can edit
   their own answers while signups are open.
+- **Board tools fold away**: on the events list, an event page, the news
+  page and the shop, the board panel (sales, roster, answers, settings)
+  is a closed "Board tools" block until clicked, so a page on a projector
+  or a phone at the door shows nothing more than a member sees. It opens
+  by itself after a board action. **View as**: the small bar at the top of
+  those pages lets a board member see the page as a member or a visitor
+  (`?view=member`, `?view=visitor`); forms still act as the real account.
 - **Basket and checkout**: event pages and the shop only *add to the
   basket* (a cookie, nothing held yet). The checkout (`/checkout`, also
   "Basket (n)" in the header) prices everything for the person, asks a

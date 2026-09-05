@@ -3,11 +3,13 @@ import { env } from 'cloudflare:workers';
 import { Marked } from 'marked';
 import Base from '../../layouts/Base.astro';
 import SessionBox from '../../components/SessionBox.astro';
-import { currentSession, ensureCsrf } from '../../lib/guard';
+import { currentSession, ensureCsrf, viewAs } from '../../lib/guard';
+import ViewAs from '../../components/ViewAs.astro';
 import { listAnnouncements } from '../../lib/db';
 import { formatHelsinki } from '../../lib/time';
 
-const session = await currentSession(Astro.request, env);
+const view = viewAs(await currentSession(Astro.request, env), Astro.url);
+const session = view.session;
 const csrf = ensureCsrf(Astro.cookies);
 const announcements = await listAnnouncements(env.DB);
 
@@ -66,8 +68,10 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
     ))
   )}
 
+  <ViewAs mode={view.mode} path="/announcements" />
   {session?.isAdmin && (
-    <section class="admin-panel">
+    <details class="admin-panel" open={Boolean(Astro.url.searchParams.get('ok') || Astro.url.searchParams.get('err'))}>
+      <summary>Board tools · post an announcement</summary>
       <h2>Post an announcement</h2>
       <form method="post" action="/announcements/new" class="app-form">
         <input type="hidden" name="csrf" value={csrf} />
@@ -75,6 +79,6 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         <label>Body (Markdown) <textarea name="body" rows="6" required maxlength="4000"></textarea></label>
         <button class="btn btn-primary" type="submit">Publish</button>
       </form>
-    </section>
+    </details>
   )}
 </Base>

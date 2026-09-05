@@ -1,7 +1,8 @@
 ---
 import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
-import { currentSession, ensureCsrf } from '../../lib/guard';
+import { currentSession, ensureCsrf, viewAs } from '../../lib/guard';
+import ViewAs from '../../components/ViewAs.astro';
 import { listProducts, productOffer } from '../../lib/purchases';
 import { readBasket, basketCount } from '../../lib/basket';
 
@@ -9,7 +10,8 @@ import { readBasket, basketCount } from '../../lib/basket';
 // like), collected at an event or from the board. Board members manage
 // the products here too.
 
-const session = await currentSession(Astro.request, env);
+const view = viewAs(await currentSession(Astro.request, env), Astro.url);
+const session = view.session;
 const csrf = ensureCsrf(Astro.cookies);
 const now = Math.floor(Date.now() / 1000);
 const isAdmin = session?.isAdmin === true;
@@ -41,6 +43,7 @@ Astro.response.headers.set('cache-control', 'no-store');
     <h1>Shop</h1>
     <p>Things from the association, paid here and collected at an event or from the board. No shipping.</p>
   </article>
+  <ViewAs mode={view.mode} path="/shop" />
   {flash && <p class={`flash${okKey ? ' flash-good' : ''}`}>{flash}</p>}
   {count > 0 && (
     <p class="basket-bar"><strong>{count} in your basket.</strong> <a class="btn btn-primary btn-sm" href="/checkout">Go to checkout</a></p>
@@ -89,7 +92,8 @@ Astro.response.headers.set('cache-control', 'no-store');
   </p>
 
   {isAdmin && (
-    <section class="admin-panel">
+    <details class="admin-panel" open={Boolean(editing || okKey === 'product_saved' || Astro.url.searchParams.get('err'))}>
+      <summary>Board tools · products, items to hand over</summary>
       <h2 class="section-label">Board: products</h2>
       <p class="queue-meta"><a href="/shop/orders">Items to hand over</a></p>
       {products.length > 0 && (
@@ -121,6 +125,6 @@ Astro.response.headers.set('cache-control', 'no-store');
           {editing && <a class="btn btn-ghost" href="/shop">Cancel</a>}
         </div>
       </form>
-    </section>
+    </details>
   )}
 </Base>

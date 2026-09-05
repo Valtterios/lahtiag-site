@@ -2670,3 +2670,36 @@ html.display-mode,
     letter-spacing: 0.05em;
   }
 }
+
+/* Board tools fold away by default: nothing on a projector or a phone at
+   the door shows sales or the roster unless opened. */
+details.admin-panel > summary {
+  cursor: pointer;
+  font-family: var(--display);
+  font-weight: 700;
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--blue);
+  list-style: none;
+}
+details.admin-panel > summary::-webkit-details-marker {
+  display: none;
+}
+details.admin-panel > summary::before {
+  content: '▸ ';
+}
+details.admin-panel[open] > summary::before {
+  content: '▾ ';
+}
+details.admin-panel[open] > summary {
+  margin-bottom: 0.8rem;
+}
+.view-as {
+  max-width: var(--prose-measure);
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+}
