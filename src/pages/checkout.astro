@@ -294,9 +294,18 @@ if (isPost && csrfOk && !adjust && lines.length > 0 && !problem) {
         }
       }
       const entry = session ? await getRegisterByDiscord(env.DB, session.discordId) : null;
+      // A guest has no account to find the purchase under later: the link
+      // rides along as a free line, so it lands on Stripe's page and on the
+      // emailed receipt.
+      const purchaseUrl = `${Astro.url.origin}/purchase/${created.purchase.id}`;
+      if (!session) stripeLines.push({ name: `Your tickets: ${purchaseUrl}`, amountCents: 0, quantity: 1 });
       const checkout = await createCheckoutSession(env.STRIPE_SECRET_KEY!, {
         lines: stripeLines,
-        description: ticketLines.length === 1 && ticketLines[0].quoted.kind === 'ticket' ? formatHelsinkiRange(ticketLines[0].quoted.event.starts_at, ticketLines[0].quoted.event.ends_at) : 'lahtiag.fi',
+        description: !session
+          ? `Your purchase: ${purchaseUrl}`
+          : ticketLines.length === 1 && ticketLines[0].quoted.kind === 'ticket'
+            ? formatHelsinkiRange(ticketLines[0].quoted.event.starts_at, ticketLines[0].quoted.event.ends_at)
+            : 'lahtiag.fi',
         successUrl: `${Astro.url.origin}/purchase/${created.purchase.id}?paid=1`,
         cancelUrl: `${Astro.url.origin}/checkout?err=cancelled_checkout`,
         clientReferenceId: created.purchase.id,
