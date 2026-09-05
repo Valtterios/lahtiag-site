@@ -11,8 +11,8 @@ contribute.
 
 ## Official association rules
 
-- [Lahti Association of Gaming LAG ry rules (in Finnish)](https://drive.google.com/file/d/1ENp_9-8FxYj1oEer_0FzrCS3RyxP7M0G/view)
-- [Lahti Association of Gaming LAG ry rules (English translation)](https://drive.google.com/file/d/114ysMdEVeYFEbmaQ2El7C2sYbFtoX931/view)
+- [Lahti Association of Gaming LAG ry rules (in Finnish)](/rules-fi.pdf)
+- [Lahti Association of Gaming LAG ry rules (English translation)](/rules-en.pdf)
 
 ## Privacy
 

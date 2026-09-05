@@ -210,13 +210,18 @@ gitignored (`*.csv`, `*.import.sql`); shred them afterwards.
 
 ## The privacy policy
 
-The association's general privacy policy is served by the site as
-`/privacy-policy.pdf` (file `public/privacy-policy.pdf`), linked from the
-Privacy and Rules pages. Its source text is
-`docs/privacy-policy-<date>.md`. To change it: edit the Markdown, regenerate
-the PDF (the maintainer's session notes describe the brand-styled render:
-pandoc to HTML, then headless Chromium `--print-to-pdf`), replace the file
-in `public/`, push. Keep the copy in the association's Drive in step.
+The association's documents are served by the site as PDFs in the brand
+style: `/privacy-policy.pdf`, `/rules-fi.pdf` (the registered Finnish
+rules) and `/rules-en.pdf` (the English translation), files in `public/`,
+linked from the Privacy and Rules pages. Their source text is Markdown in
+`docs/` (`privacy-policy-<date>.md`, `rules-fi.md`, `rules-en.md`). To
+change one: edit the Markdown (the rules only when the general meeting has
+changed them), render with
+
+    python3 scripts/brand-pdf.py docs/rules-fi.md public/rules-fi.pdf --meta "Säännöt · hyväksytty 23.10.2024"
+
+(needs pandoc and Chromium), push, and upload the same PDF as a new
+version of the copy in the association's Drive.
 
 ## Editing the site's pages
 
