@@ -2966,3 +2966,99 @@ details.admin-panel[open] > summary {
   object-fit: contain;
   background: var(--bg, #f4f4f2);
 }
+
+/* ---------- shop tiles: two per row, square pictures ---------- */
+.shop-grid {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  max-width: 44rem;
+}
+@media (max-width: 480px) {
+  .shop-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.shop-tile {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  clip-path: var(--cut);
+}
+.shop-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  background: var(--bg);
+}
+.shop-image-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.shop-image-empty img {
+  width: 40%;
+  height: auto;
+  opacity: 0.18;
+}
+.shop-tile-body {
+  padding: 0.8rem 1rem 0.2rem;
+  flex: 1 0 auto;
+}
+.shop-tile-body p {
+  margin: 0 0 0.3rem;
+}
+.shop-tile .basket-add {
+  padding: 0.4rem 1rem 1rem;
+}
+.admin-product {
+  flex-direction: column;
+  align-items: stretch;
+}
+.admin-product-main {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+}
+.admin-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  flex: none;
+  border: 1px solid var(--line);
+}
+.admin-product-tools {
+  margin: 0.6rem 0 0;
+  align-items: center;
+}
+.admin-product-tools input[type='file'] {
+  font-size: 0.85rem;
+  max-width: 14rem;
+}
+.checkout-item {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.daily-mark {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  max-width: 44rem;
+  margin: 0 0 0.8rem;
+  padding: 0.7rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--blue);
+  font-size: 0.9rem;
+}
+.daily-mark-icon {
+  font-size: 2rem;
+  line-height: 1;
+}

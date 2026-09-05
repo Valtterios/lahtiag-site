@@ -7,6 +7,7 @@ import { getEvent, listEventTickets, listTicketTypes, listUnattachedDoorPayments
 import { qrSvg } from '../../../lib/qr';
 import { stripeConfigured } from '../../../lib/stripe';
 import { formatHelsinkiRange, formatHelsinki } from '../../../lib/time';
+import { dailyMark } from '../../../lib/stamp';
 
 // The door of a ticketed event, on a phone: scan a ticket's QR (or type
 // its code), see who is in, sell by QR to the buyer's own phone, and
@@ -57,6 +58,7 @@ const okKey = Astro.url.searchParams.get('ok');
 const errKey = Astro.url.searchParams.get('err');
 const flash = FLASH[okKey ?? errKey ?? ''] ?? null;
 const flashName = Astro.url.searchParams.get('who');
+const mark = allowed && env.SESSION_SECRET ? await dailyMark(env.SESSION_SECRET, Math.floor(Date.now() / 1000)) : null;
 Astro.response.headers.set('cache-control', 'no-store');
 ---
 <Base title={event ? `Door: ${event.title}` : 'Door'} description="Board-only door page." wide>
@@ -76,6 +78,7 @@ Astro.response.headers.set('cache-control', 'no-store');
         <p class="hero-eyebrow"><a href={`/events/${event.id}`}>{event.title}</a></p>
         <h1>The door</h1>
         <p class="queue-meta">{formatHelsinkiRange(event.starts_at, event.ends_at)} · {sales!.checked_in} of {sales!.tickets} tickets in · {(sales!.revenue_cents / 100).toFixed(2)} € sold</p>
+        {mark && <p class="queue-meta">Shop pick-ups: today's mark is {mark.icon} <strong>{mark.name}</strong>. <a href="/shop/orders">Items to hand over</a></p>}
       </article>
       {flash && <p class={`flash${okKey === 'in' ? ' flash-good' : ''}`}>{flash}{flashName && <> <strong>{flashName}</strong></>}</p>}
 

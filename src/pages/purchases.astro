@@ -1,0 +1,63 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../layouts/Base.astro';
+import { currentSession } from '../lib/guard';
+import { listMyPurchases, purchaseTickets, purchaseItems, resumablePurchase, type PurchaseRow, type PurchaseItemRow } from '../lib/purchases';
+import type { TicketWithType } from '../lib/db';
+import { formatHelsinki } from '../lib/time';
+
+// The signed-in person's purchases, newest first: what was bought, what
+// it cost, and where it stands. Tickets themselves live under My tickets.
+
+const session = await currentSession(Astro.request, env);
+const now = Math.floor(Date.now() / 1000);
+const purchases: PurchaseRow[] = session ? await listMyPurchases(env.DB, session.discordId) : [];
+const contents = new Map<string, { tickets: TicketWithType[]; items: PurchaseItemRow[] }>();
+for (const p of purchases) {
+  contents.set(p.id, { tickets: await purchaseTickets(env.DB, p.id), items: await purchaseItems(env.DB, p.id) });
+}
+const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
+const STATUS: Record<PurchaseRow['status'], string> = { pending: 'Not paid', paid: 'Paid', refunded: 'Refunded', void: 'Cancelled' };
+---
+<Base title="My purchases" description="What you have bought on lahtiag.fi.">
+  <article class="prose"><h1>My purchases</h1></article>
+  {!session ? (
+    <div class="paths">
+      <section class="path-card">
+        <h2>Sign in first</h2>
+        <p>Purchases belong to the Discord account that made them. Bought without Discord? The link shown after payment is the way back.</p>
+        <a class="btn btn-primary" href="/login?next=/purchases">Sign in with Discord</a>
+      </section>
+    </div>
+  ) : purchases.length === 0 ? (
+    <p class="app-empty">Nothing yet. Tickets are on the <a href="/events">events page</a> and other things in the <a href="/shop">shop</a>.</p>
+  ) : (
+    <ul class="ticket-list">
+      {purchases.map((p) => {
+        const c = contents.get(p.id)!;
+        const waiting = c.items.filter((i) => !i.delivered_at).length;
+        return (
+          <li class={`ticket-card${p.status === 'pending' ? ' ticket-pending' : ''}`}>
+            <div>
+              <p class="ticket-event">{formatHelsinki(p.created_at)} · {p.total_cents === 0 ? 'Free' : euro(p.total_cents)} · {STATUS[p.status]}</p>
+              {c.tickets.length > 0 && (
+                <p class="queue-meta">
+                  {c.tickets.length === 1 ? 'Ticket' : `${c.tickets.length} tickets`}: {c.tickets.map((t) => `${t.event_title} (${t.holder_name})`).join(', ')}
+                </p>
+              )}
+              {c.items.length > 0 && (
+                <p class="queue-meta">
+                  {c.items.map((i) => `${i.quantity} × ${i.name}`).join(', ')}
+                  {p.status === 'paid' && (waiting > 0 ? ` · ${waiting} to collect` : ' · collected')}
+                </p>
+              )}
+              {p.status === 'pending' && resumablePurchase(p, now) && <p class="queue-meta">Payment not finished.</p>}
+            </div>
+            <a class="btn btn-primary btn-sm" href={`/purchase/${p.id}`}>Open</a>
+          </li>
+        );
+      })}
+    </ul>
+  )}
+  <p class="queue-meta"><a href="/tickets">My tickets</a> shows each ticket with its QR code.</p>
+</Base>

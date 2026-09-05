@@ -2254,7 +2254,7 @@ export async function coverVersion(db: D1Database, eventId: number): Promise<num
 
 // D1 hands a BLOB back as an ArrayBuffer locally and as a plain array of
 // bytes over its JSON transport in production; both become one ArrayBuffer.
-function blobBytes(value: unknown): ArrayBuffer {
+export function blobBytes(value: unknown): ArrayBuffer {
   let view: Uint8Array;
   if (value instanceof ArrayBuffer) return value;
   else if (ArrayBuffer.isView(value)) view = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);

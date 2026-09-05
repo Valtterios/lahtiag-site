@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
 import { currentSession, ensureCsrf, viewAs } from '../../lib/guard';
 import ViewAs from '../../components/ViewAs.astro';
-import { listProducts, productOffer } from '../../lib/purchases';
+import { listProducts, productOffer, productImageVersions } from '../../lib/purchases';
 import { readBasket, basketCount } from '../../lib/basket';
 
 // The shop: the association's things for sale (overall patches and the
@@ -18,6 +18,7 @@ const isAdmin = session?.isAdmin === true;
 const products = await listProducts(env.DB, now, isAdmin);
 const offers = new Map<number, Awaited<ReturnType<typeof productOffer>>>();
 for (const p of products) offers.set(p.id, await productOffer(env.DB, p, session?.discordId ?? null));
+const images = await productImageVersions(env.DB, products.map((p) => p.id));
 const basket = readBasket(Astro.cookies);
 const inBasket = (id: number) => basket.find((l) => l.kind === 'item' && l.id === id)?.count ?? 0;
 const count = basketCount(basket);
@@ -28,6 +29,10 @@ const editing = isAdmin && Number.isInteger(editId) ? products.find((p) => p.id 
 const FLASH: Record<string, string> = {
   added: 'Added to your basket.',
   product_saved: 'Product saved.',
+  image_saved: 'Picture saved.',
+  image_removed: 'Picture removed.',
+  image_missing: 'Pick an image file first.',
+  image_bad: 'The picture must be a JPEG, PNG or WebP under 1.5 MB.',
   bad_input: "That didn't save. A name is 1 to 80 characters; prices are in euros, stock a whole number or empty.",
   missing: 'No such product.',
   forbidden: 'That needs the Board role in Discord.',
@@ -52,18 +57,25 @@ Astro.response.headers.set('cache-control', 'no-store');
   {products.filter((p) => p.active === 1).length === 0 ? (
     <p class="app-empty">Nothing for sale right now.</p>
   ) : (
-    <ul class="ticket-types shop-list">
+    <ul class="shop-grid">
       {products.filter((p) => p.active === 1).map((p) => {
         const offer = offers.get(p.id)!;
-        const left = p.stock === null ? null : Math.max(0, p.stock - p.sold);
+        const at = images.get(p.id);
         return (
-          <li class="ticket-type">
-            <div>
+          <li class="shop-tile">
+            {at !== undefined ? (
+              <img class="shop-image" src={`/shop/${p.id}/image?t=${at}`} alt="" loading="lazy" />
+            ) : (
+              <div class="shop-image shop-image-empty" aria-hidden="true"><img src="/brand/mark-blue.png" alt="" width="512" height="443" /></div>
+            )}
+            <div class="shop-tile-body">
               <p class="ticket-type-name">{p.name}</p>
               {p.description && <p class="queue-meta">{p.description}</p>}
-              <p class="queue-meta">
-                {p.member_price_cents !== null && p.member_price_cents !== p.price_cents ? `${euro(p.price_cents)}, members ${euro(p.member_price_cents)}` : p.price_cents === 0 ? 'Free' : euro(p.price_cents)}
-                {left !== null ? ` · ${left} left` : ''}
+              <p class="ticket-type-tags">
+                <span class="ticket-type-price">
+                  {p.member_price_cents !== null && p.member_price_cents !== p.price_cents ? `${euro(p.price_cents)} · members ${euro(p.member_price_cents)}` : p.price_cents === 0 ? 'Free' : euro(p.price_cents)}
+                </span>
+                {!offer.ok && <span class="status-badge status-muted">{offer.reason === 'sold_out' ? 'Sold out' : 'Not on sale'}</span>}
               </p>
             </div>
             {offer.ok ? (
@@ -79,9 +91,7 @@ Astro.response.headers.set('cache-control', 'no-store');
                 )}
                 <button class="btn btn-cta" type="submit">{inBasket(p.id) > 0 ? `In basket (${inBasket(p.id)}) · Add more` : 'Add to basket'}</button>
               </form>
-            ) : (
-              <span class="ticket-why">{offer.reason === 'sold_out' ? 'Sold out' : 'Not on sale'}</span>
-            )}
+            ) : null}
           </li>
         );
       })}
@@ -92,21 +102,33 @@ Astro.response.headers.set('cache-control', 'no-store');
   </p>
 
   {isAdmin && (
-    <details class="admin-panel" open={Boolean(editing || okKey === 'product_saved' || Astro.url.searchParams.get('err'))}>
+    <details class="admin-panel" open={Boolean(editing || (okKey && okKey !== 'added') || Astro.url.searchParams.get('err'))}>
       <summary>Board tools · products, items to hand over</summary>
       <h2 class="section-label">Board: products</h2>
       <p class="queue-meta"><a href="/shop/orders">Items to hand over</a></p>
       {products.length > 0 && (
         <ul class="ticket-types">
           {products.map((p) => (
-            <li class="ticket-type">
-              <div>
-                <p class="ticket-type-name">{p.name}{p.active !== 1 && ' · hidden'}</p>
-                <p class="queue-meta">{euro(p.price_cents)}{p.member_price_cents !== null ? ` / members ${euro(p.member_price_cents)}` : ''} · {p.sold} sold{p.stock !== null ? ` · stock ${p.stock}` : ''}</p>
+            <li class="ticket-type admin-product">
+              <div class="admin-product-main">
+                {images.has(p.id) && <img class="admin-thumb" src={`/shop/${p.id}/image?t=${images.get(p.id)}`} alt="" />}
+                <div>
+                  <p class="ticket-type-name">{p.name}{p.active !== 1 && ' · hidden'}</p>
+                  <p class="queue-meta">{euro(p.price_cents)}{p.member_price_cents !== null ? ` / members ${euro(p.member_price_cents)}` : ''} · {p.sold} sold{p.stock !== null ? ` · stock ${p.stock}` : ''}</p>
+                </div>
               </div>
-              <a class="btn btn-ghost btn-sm" href={`/shop?edit=${p.id}#product-form`}>Edit</a>
+              <div class="entry-actions admin-product-tools">
+                <a class="btn btn-ghost btn-sm" href={`/shop?edit=${p.id}#product-form`}>Edit</a>
+                <form method="post" action={`/shop/${p.id}/image`} enctype="multipart/form-data" class="basket-add">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="file" name="image" accept="image/jpeg,image/png,image/webp" aria-label={`Picture for ${p.name}`} />
+                  <button class="btn btn-ghost btn-sm" type="submit">{images.has(p.id) ? 'Replace picture' : 'Add picture'}</button>
+                  {images.has(p.id) && <button class="btn btn-ghost btn-sm" name="action" value="remove" type="submit" formnovalidate data-confirm="Remove the picture?">Remove</button>}
+                </form>
+              </div>
             </li>
           ))}
+          <li class="queue-meta">Pictures: JPEG, PNG or WebP up to 1.5 MB, shown as a square, so a square photo is best.</li>
         </ul>
       )}
       <form method="post" action="/shop/products" class="app-form" id="product-form">

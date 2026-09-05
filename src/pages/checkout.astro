@@ -26,6 +26,7 @@ import {
   pendingPurchaseFor,
   resumablePurchase,
   MAX_PER_PURCHASE,
+  productImageVersions,
   type ProductWithSales,
   type QuotedLine,
   type PurchaseLine,
@@ -214,6 +215,7 @@ if (kept.length !== basket.length || kept.some((k, n) => k.count !== basket[n]?.
   writeBasket(Astro.cookies, basket);
 }
 const ticketLines = lines.filter((l) => l.quoted.kind === 'ticket');
+const thumbs = await productImageVersions(env.DB, lines.flatMap((l) => (l.quoted.kind === 'item' ? [l.quoted.product.id] : [])));
 const total = lines.reduce((sum, l) => sum + l.quoted.subtotal_cents, 0);
 let buyerName = String(form.get('buyer_name') ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
 const needsBuyerName = !session && ticketLines.length === 0 && lines.length > 0;
@@ -387,9 +389,12 @@ Astro.response.headers.set('cache-control', 'no-store');
         line.quoted.kind === 'item' ? (
           <section class="checkout-line">
             <div class="checkout-head">
-              <div>
+              <div class="checkout-item">
+                {thumbs.has(line.quoted.product.id) && <img class="admin-thumb" src={`/shop/${line.quoted.product.id}/image?t=${thumbs.get(line.quoted.product.id)}`} alt="" />}
+                <div>
                 <p class="ticket-type-name">{line.quoted.product.name}</p>
-                <p class="queue-meta">{euro(line.quoted.unit_cents)} each{line.quoted.max < 99 && line.quoted.product.stock !== null ? ` · ${line.quoted.max} left` : ''}</p>
+                <p class="queue-meta">{euro(line.quoted.unit_cents)} each</p>
+                </div>
               </div>
               <p class="checkout-sub">{euro(line.quoted.subtotal_cents)}</p>
             </div>

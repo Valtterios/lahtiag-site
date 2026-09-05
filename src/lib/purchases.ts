@@ -5,6 +5,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { newTicketCode } from './qr';
+import { imageSize } from './images';
 import {
   RuleError,
   PENDING_TICKET_SECONDS,
@@ -17,6 +18,9 @@ import {
   refundTicket,
   isCurrentMember,
   listTicketsByPurchase,
+  blobBytes,
+  COVER_TYPES,
+  COVER_MAX_BYTES,
   type EventRow,
   type TicketTypeWithSales,
   type TicketRow,
@@ -143,6 +147,60 @@ export async function productOffer(
   const member = discordId ? await isCurrentMember(db, discordId) : false;
   const unit = member && product.member_price_cents !== null ? product.member_price_cents : product.price_cents;
   return { ok: true, unit_cents: unit, member, max: Math.min(left, MAX_ITEM_QUANTITY) };
+}
+
+// --- product images ----------------------------------------------------------------
+
+export interface ProductImageInfo {
+  updated_at: number;
+  width: number;
+  height: number;
+}
+
+export async function productImageInfo(db: D1Database, productId: number): Promise<ProductImageInfo | null> {
+  return db.prepare('SELECT updated_at, width, height FROM product_images WHERE product_id = ?1').bind(productId).first<ProductImageInfo>();
+}
+
+// Versions for a whole list at once (the shop page, the checkout).
+export async function productImageVersions(db: D1Database, ids: number[]): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  if (ids.length === 0) return out;
+  const { results } = await db
+    .prepare(`SELECT product_id, updated_at FROM product_images WHERE product_id IN (${ids.map((_, i) => `?${i + 1}`).join(',')})`)
+    .bind(...ids)
+    .all<{ product_id: number; updated_at: number }>();
+  for (const row of results) out.set(row.product_id, row.updated_at);
+  return out;
+}
+
+export async function getProductImage(db: D1Database, productId: number): Promise<{ content_type: string; bytes: ArrayBuffer; updated_at: number } | null> {
+  const row = await db
+    .prepare('SELECT content_type, bytes, updated_at FROM product_images WHERE product_id = ?1')
+    .bind(productId)
+    .first<{ content_type: string; bytes: unknown; updated_at: number }>();
+  return row ? { content_type: row.content_type, bytes: blobBytes(row.bytes), updated_at: row.updated_at } : null;
+}
+
+export async function setProductImage(db: D1Database, productId: number, contentType: string, bytes: ArrayBuffer, now: number): Promise<void> {
+  if (!(COVER_TYPES as readonly string[]).includes(contentType)) throw new RuleError('bad_input', 'JPEG, PNG or WebP only.');
+  if (bytes.byteLength === 0 || bytes.byteLength > COVER_MAX_BYTES) throw new RuleError('bad_input', 'The image is empty or over 1.5 MB.');
+  const size = imageSize(bytes);
+  if (!size || size.width < 1 || size.height < 1) throw new RuleError('bad_input', 'That file is not a readable image.');
+  const product = await db.prepare('SELECT id FROM products WHERE id = ?1').bind(productId).first();
+  if (!product) throw new RuleError('missing', `No product with id ${productId}.`);
+  await db
+    .prepare(
+      `INSERT INTO product_images (product_id, content_type, bytes, size, width, height, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+       ON CONFLICT (product_id) DO UPDATE SET content_type = excluded.content_type, bytes = excluded.bytes, size = excluded.size,
+         width = excluded.width, height = excluded.height, updated_at = excluded.updated_at`,
+    )
+    .bind(productId, contentType, bytes, bytes.byteLength, size.width, size.height, now)
+    .run();
+}
+
+export async function deleteProductImage(db: D1Database, productId: number): Promise<boolean> {
+  const result = await db.prepare('DELETE FROM product_images WHERE product_id = ?1').bind(productId).run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
 // --- what a purchase of tickets may contain --------------------------------------

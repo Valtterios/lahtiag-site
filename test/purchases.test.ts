@@ -44,10 +44,16 @@ import {
   markItemDelivered,
   listMyItems,
   MAX_PER_PURCHASE,
+  setProductImage,
+  getProductImage,
+  productImageInfo,
+  productImageVersions,
+  deleteProductImage,
 } from '../src/lib/purchases';
 import { parseBasket, serializeBasket, withLine, basketCount, writeBasket } from '../src/lib/basket';
 import { parseAnswers } from '../src/lib/questions';
 import { imageSize } from '../src/lib/images';
+import { dailyMark, helsinkiDate } from '../src/lib/stamp';
 
 // Purchases (migration 0015): the basket, tickets for friends by name,
 // shop items, and what Stripe's verdict does to a whole purchase.
@@ -56,7 +62,7 @@ const NOW = 1_760_000_000;
 const db = () => env.DB;
 
 async function wipe(): Promise<void> {
-  for (const table of ['event_covers', 'purchase_items', 'purchases', 'products', 'signup_answers', 'event_questions', 'door_payments', 'tickets', 'ticket_types', 'signups', 'event_teams', 'events', 'register', 'members']) {
+  for (const table of ['product_images', 'event_covers', 'purchase_items', 'purchases', 'products', 'signup_answers', 'event_questions', 'door_payments', 'tickets', 'ticket_types', 'signups', 'event_teams', 'events', 'register', 'members']) {
     await db().prepare(`DELETE FROM ${table}`).run();
   }
 }
@@ -331,5 +337,37 @@ describe('image headers', () => {
     const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x58, 10, 0, 0, 0, 0, 0, 0, 0, 0xaf, 4, 0, 0x75, 2, 0]).buffer;
     expect(imageSize(webp)).toEqual({ width: 1200, height: 630 });
     expect(imageSize(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]).buffer)).toBeNull();
+  });
+});
+
+describe('product images', () => {
+  it('stores one picture per product with its size', async () => {
+    const id = await createProduct(db(), { name: 'Patch', description: '', price_cents: 500, member_price_cents: null, stock: null, active: true }, NOW);
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 3, 32, 0, 0, 3, 32, 8, 6, 0, 0, 0]).buffer;
+    await expect(setProductImage(db(), 999, 'image/png', png, NOW)).rejects.toMatchObject({ code: 'missing' });
+    await expect(setProductImage(db(), id, 'image/png', new Uint8Array([1, 2, 3]).buffer, NOW)).rejects.toMatchObject({ code: 'bad_input' });
+    await setProductImage(db(), id, 'image/png', png, NOW);
+    expect(await productImageInfo(db(), id)).toMatchObject({ width: 800, height: 800, updated_at: NOW });
+    expect(await productImageVersions(db(), [id, 999])).toEqual(new Map([[id, NOW]]));
+    expect(new Uint8Array((await getProductImage(db(), id))!.bytes)).toEqual(new Uint8Array(png));
+    expect(await deleteProductImage(db(), id)).toBe(true);
+    expect(await productImageInfo(db(), id)).toBeNull();
+  });
+});
+
+describe('the mark of the day', () => {
+  it('is the same all day in Helsinki and differs by secret', async () => {
+    const day = Date.UTC(2026, 8, 5, 10) / 1000; // 13:00 Helsinki
+    expect(helsinkiDate(day)).toBe('2026-09-05');
+    expect(helsinkiDate(Date.UTC(2026, 8, 5, 21, 30) / 1000)).toBe('2026-09-06'); // 00:30 the next day in Helsinki
+    const a = await dailyMark('secret-a', day);
+    expect(await dailyMark('secret-a', day + 3600 * 5)).toEqual(a);
+    expect(a.icon.length).toBeGreaterThan(0);
+    const days = new Set<string>();
+    for (let d = 0; d < 30; d++) days.add((await dailyMark('secret-a', day + d * 86400)).name);
+    expect(days.size).toBeGreaterThan(5);
+    const other = [];
+    for (let d = 0; d < 10; d++) other.push((await dailyMark('secret-b', day + d * 86400)).name === (await dailyMark('secret-a', day + d * 86400)).name);
+    expect(other.every(Boolean)).toBe(false);
   });
 });
