@@ -304,6 +304,17 @@ version:
   holder from the roster or set them to "maybe" (the roster says so);
   refund in Stripe instead, and the webhook removes them. Any signup that
   went missing earlier comes back the next time the event page loads.
+- **Card at the door (Tap to Pay)**: no code of ours; the **Stripe**
+  iPhone app takes the card. The board member signs in to the app with a
+  Stripe team login, chooses Collect payment, types the amount from the
+  door page's "Card at the door" line, and the buyer taps their card or
+  phone. Within seconds the payment appears on the door page under "Tap
+  payments to attach" (the webhook's `payment_intent.succeeded`); pick the
+  buyer's name and the ticket type (pre-picked when the amount matches a
+  price), and a paid, checked-in ticket is issued. First use of Tap to Pay
+  needs a recent iPhone and Apple's one-time terms in the app. Buyers with
+  their own phone are quicker served by the door page's sales QR (they pay
+  online with Apple Pay, MobilePay or a card).
 - **The door, without a scanner**: scanning a ticket's QR on the door
   page marks it used; a second scan is refused. Where nobody scans, the
   holder presses **Mark as used** on their ticket page in front of a board

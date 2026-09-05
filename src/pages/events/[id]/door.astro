@@ -112,10 +112,26 @@ Astro.response.headers.set('cache-control', 'no-store');
         </section>
       )}
 
+      {paymentsOn && types.some((t) => t.active === 1 && t.price_cents > 0) && (
+        <section class="door-tap">
+          <h2 class="section-label">Card at the door</h2>
+          <p class="queue-intro">
+            No phone to scan with? Open the <strong>Stripe</strong> app, choose <strong>Collect payment</strong>, type the amount and let them tap their card.
+            The payment shows up below within a few seconds; say who it was and which ticket, and they are in.
+            Amounts:{' '}
+            {types
+              .filter((t) => t.active === 1 && t.price_cents > 0)
+              .map((t) => `${t.name} ${(t.price_cents / 100).toFixed(2)} €${t.member_price_cents !== null ? ` (members ${(t.member_price_cents / 100).toFixed(2)} €)` : ''}`)
+              .join(' · ')}
+            . <a href={`/events/${event.id}/door`}>Refresh</a>
+          </p>
+        </section>
+      )}
+
       {payments.length > 0 && (
         <section class="queue">
           <h2 class="section-label">Tap payments to attach</h2>
-          <p class="queue-intro">Taken with Tap to Pay in the Stripe app. Say who paid and which ticket, and they get a ticket that's checked in.</p>
+          <p class="queue-intro">Taken with the Stripe app. Say who paid and which ticket, and they get a ticket that's checked in. The ticket type is pre-picked when the amount matches a price.</p>
           {payments.map((p) => (
             <div class="queue-card">
               <div class="queue-body">
@@ -127,7 +143,13 @@ Astro.response.headers.set('cache-control', 'no-store');
                 <input type="hidden" name="payment_intent" value={p.stripe_payment_intent} />
                 <input name="holder_name" placeholder="Name" required maxlength="60" aria-label="Name" />
                 <select name="ticket_type_id" aria-label="Ticket type">
-                  {types.filter((t) => t.active === 1).map((t) => <option value={t.id}>{t.name}</option>)}
+                  {types
+                    .filter((t) => t.active === 1)
+                    .map((t) => (
+                      <option value={t.id} selected={t.price_cents === p.amount_cents || t.member_price_cents === p.amount_cents}>
+                        {t.name} · {(t.price_cents / 100).toFixed(2)} €
+                      </option>
+                    ))}
                 </select>
                 <button class="btn btn-primary btn-sm" type="submit">Attach</button>
               </form>

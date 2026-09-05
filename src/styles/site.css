@@ -3279,3 +3279,8 @@ details.admin-panel[open] > summary {
   width: auto;
   max-width: none;
 }
+
+.door-tap {
+  margin: 0 0 1.5rem;
+  max-width: 44rem;
+}
