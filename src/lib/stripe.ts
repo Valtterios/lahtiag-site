@@ -58,7 +58,8 @@ export async function createCheckoutSession(
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
     client_reference_id: input.clientReferenceId,
-    expires_at: now + Math.max(1800, Math.min(input.expiresInSeconds ?? 1800, 86400)),
+    // Stripe demands at least 30 minutes ahead; a little margin covers clock skew.
+    expires_at: now + Math.max(1800 + 120, Math.min(input.expiresInSeconds ?? 1800, 86400)),
     customer_email: input.customerEmail,
     locale: 'auto',
     integration_identifier: INTEGRATION_IDENTIFIER,
@@ -86,10 +87,18 @@ export async function createCheckoutSession(
       },
       body: encode(params),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      // Stripe's error message says what is wrong (a missing key
+      // permission, a bad parameter); it goes to the Worker log, never to
+      // the visitor. Read with `npx wrangler tail`.
+      const text = await response.text().catch(() => '');
+      console.error(`stripe checkout session failed: ${response.status} ${text.slice(0, 500)}`);
+      return null;
+    }
     const session = (await response.json()) as { id?: string; url?: string };
     return session.id && session.url ? { id: session.id, url: session.url } : null;
-  } catch {
+  } catch (error) {
+    console.error(`stripe checkout session threw: ${String(error).slice(0, 300)}`);
     return null;
   }
 }
