@@ -177,9 +177,11 @@ describe('ticket offers', () => {
     const mt = (await getTicketType(db(), membersType))!;
     expect(await ticketOffer(db(), ev, mt, 'g', NOW)).toEqual({ ok: false, reason: 'members_only' });
     expect(await ticketOffer(db(), ev, mt, 'm', NOW)).toMatchObject({ ok: true, amount_cents: 500 });
-    // reserved seat: one guest seat, taken by a guest signup
+    // reserved seat: one guest seat, taken by a guest's paid ticket (a
+    // ticketed event takes no plain signups)
     await person('g2', false);
-    await setSignup(db(), id, 'g2', 'yes', NOW);
+    const std0 = (await listTicketTypes(db(), id)).find((t) => t.name === 'Standard')!;
+    await createTicket(db(), { event_id: id, ticket_type_id: std0.id, discord_id: 'g2', holder_name: 'G2', amount_cents: 1000, status: 'paid', source: 'online' }, NOW);
     expect(await ticketOffer(db(), ev, mt, 'g', NOW)).toEqual({ ok: false, reason: 'members_only' });
     const std = (await listTicketTypes(db(), id)).find((t) => t.name === 'Standard')!;
     expect(await ticketOffer(db(), ev, std, 'g', NOW)).toEqual({ ok: false, reason: 'reserved' });
@@ -272,5 +274,26 @@ describe('Stripe webhook signature', () => {
     expect(holderNameFromSession({ id: 'cs', object: 'checkout.session', custom_fields: [{ key: 'holder_name', text: { value: '  Aino V ' } }] })).toBe('Aino V');
     expect(holderNameFromSession({ id: 'cs', object: 'checkout.session', customer_details: { name: 'Card Name' } })).toBe('Card Name');
     expect(holderNameFromSession({ id: 'cs', object: 'checkout.session' })).toBeNull();
+  });
+});
+
+describe('ticketed team events', () => {
+  it('lets only paid ticket holders form or join teams, and keeps signups tied to tickets', async () => {
+    const id = await event({ capacity: 4, team_size: 2 });
+    await person('a', true);
+    await person('b', false);
+    const typeId = await createTicketType(db(), id, { name: 'Entry', price_cents: 500, member_price_cents: null, members_only: false, quantity: null, sales_close_at: null });
+    await expect(createEventTeam(db(), id, 'Alphas', 'a', NOW)).rejects.toMatchObject({ code: 'needs_ticket' });
+    await expect(setSignup(db(), id, 'b', 'yes', NOW)).rejects.toMatchObject({ code: 'needs_ticket' });
+    const ticket = await createTicket(db(), { event_id: id, ticket_type_id: typeId, discord_id: 'a', holder_name: 'A', amount_cents: 500, status: 'pending', source: 'online' }, NOW);
+    await expect(createEventTeam(db(), id, 'Alphas', 'a', NOW)).rejects.toMatchObject({ code: 'needs_ticket' });
+    await markTicketPaid(db(), ticket.id, 'pi_x', null, NOW);
+    await createEventTeam(db(), id, 'Alphas', 'a', NOW);
+    expect((await listSignups(db(), id)).map((s) => [s.discord_id, s.event_team_id !== null])).toEqual([['a', true]]);
+    // leaving a ticketed event is a refund, not a click
+    const { removeSignup } = await import('../src/lib/db');
+    await expect(removeSignup(db(), id, 'a')).rejects.toMatchObject({ code: 'needs_ticket' });
+    await refundTicket(db(), ticket.id);
+    expect(await listSignups(db(), id)).toEqual([]);
   });
 });

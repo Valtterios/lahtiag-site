@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import Base from '../../../layouts/Base.astro';
 import { currentSession, ensureCsrf, requireAdmin } from '../../../lib/guard';
 import { requireBoard } from '../../../lib/board';
-import { getEvent, listEventTickets, listTicketTypes, listUnattachedDoorPayments, salesSummary } from '../../../lib/db';
+import { getEvent, listEventTickets, listTicketTypes, listUnattachedDoorPayments, salesSummary, listEventQuestions, listAllAnswers } from '../../../lib/db';
 import { qrSvg } from '../../../lib/qr';
 import { stripeConfigured } from '../../../lib/stripe';
 import { formatHelsinkiRange, formatHelsinki } from '../../../lib/time';
@@ -24,14 +24,20 @@ const session = await currentSession(Astro.request, env);
 void session;
 
 const event = allowed && Number.isInteger(id) ? await getEvent(env.DB, id) : null;
-const [tickets, types, payments, sales] = event
+const [tickets, types, payments, sales, questions, answers] = event
   ? await Promise.all([
       listEventTickets(env.DB, event.id),
       listTicketTypes(env.DB, event.id),
       listUnattachedDoorPayments(env.DB, Math.floor(Date.now() / 1000) - 12 * 3600),
       salesSummary(env.DB, event.id),
+      listEventQuestions(env.DB, event.id),
+      listAllAnswers(env.DB, event.id),
     ])
-  : [[], [], [], null];
+  : [[], [], [], null, [], new Map()];
+const answersFor = (t: { discord_id: string | null; id: number }) =>
+  questions
+    .map((q) => ({ label: q.label, value: (t.discord_id ? answers.get(`u:${t.discord_id}`) : answers.get(`t:${t.id}`))?.get(q.id) ?? '' }))
+    .filter((a) => a.value !== '');
 const q = (Astro.url.searchParams.get('q') ?? '').trim().toLowerCase();
 const live = tickets.filter((t) => t.status === 'paid');
 const shown = q ? live.filter((t) => t.holder_name.toLowerCase().includes(q) || t.code.toLowerCase().includes(q)) : live;
@@ -85,6 +91,7 @@ Astro.response.headers.set('cache-control', 'no-store');
           <button class="btn btn-primary" type="submit">Check in</button>
           <button class="btn btn-ghost" type="button" id="door-scan-toggle" hidden>Scan with camera</button>
         </form>
+        <p class="queue-meta" id="door-scan-note" hidden></p>
       </section>
 
       {paymentsOn && types.some((t) => t.active === 1 && t.price_cents > 0) && (
@@ -140,6 +147,9 @@ Astro.response.headers.set('cache-control', 'no-store');
                 <div>
                   <p class="door-name">{t.holder_name}</p>
                   <p class="queue-meta">{t.type_name} · {t.code}{t.source === 'door' ? ' · door' : ''}{t.checked_in_at ? ` · in ${formatHelsinki(t.checked_in_at)}` : ''}</p>
+                  {answersFor(t).length > 0 && (
+                    <p class="queue-meta door-answers">{answersFor(t).map((a) => `${a.label}: ${a.value}`).join(' · ')}</p>
+                  )}
                 </div>
                 <form method="post" action={`/events/${event.id}/door/checkin`}>
                   <input type="hidden" name="csrf" value={csrf} />
@@ -202,6 +212,17 @@ Astro.response.headers.set('cache-control', 'no-store');
             stop();
             form.requestSubmit();
             return;
+          }
+          if (found) {
+            // Something else was scanned: most likely one of the sales QRs
+            // on this very page, which is for the buyer's phone, not this one.
+            const note = document.getElementById('door-scan-note');
+            if (note) {
+              note.hidden = false;
+              note.textContent = found.data.includes('/pay/')
+                ? "That's a sales QR: the buyer scans it with their own phone. Point the camera at a ticket instead."
+                : `Not a ticket QR (${found.data.slice(0, 40)}).`;
+            }
           }
         }
       }

@@ -6,8 +6,11 @@ import {
   joinEventTeam,
   leaveEventTeam,
   upsertMember,
+  listEventQuestions,
+  getAnswers,
   RuleError,
 } from '../../../lib/db';
+import { answersComplete } from '../../../lib/questions';
 
 // Tournament team actions: any signed-in member, no admin needed — forming
 // teams is the members' own business.
@@ -32,6 +35,14 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   );
 
   try {
+    // Joining or founding a team needs the required questions answered
+    // (the "Your details" form on the event page saves them).
+    if (action === 'create' || action === 'join') {
+      const questions = await listEventQuestions(env.DB, id);
+      if (!answersComplete(questions, await getAnswers(env.DB, id, { discordId: session.discordId }))) {
+        return redirect(`${back}?err=answers#details`, 303);
+      }
+    }
     if (action === 'create') {
       await createEventTeam(env.DB, id, String(form.get('name') ?? ''), session.discordId, now);
     } else if (action === 'join') {

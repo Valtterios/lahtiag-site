@@ -1,7 +1,8 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession } from '../../../lib/guard';
-import { getEvent, getTicketType, ticketOffer, createTicket, voidTicket, upsertMember, getRegisterByDiscord, RuleError } from '../../../lib/db';
+import { getEvent, getTicketType, ticketOffer, createTicket, voidTicket, upsertMember, getRegisterByDiscord, listEventQuestions, saveAnswers, RuleError } from '../../../lib/db';
+import { parseAnswers } from '../../../lib/questions';
 import { createCheckoutSession, stripeConfigured } from '../../../lib/stripe';
 import { formatHelsinkiRange } from '../../../lib/time';
 
@@ -30,6 +31,16 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
 
   const offer = await ticketOffer(env.DB, event, type, session.discordId, now);
   if (!offer.ok) return redirect(`${back}?err=${offer.reason}`, 303);
+
+  // The event's questions are answered on the site before anything is
+  // created, and kept per person: a voided checkout keeps them for the
+  // next attempt.
+  const questions = await listEventQuestions(env.DB, id);
+  if (questions.length > 0) {
+    const parsed = parseAnswers(questions, form);
+    if (!parsed.ok) return redirect(`${back}?err=answers#buy`, 303);
+    await saveAnswers(env.DB, id, { discordId: session.discordId }, parsed.answers, now);
+  }
 
   const holder = session.username;
   try {

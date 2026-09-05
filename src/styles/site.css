@@ -2508,3 +2508,46 @@ html.display-mode,
   border-bottom: none;
 }
 
+/* questions on events */
+.buy-form,
+.signup-with-questions {
+  max-width: 44rem;
+}
+
+.buy-form .ticket-types {
+  margin-bottom: 0.4rem;
+}
+
+.ticket-pick {
+  width: 100%;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.ticket-pick input[type='radio'] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--blue);
+}
+
+.signup-with-questions .btn {
+  margin-right: 0.5rem;
+}
+
+.participant-answers,
+.door-answers {
+  display: block;
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.type-row textarea {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 0.4rem 0.55rem;
+  width: 14rem;
+}
+

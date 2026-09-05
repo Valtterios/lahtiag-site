@@ -13,8 +13,12 @@ import {
   signupAccess,
   getTicketForHolder,
   salesSummary,
+  listEventQuestions,
+  getAnswers,
+  listAllAnswers,
   type TicketTypeWithSales,
 } from '../../../lib/db';
+import { questionOptions, answersComplete, QUESTION_KINDS } from '../../../lib/questions';
 import { stripeConfigured } from '../../../lib/stripe';
 import { formatHelsinkiRange, unixToHelsinkiInputs, formatHelsinki } from '../../../lib/time';
 
@@ -39,7 +43,9 @@ const hasBracket = event ? (await getBracket(env.DB, event.id)).length > 0 : fal
 // (members-only, reserved seats) applies to both paths.
 const types: TicketTypeWithSales[] = event ? await listTicketTypes(env.DB, event.id) : [];
 const activeTypes = types.filter((t) => t.active === 1);
-const ticketed = activeTypes.length > 0 && event?.team_size == null;
+// Team events sell tickets too: the paid ticket is the entry, and
+// forming a team needs one.
+const ticketed = activeTypes.length > 0;
 const offers = new Map<number, Awaited<ReturnType<typeof ticketOffer>>>();
 if (event && ticketed) {
   for (const t of activeTypes) offers.set(t.id, await ticketOffer(env.DB, event, t, session?.discordId ?? null, nowSeconds));
@@ -47,6 +53,19 @@ if (event && ticketed) {
 const myTicket = event && session ? await getTicketForHolder(env.DB, event.id, session.discordId) : null;
 const access = event && session ? await signupAccess(env.DB, event, session.discordId, true) : null;
 const sales = event && session?.isAdmin && types.length > 0 ? await salesSummary(env.DB, event.id) : null;
+const hasTicket = myTicket?.status === 'paid';
+
+// Questions the board asks on this event, and what the viewer answered.
+const questions = event ? await listEventQuestions(env.DB, event.id) : [];
+const myAnswers = event && session ? await getAnswers(env.DB, event.id, { discordId: session.discordId }) : new Map<number, string>();
+const answersOk = answersComplete(questions, myAnswers);
+const allAnswers = event && session?.isAdmin && questions.length > 0 ? await listAllAnswers(env.DB, event.id) : new Map<string, Map<number, string>>();
+const answerLine = (discordId: string) =>
+  questions
+    .map((q) => ({ label: q.label, value: allAnswers.get(`u:${discordId}`)?.get(q.id) ?? '' }))
+    .filter((a) => a.value !== '')
+    .map((a) => `${a.label}: ${a.value}`)
+    .join(' · ');
 const paymentsOn = stripeConfigured(env);
 const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
 const closeInputs = (t: TicketTypeWithSales) => (t.sales_close_at === null ? { date: '', time: '' } : unixToHelsinkiInputs(t.sales_close_at));
@@ -88,10 +107,14 @@ const FLASH: Record<string, string> = {
   payments_off: 'Card payments are not set up yet. Free tickets work; paid ones at the door.',
   stripe_down: "The payment page didn't open. Try again in a moment.",
   cancelled_checkout: 'Payment cancelled. Nothing was charged; the seat is released shortly.',
+  answers: 'Please answer the required questions.',
+  needs_ticket: 'This event needs a ticket first. Buy one above, then form or join a team.',
 };
 const OK: Record<string, string> = {
   type_saved: 'Ticket type saved.',
   type_deleted: 'Ticket type removed (or retired, if tickets were sold on it).',
+  question_saved: 'Questions saved.',
+  answers_saved: 'Your details are saved.',
 };
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
 ---
@@ -164,6 +187,53 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               </div>
               <a class="btn btn-primary" href={`/tickets/${myTicket.code}`}>{myTicket.status === 'paid' ? 'Show ticket' : 'Open ticket'}</a>
             </div>
+          ) : questions.length > 0 && session ? (
+            <form method="post" action={`/events/${event.id}/buy`} class="app-form buy-form">
+              <input type="hidden" name="csrf" value={csrf} />
+              <ul class="ticket-types">
+                {activeTypes.map((t, i) => {
+                  const offer = offers.get(t.id)!;
+                  const left = t.quantity === null ? null : Math.max(0, t.quantity - t.sold);
+                  return (
+                    <li class="ticket-type">
+                      <label class="check ticket-pick">
+                        <input type="radio" name="ticket_type_id" value={t.id} disabled={!offer.ok} checked={offer.ok && i === activeTypes.findIndex((x) => offers.get(x.id)!.ok)} />
+                        <span>
+                          <span class="ticket-type-name">{t.name}</span><br />
+                          <span class="queue-meta">
+                            {offer.ok ? (offer.amount_cents === 0 ? 'Free' : euro(offer.amount_cents)) : (FLASH[offer.reason] ?? offer.reason)}
+                            {left !== null ? ` · ${left} left` : ''}
+                          </span>
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+              {questions.map((q) => {
+                const value = myAnswers.get(q.id) ?? '';
+                return q.kind === 'checkbox' ? (
+                  <label class="check check-standalone">
+                    <input type="checkbox" name={`q${q.id}`} checked={value === 'yes'} /> <span>{q.label}{q.required ? ' *' : ''}</span>
+                  </label>
+                ) : q.kind === 'choice' ? (
+                  <label>
+                    {q.label}{q.required ? ' *' : ''}
+                    <select name={`q${q.id}`} required={q.required === 1}>
+                      <option value="" selected={value === ''}>Choose…</option>
+                      {questionOptions(q).map((o) => <option value={o} selected={value === o}>{o}</option>)}
+                    </select>
+                  </label>
+                ) : (
+                  <label>
+                    {q.label}{q.required ? ' *' : ''}
+                    <input name={`q${q.id}`} maxlength="300" value={value} required={q.required === 1} />
+                  </label>
+                );
+              })}
+              <button class="btn btn-cta" type="submit" disabled={!activeTypes.some((t) => offers.get(t.id)!.ok)}>Continue</button>
+              {!paymentsOn && activeTypes.some((t) => t.price_cents > 0) && <p class="queue-meta">Card payments aren't set up yet; paid tickets are sold at the door.</p>}
+            </form>
           ) : (
             <ul class="ticket-types">
               {activeTypes.map((t) => {
@@ -212,8 +282,30 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
       )}
 
       {!ticketed && !isTeamEvent && session && open && (!access || access.allowed) && (
-        <form method="post" action={`/events/${event.id}/signup`} class="signup-bar">
+        <form method="post" action={`/events/${event.id}/signup`} class={questions.length > 0 ? 'app-form signup-with-questions' : 'signup-bar'} id="signup">
           <input type="hidden" name="csrf" value={csrf} />
+          {questions.length > 0 && !mine && <p class="queue-meta">A couple of questions before you sign up:</p>}
+          {questions.length > 0 && !mine && questions.map((q) => {
+                const value = myAnswers.get(q.id) ?? '';
+                return q.kind === 'checkbox' ? (
+                  <label class="check check-standalone">
+                    <input type="checkbox" name={`q${q.id}`} checked={value === 'yes'} /> <span>{q.label}{q.required ? ' *' : ''}</span>
+                  </label>
+                ) : q.kind === 'choice' ? (
+                  <label>
+                    {q.label}{q.required ? ' *' : ''}
+                    <select name={`q${q.id}`} required={q.required === 1}>
+                      <option value="" selected={value === ''}>Choose…</option>
+                      {questionOptions(q).map((o) => <option value={o} selected={value === o}>{o}</option>)}
+                    </select>
+                  </label>
+                ) : (
+                  <label>
+                    {q.label}{q.required ? ' *' : ''}
+                    <input name={`q${q.id}`} maxlength="300" value={value} required={q.required === 1} />
+                  </label>
+                );
+              })}
           <button
             class={`btn ${mine?.status === 'yes' ? 'btn-primary' : 'btn-ghost'}`}
             name="status"
@@ -273,6 +365,42 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
         </section>
       )}
 
+      {questions.length > 0 && session && open && (mine || hasTicket || (isTeamEvent && !ticketed)) && (
+        <section class="self-panel" id="details">
+          <h2 class="section-label">Your details for this event</h2>
+          {isTeamEvent && !answersOk && <p class="flash">Answer the required questions before forming or joining a team.</p>}
+          <form method="post" action={`/events/${event.id}/answers`} class="app-form">
+            <input type="hidden" name="csrf" value={csrf} />
+            {questions.map((q) => {
+                const value = myAnswers.get(q.id) ?? '';
+                return q.kind === 'checkbox' ? (
+                  <label class="check check-standalone">
+                    <input type="checkbox" name={`q${q.id}`} checked={value === 'yes'} /> <span>{q.label}{q.required ? ' *' : ''}</span>
+                  </label>
+                ) : q.kind === 'choice' ? (
+                  <label>
+                    {q.label}{q.required ? ' *' : ''}
+                    <select name={`q${q.id}`} required={q.required === 1}>
+                      <option value="" selected={value === ''}>Choose…</option>
+                      {questionOptions(q).map((o) => <option value={o} selected={value === o}>{o}</option>)}
+                    </select>
+                  </label>
+                ) : (
+                  <label>
+                    {q.label}{q.required ? ' *' : ''}
+                    <input name={`q${q.id}`} maxlength="300" value={value} required={q.required === 1} />
+                  </label>
+                );
+              })}
+            <button class="btn btn-primary" type="submit">Save</button>
+          </form>
+        </section>
+      )}
+
+      {isTeamEvent && ticketed && session && open && !hasTicket && (
+        <p class="flash">Teams are formed by ticket holders: get your ticket above first.</p>
+      )}
+
       {isTeamEvent && (
         <section class="prose">
           <h2>Teams</h2>
@@ -305,7 +433,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                       ))
                     : members.map((m) => m.username).join(', ')}
                 </div>
-                {session && open && !inThisTeam && slotsLeft > 0 && (
+                {session && open && !inThisTeam && slotsLeft > 0 && (!ticketed || hasTicket) && (
                   <form method="post" action={`/events/${event.id}/team`} class="inline-form">
                     <input type="hidden" name="csrf" value={csrf} />
                     <input type="hidden" name="action" value="join" />
@@ -340,7 +468,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               : freeAgents.map((s) => s.username).join(', ')}</div>
           )}
 
-          {session && open && (
+          {session && open && (!ticketed || hasTicket) && (
             <div class="team-actions">
               {!isFull && (
                 <form method="post" action={`/events/${event.id}/team`} class="app-form app-form-row">
@@ -350,7 +478,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                   <button class="btn btn-primary" type="submit">Create a team</button>
                 </form>
               )}
-              <form method="post" action={`/events/${event.id}/signup`} class="signup-bar">
+              <form method="post" action={`/events/${event.id}/signup`} class="signup-bar" hidden={ticketed}>
                 <input type="hidden" name="csrf" value={csrf} />
                 {mine?.event_team_id == null && mine?.status === 'yes' ? (
                   <button class="btn btn-primary" type="button" disabled>
@@ -479,6 +607,46 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               <button class="btn btn-primary btn-sm" type="submit">Add ticket type</button>
             </form>
           </details>
+          <details class="admin-edit" id="questions" open={questions.length > 0}>
+            <summary>Questions</summary>
+            <p class="event-meta">
+              Asked when someone signs up or buys a ticket. Answers show on the roster below, on the
+              door page, and in the exports. Up to eight; a choice question lists its options one per line.
+            </p>
+            {questions.map((q) => (
+              <form method="post" action={`/events/${event.id}/questions`} class="type-row">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="action" value="update" />
+                <input type="hidden" name="question_id" value={q.id} />
+                <label>Question <input name="label" required maxlength="80" value={q.label} /></label>
+                <label>
+                  Type
+                  <select name="kind">
+                    {QUESTION_KINDS.map((k) => <option value={k} selected={q.kind === k}>{k}</option>)}
+                  </select>
+                </label>
+                <label>Options (one per line) <textarea name="options" rows="2">{q.options ?? ''}</textarea></label>
+                <label class="check"><input type="checkbox" name="required" checked={q.required === 1} /> required</label>
+                <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+                <button class="btn btn-ghost btn-sm" type="submit" name="action" value="delete">Remove</button>
+              </form>
+            ))}
+            <form method="post" action={`/events/${event.id}/questions`} class="type-row type-new">
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="action" value="create" />
+              <label>Question <input name="label" required maxlength="80" placeholder="In-game name" /></label>
+              <label>
+                Type
+                <select name="kind">
+                  {QUESTION_KINDS.map((k) => <option value={k}>{k}</option>)}
+                </select>
+              </label>
+              <label>Options (one per line) <textarea name="options" rows="2" placeholder="Only for choice"></textarea></label>
+              <label class="check"><input type="checkbox" name="required" /> required</label>
+              <button class="btn btn-primary btn-sm" type="submit">Add question</button>
+            </form>
+            {questions.length > 0 && <p><a class="btn btn-ghost btn-sm" href={`/events/${event.id}/roster.csv`}>Export roster with answers</a></p>}
+          </details>
           <details class="admin-edit">
             <summary>Manage participants</summary>
             <p class="event-meta">
@@ -494,7 +662,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                     <form method="post" action={`/events/${event.id}/edit-signup`} class="participant-row">
                       <input type="hidden" name="csrf" value={csrf} />
                       <input type="hidden" name="discord_id" value={s.discord_id} />
-                      <span class="participant-name">{s.username}</span>
+                      <span class="participant-name">{s.username}{questions.length > 0 && answerLine(s.discord_id) && <small class="participant-answers">{answerLine(s.discord_id)}</small>}</span>
                       <select name="status">
                         <option value="yes" selected={s.status === 'yes'}>Going</option>
                         <option value="maybe" selected={s.status === 'maybe'}>Maybe</option>

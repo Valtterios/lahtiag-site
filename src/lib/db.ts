@@ -6,6 +6,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { ApplicationInput, MemberType, RegisterStatus } from './register';
 import { deriveMemberType, searchKey } from './register';
 import { newTicketCode } from './qr';
+import { QUESTION_LIMITS, questionOptions, type EventQuestionRow, type QuestionKind } from './questions';
 
 export class RuleError extends Error {
   constructor(
@@ -27,7 +28,9 @@ export class RuleError extends Error {
       | 'has_ticket'
       | 'not_paid'
       | 'used'
-      | 'payments_off',
+      | 'payments_off'
+      | 'needs_ticket'
+      | 'answers',
     message: string,
   ) {
     super(message);
@@ -322,6 +325,8 @@ export async function cancelEvent(db: D1Database, id: number, now: number): Prom
 export async function deleteEvent(db: D1Database, id: number): Promise<EventRow> {
   const event = await getEvent(db, id);
   if (!event) throw new RuleError('missing', `No event with id ${id}.`);
+  await db.prepare('DELETE FROM signup_answers WHERE event_id = ?1').bind(id).run();
+  await db.prepare('DELETE FROM event_questions WHERE event_id = ?1').bind(id).run();
   await db.prepare('DELETE FROM door_payments WHERE ticket_id IN (SELECT id FROM tickets WHERE event_id = ?1)').bind(id).run();
   await db.prepare('DELETE FROM tickets WHERE event_id = ?1').bind(id).run();
   await db.prepare('DELETE FROM ticket_types WHERE event_id = ?1').bind(id).run();
@@ -356,6 +361,7 @@ export async function setSignup(
   if (event.cancelled_at !== null) throw new RuleError('cancelled', 'This event is cancelled.');
   if (event.signups_closed_at !== null) throw new RuleError('closed', 'Signups are closed.');
   await requireEligible(db, event, discordId, status === 'yes');
+  await requireTicketIfTicketed(db, eventId, discordId);
   if (status === 'yes' && event.capacity !== null && event.team_size === null) {
     const taken = await db
       .prepare(
@@ -379,6 +385,8 @@ export async function setSignup(
 export async function removeSignup(db: D1Database, eventId: number, discordId: string): Promise<void> {
   const event = await getEvent(db, eventId);
   if (event?.signups_closed_at != null) throw new RuleError('closed', 'Signups are closed.');
+  // A paid ticket is the signup; leaving means a refund, from the board.
+  if (await isTicketed(db, eventId)) throw new RuleError('needs_ticket', 'Ticket holders leave through a refund.');
   await db
     .prepare('DELETE FROM signups WHERE event_id = ?1 AND discord_id = ?2')
     .bind(eventId, discordId)
@@ -601,6 +609,7 @@ export async function createEventTeam(
 ): Promise<number> {
   const event = await requireOpenTeamEvent(db, eventId);
   await requireEligible(db, event, discordId, false);
+  await requireTicketIfTicketed(db, eventId, discordId);
   const trimmed = name.trim();
   if (!trimmed || trimmed.length > 40) {
     throw new RuleError('bad_input', 'A team name is 1 to 40 characters.');
@@ -639,6 +648,7 @@ export async function joinEventTeam(
 ): Promise<void> {
   const event = await requireOpenTeamEvent(db, eventId);
   await requireEligible(db, event, discordId, false);
+  await requireTicketIfTicketed(db, eventId, discordId);
   const team = await db
     .prepare('SELECT * FROM event_teams WHERE id = ?1 AND event_id = ?2')
     .bind(eventTeamId, eventId)
@@ -2352,5 +2362,155 @@ export async function getTicketForHolder(db: D1Database, eventId: number, discor
     .prepare(`${TICKET_SELECT} WHERE k.event_id = ?1 AND k.discord_id = ?2 AND k.status IN ('pending','paid') ORDER BY k.created_at DESC`)
     .bind(eventId, discordId)
     .first<TicketWithType>();
+}
+
+// --- ticketed events ---------------------------------------------------------------
+
+// An event with at least one ticket type on sale takes people through
+// tickets: the paid ticket is the signup, and team formation needs one.
+export async function isTicketed(db: D1Database, eventId: number): Promise<boolean> {
+  const row = await db
+    .prepare('SELECT 1 AS ok FROM ticket_types WHERE event_id = ?1 AND active = 1 LIMIT 1')
+    .bind(eventId)
+    .first();
+  return row !== null;
+}
+
+export async function hasPaidTicket(db: D1Database, eventId: number, discordId: string): Promise<boolean> {
+  const row = await db
+    .prepare("SELECT 1 AS ok FROM tickets WHERE event_id = ?1 AND discord_id = ?2 AND status = 'paid'")
+    .bind(eventId, discordId)
+    .first();
+  return row !== null;
+}
+
+async function requireTicketIfTicketed(db: D1Database, eventId: number, discordId: string): Promise<void> {
+  if (!(await isTicketed(db, eventId))) return;
+  if (!(await hasPaidTicket(db, eventId, discordId))) {
+    throw new RuleError('needs_ticket', 'This event needs a ticket first.');
+  }
+}
+
+// --- event questions and answers ----------------------------------------------
+
+export async function listEventQuestions(db: D1Database, eventId: number): Promise<EventQuestionRow[]> {
+  const { results } = await db
+    .prepare('SELECT * FROM event_questions WHERE event_id = ?1 ORDER BY sort, id')
+    .bind(eventId)
+    .all<EventQuestionRow>();
+  return results;
+}
+
+function checkQuestionInput(input: { label: string; kind: QuestionKind; options: string | null }): void {
+  const label = input.label.trim();
+  if (!label || label.length > QUESTION_LIMITS.label) throw new RuleError('bad_input', 'A question is 1 to 80 characters.');
+  if (input.kind === 'choice' && questionOptions({ options: input.options }).length < 2) {
+    throw new RuleError('bad_input', 'A choice question needs at least two options, one per line.');
+  }
+  if ((input.options ?? '').length > QUESTION_LIMITS.options) throw new RuleError('bad_input', 'Too many options.');
+}
+
+export async function createEventQuestion(
+  db: D1Database,
+  eventId: number,
+  input: { label: string; kind: QuestionKind; options: string | null; required: boolean },
+): Promise<number> {
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  checkQuestionInput(input);
+  const count = await db
+    .prepare('SELECT COUNT(*) AS n, COALESCE(MAX(sort), 0) AS s FROM event_questions WHERE event_id = ?1')
+    .bind(eventId)
+    .first<{ n: number; s: number }>();
+  if ((count?.n ?? 0) >= QUESTION_LIMITS.perEvent) throw new RuleError('bad_input', 'Eight questions is the limit.');
+  const row = await db
+    .prepare(
+      `INSERT INTO event_questions (event_id, label, kind, options, required, sort)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id`,
+    )
+    .bind(eventId, input.label.trim(), input.kind, input.kind === 'choice' ? input.options : null, input.required ? 1 : 0, (count?.s ?? 0) + 1)
+    .first<{ id: number }>();
+  return row!.id;
+}
+
+export async function updateEventQuestion(
+  db: D1Database,
+  id: number,
+  input: { label: string; kind: QuestionKind; options: string | null; required: boolean },
+): Promise<void> {
+  checkQuestionInput(input);
+  await db
+    .prepare('UPDATE event_questions SET label = ?2, kind = ?3, options = ?4, required = ?5 WHERE id = ?1')
+    .bind(id, input.label.trim(), input.kind, input.kind === 'choice' ? input.options : null, input.required ? 1 : 0)
+    .run();
+}
+
+export async function deleteEventQuestion(db: D1Database, id: number): Promise<void> {
+  await db.prepare('DELETE FROM signup_answers WHERE question_id = ?1').bind(id).run();
+  await db.prepare('DELETE FROM event_questions WHERE id = ?1').bind(id).run();
+}
+
+export type AnswerOwner = { discordId: string } | { ticketId: number };
+
+export async function saveAnswers(
+  db: D1Database,
+  eventId: number,
+  owner: AnswerOwner,
+  answers: Map<number, string>,
+  now: number,
+): Promise<void> {
+  for (const [questionId, value] of answers) {
+    if ('discordId' in owner) {
+      await db
+        .prepare(
+          `INSERT INTO signup_answers (question_id, event_id, discord_id, ticket_id, value, updated_at)
+           VALUES (?1, ?2, ?3, NULL, ?4, ?5)
+           ON CONFLICT (question_id, discord_id) WHERE discord_id IS NOT NULL
+           DO UPDATE SET value = ?4, updated_at = ?5`,
+        )
+        .bind(questionId, eventId, owner.discordId, value, now)
+        .run();
+    } else {
+      await db
+        .prepare(
+          `INSERT INTO signup_answers (question_id, event_id, discord_id, ticket_id, value, updated_at)
+           VALUES (?1, ?2, NULL, ?3, ?4, ?5)
+           ON CONFLICT (question_id, ticket_id) WHERE ticket_id IS NOT NULL
+           DO UPDATE SET value = ?4, updated_at = ?5`,
+        )
+        .bind(questionId, eventId, owner.ticketId, value, now)
+        .run();
+    }
+  }
+}
+
+export async function getAnswers(db: D1Database, eventId: number, owner: AnswerOwner): Promise<Map<number, string>> {
+  const { results } =
+    'discordId' in owner
+      ? await db
+          .prepare('SELECT question_id, value FROM signup_answers WHERE event_id = ?1 AND discord_id = ?2')
+          .bind(eventId, owner.discordId)
+          .all<{ question_id: number; value: string }>()
+      : await db
+          .prepare('SELECT question_id, value FROM signup_answers WHERE event_id = ?1 AND ticket_id = ?2')
+          .bind(eventId, owner.ticketId)
+          .all<{ question_id: number; value: string }>();
+  return new Map(results.map((r) => [r.question_id, r.value]));
+}
+
+// Every answer on an event, keyed "u:<discord id>" or "t:<ticket id>",
+// for rosters, the door and exports.
+export async function listAllAnswers(db: D1Database, eventId: number): Promise<Map<string, Map<number, string>>> {
+  const { results } = await db
+    .prepare('SELECT question_id, discord_id, ticket_id, value FROM signup_answers WHERE event_id = ?1')
+    .bind(eventId)
+    .all<{ question_id: number; discord_id: string | null; ticket_id: number | null; value: string }>();
+  const out = new Map<string, Map<number, string>>();
+  for (const r of results) {
+    const key = r.discord_id ? `u:${r.discord_id}` : `t:${r.ticket_id}`;
+    if (!out.has(key)) out.set(key, new Map());
+    out.get(key)!.set(r.question_id, r.value);
+  }
+  return out;
 }
 

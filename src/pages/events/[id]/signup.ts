@@ -1,7 +1,8 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession } from '../../../lib/guard';
-import { removeSignup, setSignup, upsertMember, RuleError } from '../../../lib/db';
+import { removeSignup, setSignup, upsertMember, listEventQuestions, saveAnswers, RuleError } from '../../../lib/db';
+import { parseAnswers } from '../../../lib/questions';
 
 export const POST: APIRoute = async ({ request, params, redirect }) => {
   const id = Number(params.id);
@@ -27,6 +28,12 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     if (status === 'remove') {
       await removeSignup(env.DB, id, session.discordId);
     } else if (status === 'yes' || status === 'maybe') {
+      const questions = await listEventQuestions(env.DB, id);
+      if (questions.length > 0) {
+        const parsed = parseAnswers(questions, form);
+        if (!parsed.ok) return redirect(`${back}?err=answers#signup`, 303);
+        await saveAnswers(env.DB, id, { discordId: session.discordId }, parsed.answers, now);
+      }
       await setSignup(env.DB, id, session.discordId, status, now);
     } else {
       return redirect(`${back}?err=csrf`, 303);

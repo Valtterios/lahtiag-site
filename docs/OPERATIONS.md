@@ -251,6 +251,16 @@ version:
   Stripe Dashboard app so they can be turned into a checked-in ticket for
   the named person. **Export CSV** on the event's Tickets panel is for the
   treasurer.
+- **Team events** sell tickets too: a paid ticket is the person's entry,
+  and only ticket holders can create or join teams. Quantities cap
+  people; the event's capacity keeps counting teams.
+- **Questions** (event page → Admin → Questions): up to eight per event,
+  text, choice (options one per line) or checkbox, each optional or
+  required. Asked before a signup lands or before Stripe opens; on team
+  events people fill them in under "Your details for this event" before
+  forming a team. Answers show on the admin roster, on the door page, in
+  the tickets CSV and in "Export roster with answers". People can edit
+  their own answers while signups are open.
 - **Refunds**: from the Stripe dashboard; the webhook marks the ticket
   refunded and frees the seat. Cancelling an event does not refund by
   itself — refund in Stripe (all charges of that event), then cancel.
