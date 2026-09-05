@@ -103,7 +103,9 @@ sign: {
   } as const;
   Astro.cookies.set(SESSION_COOKIE, token, cookieOptions);
   Astro.cookies.set(CSRF_COOKIE, newCsrfToken(), cookieOptions);
-  return Astro.redirect('/events');
+  const next = Astro.cookies.get('__Host-next')?.value ?? '';
+  Astro.cookies.delete('__Host-next', { path: '/' });
+  return Astro.redirect(/^\/[a-z0-9\-\/]*$/i.test(next) && !next.startsWith('//') ? next : '/events');
 }
 ---
 <Base title="Signing in">

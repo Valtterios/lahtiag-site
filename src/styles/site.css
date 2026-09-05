@@ -1925,3 +1925,115 @@ html.display-mode,
   max-width: 110rem;
 }
 
+/* ---------- join page: the two ways in, as cards with real buttons ---------- */
+
+.paths {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0 0 2.5rem;
+}
+
+@media (max-width: 700px) {
+  .paths {
+    grid-template-columns: 1fr;
+  }
+}
+
+.path-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--blue);
+  clip-path: var(--cut);
+  padding: 1.3rem 1.5rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.path-card h2 {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 1.35rem;
+  text-transform: uppercase;
+  margin: 0;
+  color: var(--ink);
+}
+
+.path-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.path-card .btn {
+  align-self: flex-start;
+  margin-top: 0.3rem;
+}
+
+.path-card .app-form {
+  margin-top: 0.3rem;
+}
+
+.path-new {
+  border-top-color: var(--yellow);
+}
+
+.member-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--blue);
+  clip-path: var(--cut);
+  padding: 1.3rem 1.5rem;
+  margin: 0 0 2rem;
+  max-width: 44rem;
+}
+
+.member-card p {
+  margin: 0 0 0.5rem;
+}
+
+.member-card .flash {
+  margin: 0 0 0.8rem;
+}
+
+.self-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  max-width: 44rem;
+}
+
+.self-row .check {
+  font-size: 1rem;
+}
+
+.self-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.self-field input {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 0.5rem 0.7rem;
+  width: 12rem;
+}
+
+.self-field input:focus {
+  outline: 2px solid var(--blue);
+  outline-offset: 0;
+  border-color: var(--blue);
+}
+
+.apply-heading {
+  margin-top: 0.5rem;
+}
+

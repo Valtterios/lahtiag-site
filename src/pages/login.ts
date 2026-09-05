@@ -18,6 +18,12 @@ export const GET: APIRoute = async ({ url, cookies, redirect }) => {
   // code-less bounce means "retry with the consent screen" rather than a
   // failed login. ?retry=1 is that retry.
   const silent = url.searchParams.get('retry') !== '1';
+  // Optional return path, a site-relative one only (never a host): the
+  // join page's sign-in button sends people back to the join page.
+  const next = url.searchParams.get('next') ?? '';
+  if (/^\/[a-z0-9\-\/]*$/i.test(next) && !next.startsWith('//')) {
+    cookies.set('__Host-next', next, { path: '/', maxAge: 600, httpOnly: true, secure: true, sameSite: 'lax' });
+  }
   const stateBytes = new Uint8Array(16);
   crypto.getRandomValues(stateBytes);
   const state = Array.from(stateBytes, (b) => b.toString(16).padStart(2, '0')).join('');

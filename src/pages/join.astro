@@ -30,15 +30,13 @@ import {
 } from '../lib/discord';
 import { formatHelsinkiDate } from '../lib/time';
 
-// The membership page, replacing the Google Form. Three things happen
-// here, told apart by the form's `intent`:
-//   apply  - the public application (no sign-in needed);
-//   claim  - a signed-in Discord user says an existing entry (by email)
-//            is theirs; the board confirms the link;
-//   self   - a linked member changes what they may change themselves:
-//            the actives flag and their Telegram handle.
-// The page handles its own POST so a rejected application re-renders with
-// what was typed. Success redirects (post/redirect/get).
+// The membership page, replacing the Google Form. Two ways in, shown as
+// two cards: new people apply; existing members sign in with Discord to
+// link their account (the board confirms) and then manage what they may
+// manage themselves (the actives flag, their Telegram handle). The form's
+// `intent` tells the three POSTs apart: apply | claim | self. The page
+// handles its own POST so a rejected application re-renders with what was
+// typed; success redirects (post/redirect/get).
 
 const session = await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
@@ -178,23 +176,37 @@ const FIELD_MESSAGES: Record<FieldError, string> = {
 };
 ---
 <Base
-  title="Become a member"
+  title={existing ? 'Your membership' : 'Become a member'}
   description="Join Lahti Association of Gaming LAG ry. Membership is free and open to higher education students in Lahti."
 >
   <article class="prose">
     <h1>{existing ? 'Your membership' : 'Become a member'}</h1>
-    {submitted ? (
-      <>
-        <p class="flash">
-          Thanks! Your application is in. The board reviews applications and you'll be counted in
-          once it's approved. No email is sent; if you signed in with Discord, this page will show
-          your status. If you had already applied with the same email, your earlier application
-          stands and nothing changed.
-        </p>
-        <p><a class="btn btn-primary" href="/events">See what's coming up</a></p>
-      </>
-    ) : existing ? (
-      <>
+    {!existing && !submitted && (
+      <p>
+        Membership is <strong>free</strong>. Higher education students in Lahti are eligible to join
+        Lahti Association of Gaming LAG ry; alumni and friends of the association are welcome too.
+        The board approves applications.
+      </p>
+    )}
+  </article>
+
+  {note && <p class="flash">{note}</p>}
+
+  {submitted && (
+    <>
+      <p class="flash">
+        Thanks! Your application is in. The board reviews applications and you'll be counted in
+        once it's approved. No email is sent; if you signed in with Discord, this page will show
+        your status. If you had already applied with the same email, your earlier application
+        stands and nothing changed.
+      </p>
+      <p><a class="btn btn-primary" href="/events">See what's coming up</a></p>
+    </>
+  )}
+
+  {!submitted && existing && (
+    <>
+      <section class="member-card">
         <p class="flash">
           {existing.status === 'member' && (
             <>You're a member of LahtiAG since {formatHelsinkiDate(existing.decided_at ?? existing.applied_at)}. Welcome!</>
@@ -208,90 +220,97 @@ const FIELD_MESSAGES: Record<FieldError, string> = {
         </p>
         <p>
           Registered as <strong>{existing.full_name}</strong> ({existing.email}), linked to your
-          Discord account <strong>{session!.username}</strong>. To change other details or to
-          resign, email <a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a>.
+          Discord account <strong>{session!.username}</strong>.
         </p>
-      </>
-    ) : (
-      <>
-        <p>
-          Membership is <strong>free</strong>. Higher education students in Lahti are eligible to
-          join Lahti Association of Gaming LAG ry; alumni and friends of the association are welcome
-          to apply too. The board approves applications.
+        <p class="queue-meta">
+          To change other details or to resign, email <a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a>.
         </p>
-        <p class="event-meta">
-          Full name and home municipality are what Finnish law requires an association to keep about
-          its members; the rest helps us plan events. See <a href="/privacy">what we store and why</a>.
-        </p>
-        {session ? (
-          <p class="event-meta">
-            Signed in as <strong>{session.username}</strong>: this Discord account will be linked to
-            your membership.
-          </p>
-        ) : (
-          <p class="event-meta">
-            Already on the LahtiAG Discord? <a href="/login">Sign in</a> first and your account gets
-            linked to your membership. Not required.
-          </p>
-        )}
-      </>
-    )}
-  </article>
+      </section>
 
-  {!submitted && note && <p class="flash">{note}</p>}
-
-  {!submitted && existing && (
-    <section class="admin-panel self-panel">
-      <h2>Actives</h2>
-      <p class="event-meta">
-        Actives hear about event ideas, planning and meetings first, through the LahtiAG Telegram
-        group. It commits you to nothing. The board adds you to the group, so give your Telegram
-        handle.
-      </p>
-      <form method="post" action="/join" class="app-form">
-        <input type="hidden" name="csrf" value={csrf} />
-        <input type="hidden" name="intent" value="self" />
-        <label class="check check-standalone">
-          <input type="checkbox" name="wants_active" checked={existing.wants_active} />
-          <span><strong>I want to be an active.</strong></span>
-        </label>
-        <label>
-          Telegram username
-          <input name="telegram" maxlength={LIMITS.telegram} placeholder="@handle" value={existing.telegram ?? ''} />
-        </label>
-        <button class="btn btn-primary" type="submit">Save</button>
-      </form>
-    </section>
-  )}
-
-  {!submitted && !existing && session && (
-    <section class="claim-box">
-      {pendingLink ? (
-        <p class="event-meta">
-          <strong>Already a member?</strong> Your request to link this Discord account is waiting
-          for the board. Once confirmed, this page shows your membership.
+      <section class="self-panel">
+        <h2 class="section-label">Actives</h2>
+        <p class="queue-intro">
+          Actives hear about event ideas, planning and meetings first, through the LahtiAG Telegram
+          group. It commits you to nothing. The board adds you to the group, so give your Telegram
+          handle.
         </p>
-      ) : (
-        <details class="admin-edit">
-          <summary>Already a member from before? Link this Discord account</summary>
-          <p class="event-meta">
-            Members who joined through the old form aren't linked to Discord yet. Enter the email
-            you registered with; the board confirms the link, and after that you can manage your
-            actives status here and get the member mark at events.
-          </p>
-          <form method="post" action="/join" class="app-form app-form-row">
-            <input type="hidden" name="csrf" value={csrf} />
-            <input type="hidden" name="intent" value="claim" />
-            <label>Registered email <input name="claim_email" type="email" required maxlength={LIMITS.email} /></label>
-            <button class="btn btn-ghost" type="submit">Request link</button>
-          </form>
-        </details>
-      )}
-    </section>
+        <form method="post" action="/join" class="self-row">
+          <input type="hidden" name="csrf" value={csrf} />
+          <input type="hidden" name="intent" value="self" />
+          <label class="check">
+            <input type="checkbox" name="wants_active" checked={existing.wants_active} />
+            <span><strong>I want to be an active</strong></span>
+          </label>
+          <label class="self-field">
+            Telegram
+            <input name="telegram" maxlength={LIMITS.telegram} placeholder="@handle" value={existing.telegram ?? ''} />
+          </label>
+          <button class="btn btn-primary" type="submit">Save</button>
+        </form>
+      </section>
+    </>
   )}
 
   {!submitted && !existing && (
     <>
+      <div class="paths">
+        <section class="path-card path-new">
+          <h2>New here?</h2>
+          <p>
+            Fill in the application below. Full name and home municipality are what Finnish law
+            asks an association to keep; the rest helps us plan events.
+            {' '}<a href="/privacy">What we store and why.</a>
+          </p>
+          <a class="btn btn-cta" href="#apply">Apply for membership</a>
+        </section>
+
+        <section class="path-card">
+          <h2>Already a member?</h2>
+          {!session && (
+            <>
+              <p>
+                Sign in with Discord to link your account to your membership. Then you can manage
+                your actives status here and get the member mark at events.
+              </p>
+              <a class="btn btn-primary" href="/login?next=/join">Sign in with Discord</a>
+            </>
+          )}
+          {session && pendingLink && (
+            <p>
+              Signed in as <strong>{session.username}</strong>. Your request to link this account is
+              waiting for the board. Once confirmed, this page shows your membership.
+            </p>
+          )}
+          {session && !pendingLink && (
+            <>
+              <p>
+                Signed in as <strong>{session.username}</strong>. Enter the email you registered with
+                and the board links this Discord account to your membership.
+              </p>
+              <form method="post" action="/join" class="app-form">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="intent" value="claim" />
+                <label>
+                  Registered email
+                  <input name="claim_email" type="email" required maxlength={LIMITS.email} />
+                </label>
+                <button class="btn btn-primary" type="submit">Link my Discord account</button>
+              </form>
+            </>
+          )}
+        </section>
+      </div>
+
+      <article class="prose apply-heading" id="apply">
+        <h2>Membership application</h2>
+        {session && (
+          <p class="queue-meta">
+            Signed in as <strong>{session.username}</strong>: this Discord account will be linked to
+            your membership.
+          </p>
+        )}
+      </article>
+
       {problem === 'csrf' && <p class="flash">The form was stale. Please send it again.</p>}
       {errors.length > 0 && (
         <ul class="flash flash-list">
