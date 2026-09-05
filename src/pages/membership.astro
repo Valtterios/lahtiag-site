@@ -117,6 +117,17 @@ const MESSAGES: Record<FieldError, string> = {
   <article class="prose">
     <h1>Your membership</h1>
   </article>
+  {session && (
+    <p class="account-bar">
+      <span>Signed in as <strong>{session.username}</strong> on Discord.</span>
+      <a href="/tickets">My tickets</a>
+      <a href="/purchases">My purchases</a>
+      <form method="post" action="/logout" class="inline-form">
+        <input type="hidden" name="csrf" value={csrf} />
+        <button class="btn btn-ghost btn-sm" type="submit">Sign out</button>
+      </form>
+    </p>
+  )}
 
   {!session && (
     <div class="paths">
