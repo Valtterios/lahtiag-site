@@ -1,8 +1,9 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
-import { createAnnouncement, setAnnouncementMessageId, RuleError } from '../../lib/db';
-import { postWebhook } from '../../lib/discord';
+import { createAnnouncement, RuleError } from '../../lib/db';
+
+// A new post starts as a draft; Publish on the news page sends it to Discord.
 
 export const POST: APIRoute = async ({ request, redirect }) => {
   const admin = await requireAdmin(request, env);
@@ -17,16 +18,13 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   try {
     const id = await createAnnouncement(
       env.DB,
-      { title, body_md: body, author_id: admin.session.discordId, source: 'web' },
+      { title, body_md: body, author_id: admin.session.discordId, source: 'web', draft: true },
       Math.floor(Date.now() / 1000),
     );
-    if (env.DISCORD_WEBHOOK_URL) {
-      const messageId = await postWebhook(env.DISCORD_WEBHOOK_URL, `📣 **${title.trim()}**\n${body}`);
-      if (messageId) await setAnnouncementMessageId(env.DB, id, messageId);
-    }
+    void id;
   } catch (error) {
     if (error instanceof RuleError) return redirect('/announcements?err=bad_input', 303);
     throw error;
   }
-  return redirect('/announcements', 303);
+  return redirect('/announcements?ok=draft', 303);
 };

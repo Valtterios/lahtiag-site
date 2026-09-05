@@ -3124,3 +3124,10 @@ details.admin-panel[open] > summary {
 .ticket-type-desc {
   margin: 0 0 0.4rem;
 }
+
+.news-draft {
+  border-left: 4px dashed var(--line);
+}
+.news-card .entry-actions {
+  margin: 0.4rem 0 0;
+}

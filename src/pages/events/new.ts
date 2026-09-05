@@ -1,9 +1,11 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
-import { createEvent, setEventMessageId, RuleError } from '../../lib/db';
+import { createEvent, RuleError } from '../../lib/db';
 import { helsinkiToUnix } from '../../lib/time';
-import { postWebhook, eventAnnouncement } from '../../lib/discord';
+
+// A new event starts as a draft: only the board sees it, nothing goes to
+// Discord, until Publish on the event page.
 
 export const POST: APIRoute = async ({ request, redirect, url }) => {
   const admin = await requireAdmin(request, env);
@@ -47,27 +49,11 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
         members_only: membersOnly,
         member_slots: memberSlots,
         created_by: admin.session.discordId,
+        published: false,
       },
       now,
     );
-    // Both surfaces stay consistent regardless of where the change
-    // originated (spec): website writes mirror to Discord when the webhook
-    // is configured, and the message id is kept for later edits.
-    if (env.DISCORD_WEBHOOK_URL) {
-      const messageId = await postWebhook(
-        env.DISCORD_WEBHOOK_URL,
-        eventAnnouncement({
-          title: String(form.get('title') ?? ''),
-          startsAt,
-          endsAt,
-          organizers: organizers || null,
-          teamSize,
-          url: `${url.origin}/events/${id}`,
-        }),
-      );
-      if (messageId) await setEventMessageId(env.DB, id, messageId);
-    }
-    return redirect(`/events/${id}`, 303);
+    return redirect(`/events/${id}?ok=draft`, 303);
   } catch (error) {
     if (error instanceof RuleError) return redirect('/events?err=bad_input', 303);
     throw error;

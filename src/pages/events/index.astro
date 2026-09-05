@@ -16,7 +16,7 @@ const csrf = ensureCsrf(Astro.cookies);
 const now = Math.floor(Date.now() / 1000);
 
 const [upcoming, past] = await Promise.all([
-  listUpcomingEvents(env.DB, now),
+  listUpcomingEvents(env.DB, now, session?.isAdmin === true),
   listPastEvents(env.DB, now, 10),
 ]);
 
@@ -53,7 +53,7 @@ const flash =
             {event.starts_at <= now && <span class="live-badge">Happening now</span>}
             {formatHelsinkiRange(event.starts_at, event.ends_at)}
           </p>
-          <h2><a href={`/events/${event.id}`}>{event.title}</a></h2>
+          <h2><a href={`/events/${event.id}`}>{event.title}</a>{event.published_at === null && <> <span class="status-badge status-muted">Draft</span></>}</h2>
           <p class="event-meta">
             {event.organizers && <span>By {event.organizers}, </span>}
             {event.team_size !== null ? (

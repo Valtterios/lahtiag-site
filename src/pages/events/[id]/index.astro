@@ -30,6 +30,8 @@ const nowSeconds = Math.floor(Date.now() / 1000);
 
 const id = Number(Astro.params.id);
 const event = Number.isInteger(id) ? await getEvent(env.DB, id) : null;
+// A draft exists for the board only; everyone else gets "no such event".
+const draft = event?.published_at === null;
 
 if (!event) {
   Astro.response.status = 404;
@@ -37,6 +39,7 @@ if (!event) {
 
 const view = viewAs(await currentSession(Astro.request, env), Astro.url);
 const session = view.session;
+if (draft && !session?.isAdmin) Astro.response.status = 404;
 const csrf = ensureCsrf(Astro.cookies);
 
 
@@ -142,6 +145,8 @@ const TYPE_TAGS: Record<string, string> = {
   has_ticket: 'Yours',
 };
 const OK: Record<string, string> = {
+  draft: 'Saved as a draft. Only the board sees it; publish it when it is ready.',
+  published: 'Published and posted on Discord.',
   reinstated: 'The event is back on. The Discord cancellation line was removed.',
   released: 'Released. Nothing was charged.',
   added: 'Added to your basket.',
@@ -160,7 +165,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
   image={event && coverAt !== null ? `${Astro.url.origin}/events/${event.id}/cover?t=${coverAt}` : undefined}
   wide
 >
-  {!event ? (
+  {!event || (draft && !session?.isAdmin) ? (
     <article class="prose">
       <h1>No such event</h1>
       <p>Nothing lives at this id. Back to <a href="/events">events</a>.</p>
@@ -207,8 +212,9 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               </li>
             )}
           </ul>
-          {(event.cancelled_at !== null || (signupsClosed && event.cancelled_at === null) || event.members_only === 1 || event.member_slots !== null) && (
+          {(draft || event.cancelled_at !== null || (signupsClosed && event.cancelled_at === null) || event.members_only === 1 || event.member_slots !== null) && (
             <p class="event-gating">
+              {draft && <span class="status-badge status-muted">Draft</span>}
               {event.cancelled_at !== null && <span class="status-badge status-danger">Cancelled</span>}
               {signupsClosed && event.cancelled_at === null && <span class="status-badge status-muted">Signups closed</span>}
               {event.members_only === 1 && <span class="status-badge status-member">Members only</span>}
@@ -221,6 +227,18 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
       </header>
       <ViewAs mode={view.mode} path={`/events/${event.id}`} />
       <aside class="event-side">
+      {draft && (
+        <div class="queue-card">
+          <div class="queue-body">
+            <p class="queue-name">Draft</p>
+            <p class="queue-meta">Only the board sees this page. Publishing lists it, opens signups and sales, and posts it on Discord.</p>
+          </div>
+          <form method="post" action={`/events/${event.id}/publish`}>
+            <input type="hidden" name="csrf" value={csrf} />
+            <button class="btn btn-cta" type="submit" data-confirm="Publish this event? It goes on Discord right away.">Publish</button>
+          </form>
+        </div>
+      )}
       <SessionBox session={session} csrf={csrf} />
       {flash && <p class="flash">{flash}</p>}
 

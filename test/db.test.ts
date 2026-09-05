@@ -5,6 +5,8 @@ import {
   ensureMember,
   createEvent,
   cancelEvent,
+  publishEvent,
+  listUpcomingEvents,
   uncancelEvent,
   setCancelMessageId,
   getEvent,
@@ -170,5 +172,22 @@ describe('reinstating a cancelled event', () => {
     expect(before.cancel_message_id).toBe('msg1');
     await setCancelMessageId(db(), eventId, null);
     expect(await getEvent(db(), eventId)).toMatchObject({ cancelled_at: null, cancel_message_id: null });
+  });
+});
+
+describe('drafts', () => {
+  it('keeps a draft event out of the lists and closed until published', async () => {
+    await upsertMember(db(), { discord_id: 'admin', username: 'admin', avatar_hash: null }, NOW);
+    const id = await createEvent(db(), { title: 'Soon', description: null, starts_at: NOW + 86400, ends_at: null, capacity: null, team_size: null, created_by: 'admin', published: false }, NOW);
+    expect((await getEvent(db(), id))!.published_at).toBeNull();
+    expect((await listUpcomingEvents(db(), NOW)).map((e) => e.id)).not.toContain(id);
+    expect((await listUpcomingEvents(db(), NOW, true)).map((e) => e.id)).toContain(id);
+    await upsertMember(db(), { discord_id: 'p', username: 'p', avatar_hash: null }, NOW);
+    await expect(setSignup(db(), id, 'p', 'yes', NOW)).rejects.toMatchObject({ code: 'closed' });
+    const published = await publishEvent(db(), id, NOW + 5);
+    expect(published.published_at).toBe(NOW + 5);
+    expect((await listUpcomingEvents(db(), NOW)).map((e) => e.id)).toContain(id);
+    await setSignup(db(), id, 'p', 'yes', NOW + 6);
+    expect((await publishEvent(db(), id, NOW + 99)).published_at).toBe(NOW + 5);
   });
 });

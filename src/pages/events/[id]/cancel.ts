@@ -32,7 +32,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     }
     const event = await cancelEvent(env.DB, id, Math.floor(Date.now() / 1000));
     if (env.DISCORD_WEBHOOK_URL) {
-      const messageId = await postWebhook(
+      const messageId = event.published_at === null ? null : await postWebhook(
         env.DISCORD_WEBHOOK_URL,
         `❌ Cancelled: **${event.title}** (was ${formatHelsinki(event.starts_at)})`,
       );

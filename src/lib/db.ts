@@ -56,6 +56,7 @@ export interface EventRow {
   team_size: number | null; // set = tournament-style team signups
   organizers: string | null; // comma-separated free-text names
   location: string | null; // venue, free text
+  published_at: number | null; // null: a draft only the board sees
   link_url: string | null; // optional stream/info link
   display_note: string | null; // live message for the venue display
   cancel_message_id: string | null; // the Discord "cancelled" post, removed on reinstate
@@ -101,6 +102,7 @@ export interface AnnouncementRow {
   source: 'web' | 'discord';
   discord_message_id: string | null;
   author_name: string | null;
+  draft: number; // 1 until the board publishes it (and it goes to Discord)
 }
 
 // The members table is a display cache, not an account table: written on
@@ -146,10 +148,12 @@ const EVENT_COUNTS = `
     (SELECT COUNT(*) FROM event_teams t WHERE t.event_id = e.id)                    AS teams_count
   FROM events e`;
 
-export async function listUpcomingEvents(db: D1Database, now: number): Promise<EventWithCounts[]> {
+// Drafts are the board's alone until published: they stay out of every
+// public list, the feed, the sitemap and Discord.
+export async function listUpcomingEvents(db: D1Database, now: number, includeDrafts = false): Promise<EventWithCounts[]> {
   const { results } = await db
     .prepare(
-      `${EVENT_COUNTS} WHERE e.cancelled_at IS NULL
+      `${EVENT_COUNTS} WHERE e.cancelled_at IS NULL ${includeDrafts ? '' : 'AND e.published_at IS NOT NULL'}
        AND (e.starts_at >= ?1 OR (e.ends_at IS NOT NULL AND e.ends_at > ?1))
        ORDER BY e.starts_at ASC`,
     )
@@ -165,7 +169,7 @@ export async function listPastEvents(
 ): Promise<EventWithCounts[]> {
   const { results } = await db
     .prepare(
-      `${EVENT_COUNTS} WHERE e.cancelled_at IS NULL AND e.starts_at < ?1
+      `${EVENT_COUNTS} WHERE e.cancelled_at IS NULL AND e.published_at IS NOT NULL AND e.starts_at < ?1
        AND (e.ends_at IS NULL OR e.ends_at <= ?1)
        ORDER BY e.starts_at DESC LIMIT ?2`,
     )
@@ -223,6 +227,7 @@ export async function createEvent(
     members_only?: boolean;
     member_slots?: number | null;
     created_by: string;
+    published?: boolean; // false: a draft, until publishEvent
   },
   now: number,
 ): Promise<number> {
@@ -244,8 +249,8 @@ export async function createEvent(
   const linkUrl = normalizeLink(input.link_url);
   const row = await db
     .prepare(
-      `INSERT INTO events (title, description, starts_at, ends_at, capacity, team_size, organizers, link_url, created_by, created_at, members_only, member_slots, location)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) RETURNING id`,
+      `INSERT INTO events (title, description, starts_at, ends_at, capacity, team_size, organizers, link_url, created_by, created_at, members_only, member_slots, location, published_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) RETURNING id`,
     )
     .bind(
       input.title.trim(),
@@ -261,9 +266,20 @@ export async function createEvent(
       input.members_only ? 1 : 0,
       memberSlots,
       input.location?.trim() || null,
+      input.published === false ? null : now,
     )
     .first<{ id: number }>();
   return row!.id;
+}
+
+// A draft goes public: from now on it lists, takes signups and sells.
+export async function publishEvent(db: D1Database, id: number, now: number): Promise<EventWithCounts> {
+  const event = await getEvent(db, id);
+  if (!event) throw new RuleError('missing', `No event with id ${id}.`);
+  if (event.published_at === null) {
+    await db.prepare('UPDATE events SET published_at = ?2 WHERE id = ?1').bind(id, now).run();
+  }
+  return (await getEvent(db, id))!;
 }
 
 // Everything except team_size is editable: changing the shape of team
@@ -384,6 +400,7 @@ export async function setSignup(
   const event = await getEvent(db, eventId);
   if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
   if (event.cancelled_at !== null) throw new RuleError('cancelled', 'This event is cancelled.');
+  if (event.published_at === null) throw new RuleError('closed', 'This event is not published yet.');
   if (event.signups_closed_at !== null) throw new RuleError('closed', 'Signups are closed.');
   await requireEligible(db, event, discordId, status === 'yes');
   await requireTicketIfTicketed(db, eventId, discordId);
@@ -1029,12 +1046,13 @@ export async function listResults(db: D1Database, limit = 20): Promise<ResultRow
   return rows;
 }
 
-export async function listAnnouncements(db: D1Database, limit = 20): Promise<AnnouncementRow[]> {
+export async function listAnnouncements(db: D1Database, limit = 20, includeDrafts = false): Promise<AnnouncementRow[]> {
   const { results } = await db
     .prepare(
       `SELECT a.*, m.username AS author_name
        FROM announcements a LEFT JOIN members m ON m.discord_id = a.author_id
-       ORDER BY a.published_at DESC LIMIT ?1`,
+       ${includeDrafts ? '' : 'WHERE a.draft = 0'}
+       ORDER BY a.draft DESC, a.published_at DESC LIMIT ?1`,
     )
     .bind(limit)
     .all<AnnouncementRow>();
@@ -1060,7 +1078,7 @@ export async function deleteAnnouncement(
 
 export async function createAnnouncement(
   db: D1Database,
-  input: { title: string; body_md: string; author_id: string; source: 'web' | 'discord' },
+  input: { title: string; body_md: string; author_id: string; source: 'web' | 'discord'; draft?: boolean },
   now: number,
 ): Promise<number> {
   if (!input.title.trim() || !input.body_md.trim()) {
@@ -1070,12 +1088,22 @@ export async function createAnnouncement(
   capLength(input.body_md, 4000, 'An announcement body');
   const row = await db
     .prepare(
-      `INSERT INTO announcements (title, body_md, published_at, author_id, source)
-       VALUES (?1, ?2, ?3, ?4, ?5) RETURNING id`,
+      `INSERT INTO announcements (title, body_md, published_at, author_id, source, draft)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id`,
     )
-    .bind(input.title.trim(), input.body_md, now, input.author_id, input.source)
+    .bind(input.title.trim(), input.body_md, now, input.author_id, input.source, input.draft ? 1 : 0)
     .first<{ id: number }>();
   return row!.id;
+}
+
+// A draft goes public, dated now.
+export async function publishAnnouncement(db: D1Database, id: number, now: number): Promise<AnnouncementRow | null> {
+  const row = await db.prepare('SELECT a.*, NULL AS author_name FROM announcements a WHERE id = ?1').bind(id).first<AnnouncementRow>();
+  if (!row) return null;
+  if (row.draft === 1) {
+    await db.prepare('UPDATE announcements SET draft = 0, published_at = ?2 WHERE id = ?1').bind(id, now).run();
+  }
+  return { ...row, draft: 0, published_at: row.draft === 1 ? now : row.published_at };
 }
 
 export async function setAnnouncementMessageId(
@@ -1935,6 +1963,8 @@ async function requireEligible(
   discordId: string,
   wantsSeat: boolean,
 ): Promise<SeatAccess> {
+  const full = await getEvent(db, event.id);
+  if (full && full.published_at === null) throw new RuleError('closed', 'This event is not published yet.');
   const access = await signupAccess(db, event, discordId, wantsSeat);
   if (!access.allowed) {
     throw new RuleError(
@@ -2126,6 +2156,7 @@ export async function ticketOffer(
   now: number,
 ): Promise<{ ok: true; amount_cents: number; member: boolean } | { ok: false; reason: RuleError['code'] }> {
   if (event.cancelled_at !== null) return { ok: false, reason: 'cancelled' };
+  if (event.published_at === null) return { ok: false, reason: 'sales_closed' };
   if (type.active !== 1) return { ok: false, reason: 'sales_closed' };
   const closes = type.sales_close_at ?? event.starts_at;
   if (now >= closes) return { ok: false, reason: 'sales_closed' };

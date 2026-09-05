@@ -265,6 +265,12 @@ version:
   forming a team. Answers show on the admin roster, on the door page, in
   the tickets CSV and in "Export roster with answers". People can edit
   their own answers while signups are open.
+- **Drafts**: a new event (from the site) and a new news post start as
+  drafts: only the board sees them (a "Draft" badge, and the event page is
+  "no such event" to everyone else), nothing goes to Discord, no signups
+  or sales. **Publish** on the event page or the news page makes it
+  public and posts it on Discord. Events created with the Discord slash
+  command are published at once, as before.
 - **Board tools fold away**: on the events list, an event page, the news
   page and the shop, the board panel (sales, roster, answers, settings)
   is a closed "Board tools" block until clicked, so a page on a projector
