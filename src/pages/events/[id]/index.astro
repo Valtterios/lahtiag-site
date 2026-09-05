@@ -12,6 +12,7 @@ import {
   ticketOffer,
   signupAccess,
   getTicketForHolder,
+  resumableCheckout,
   salesSummary,
   listEventQuestions,
   getAnswers,
@@ -54,6 +55,7 @@ const myTicket = event && session ? await getTicketForHolder(env.DB, event.id, s
 const access = event && session ? await signupAccess(env.DB, event, session.discordId, true) : null;
 const sales = event && session?.isAdmin && types.length > 0 ? await salesSummary(env.DB, event.id) : null;
 const hasTicket = myTicket?.status === 'paid';
+const resume = resumableCheckout(myTicket, nowSeconds);
 
 // Questions the board asks on this event, and what the viewer answered.
 const questions = event ? await listEventQuestions(env.DB, event.id) : [];
@@ -185,7 +187,11 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                 <p class="queue-name">{myTicket.status === 'paid' ? 'You have a ticket' : 'Your payment is not finished'}</p>
                 <p class="queue-meta">{myTicket.type_name} · {myTicket.holder_name}{myTicket.checked_in_at ? ' · checked in' : ''}</p>
               </div>
-              <a class="btn btn-primary" href={`/tickets/${myTicket.code}`}>{myTicket.status === 'paid' ? 'Show ticket' : 'Open ticket'}</a>
+              {resume ? (
+                <a class="btn btn-cta" href={resume}>Continue to payment</a>
+              ) : (
+                <a class="btn btn-primary" href={`/tickets/${myTicket.code}`}>{myTicket.status === 'paid' ? 'Show ticket' : 'Open ticket'}</a>
+              )}
             </div>
           ) : questions.length > 0 && session ? (
             <form method="post" action={`/events/${event.id}/buy`} class="app-form buy-form">

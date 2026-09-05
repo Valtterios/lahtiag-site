@@ -1938,6 +1938,7 @@ export interface TicketRow {
   source: 'online' | 'door' | 'comp';
   stripe_session_id: string | null;
   stripe_payment_intent: string | null;
+  checkout_url: string | null;
   created_at: number;
   paid_at: number | null;
   checked_in_at: number | null;
@@ -2234,6 +2235,17 @@ export async function markTicketPaid(
     await db.prepare('DELETE FROM door_payments WHERE stripe_payment_intent = ?1 AND ticket_id IS NULL').bind(paymentIntent).run();
   }
   return (await db.prepare('SELECT * FROM tickets WHERE id = ?1').bind(ticketId).first<TicketRow>())!;
+}
+
+export async function setTicketCheckout(db: D1Database, ticketId: number, sessionId: string, url: string): Promise<void> {
+  await db.prepare('UPDATE tickets SET stripe_session_id = ?2, checkout_url = ?3 WHERE id = ?1').bind(ticketId, sessionId, url).run();
+}
+
+// A pending ticket whose Checkout page is still open: the buyer can go
+// back to it instead of starting over.
+export function resumableCheckout(ticket: TicketRow | null, now: number): string | null {
+  if (!ticket || ticket.status !== 'pending' || !ticket.checkout_url) return null;
+  return ticket.created_at > now - PENDING_TICKET_SECONDS ? ticket.checkout_url : null;
 }
 
 export async function voidTicket(db: D1Database, ticketId: number): Promise<void> {

@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession } from '../../../lib/guard';
-import { getEvent, getTicketType, ticketOffer, createTicket, voidTicket, upsertMember, getRegisterByDiscord, listEventQuestions, saveAnswers, RuleError } from '../../../lib/db';
+import { getEvent, getTicketType, ticketOffer, createTicket, voidTicket, upsertMember, getRegisterByDiscord, listEventQuestions, saveAnswers, getTicketForHolder, resumableCheckout, setTicketCheckout, RuleError } from '../../../lib/db';
 import { parseAnswers } from '../../../lib/questions';
 import { createCheckoutSession, stripeConfigured } from '../../../lib/stripe';
 import { formatHelsinkiRange } from '../../../lib/time';
@@ -28,6 +28,10 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
   const event = await getEvent(env.DB, id);
   const type = await getTicketType(env.DB, typeId);
   if (!event || !type || type.event_id !== id) return redirect(`${back}?err=missing`, 303);
+
+  // Already mid-payment? Back to the same Stripe page.
+  const resume = resumableCheckout(await getTicketForHolder(env.DB, id, session.discordId), now);
+  if (resume) return redirect(resume, 303);
 
   const offer = await ticketOffer(env.DB, event, type, session.discordId, now);
   if (!offer.ok) return redirect(`${back}?err=${offer.reason}`, 303);
@@ -74,7 +78,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
       await voidTicket(env.DB, ticket.id);
       return redirect(`${back}?err=stripe_down`, 303);
     }
-    await env.DB.prepare('UPDATE tickets SET stripe_session_id = ?2 WHERE id = ?1').bind(ticket.id, checkout.id).run();
+    await setTicketCheckout(env.DB, ticket.id, checkout.id, checkout.url);
     return redirect(checkout.url, 303);
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);

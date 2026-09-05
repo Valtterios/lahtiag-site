@@ -2,7 +2,8 @@
 import { env } from 'cloudflare:workers';
 import Base from '../../../../layouts/Base.astro';
 import { currentSession, ensureCsrf, checkCsrf } from '../../../../lib/guard';
-import { getEvent, getTicketType, ticketOffer, createTicket, voidTicket, listEventQuestions, getAnswers, saveAnswers, RuleError } from '../../../../lib/db';
+import { getEvent, getTicketType, ticketOffer, createTicket, voidTicket, listEventQuestions, getAnswers, saveAnswers, getTicketForHolder, getTicketByCode, resumableCheckout, setTicketCheckout, RuleError } from '../../../../lib/db';
+import { normalizeTicketCode } from '../../../../lib/qr';
 import { parseAnswers, questionOptions, type AnswerErrors } from '../../../../lib/questions';
 import { createCheckoutSession, stripeConfigured } from '../../../../lib/stripe';
 import { formatHelsinkiRange } from '../../../../lib/time';
@@ -21,7 +22,19 @@ const event = Number.isInteger(id) ? await getEvent(env.DB, id) : null;
 const type = event && Number.isInteger(typeId) ? await getTicketType(env.DB, typeId) : null;
 const valid = event && type && type.event_id === event.id;
 if (!valid) Astro.response.status = 404;
-const offer = valid ? await ticketOffer(env.DB, event, type, session?.discordId ?? null, now) : null;
+// A payment already started, by this account or (cookie) by this phone:
+// offer to continue it rather than holding a second seat.
+const PENDING_COOKIE = '__Host-pending-ticket';
+const cookieCode = normalizeTicketCode(Astro.cookies.get(PENDING_COOKIE)?.value ?? '');
+const pendingMine = valid
+  ? session
+    ? await getTicketForHolder(env.DB, event.id, session.discordId)
+    : cookieCode
+      ? await getTicketByCode(env.DB, cookieCode)
+      : null
+  : null;
+const resume = pendingMine && pendingMine.event_id === event?.id ? resumableCheckout(pendingMine, now) : null;
+const offer = valid && !resume ? await ticketOffer(env.DB, event, type, session?.discordId ?? null, now) : null;
 const paymentsOn = stripeConfigured(env);
 const questions = valid ? await listEventQuestions(env.DB, event.id) : [];
 const previous = valid && session ? await getAnswers(env.DB, event.id, { discordId: session.discordId }) : new Map<number, string>();
@@ -67,7 +80,10 @@ if (Astro.request.method === 'POST' && valid && offer?.ok) {
         await voidTicket(env.DB, ticket.id);
         problem = 'stripe_down';
       } else {
-        await env.DB.prepare('UPDATE tickets SET stripe_session_id = ?2 WHERE id = ?1').bind(ticket.id, checkout.id).run();
+        await setTicketCheckout(env.DB, ticket.id, checkout.id, checkout.url);
+        if (!session) {
+          Astro.cookies.set(PENDING_COOKIE, ticket.code, { path: '/', maxAge: 40 * 60, httpOnly: true, secure: true, sameSite: 'lax' });
+        }
         return Astro.redirect(checkout.url, 303);
       }
     } catch (error) {
@@ -111,6 +127,11 @@ const message = REASONS[problem ?? Astro.url.searchParams.get('err') ?? ''] ?? (
           <p class="queue-meta">Signed in as <strong>{session.username}</strong>; the ticket goes on your account.</p>
         ) : (
           <p class="queue-meta">You'll type your name on the payment page; the ticket is issued by name. <a href={`/login?next=/events/${event.id}/pay/${type.id}`}>Sign in with Discord</a> instead to get the member price and keep the ticket on your account.</p>
+        )}
+        {resume && (
+          <p class="flash">
+            A payment for this ticket is already open. <a class="btn btn-cta" href={resume}>Continue to payment</a>
+          </p>
         )}
         {message && <p class="flash">{message}</p>}
         {answerErrors.length > 0 && (
