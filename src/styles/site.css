@@ -3335,3 +3335,54 @@ details.admin-panel[open] > summary {
 .door-qty {
   width: 4.5rem;
 }
+
+/* The handbook: a long Markdown document with screenshot tables. */
+.handbook {
+  max-width: 60rem;
+}
+.handbook h2 {
+  margin-top: 3rem;
+}
+.handbook h3 {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 1.05rem;
+  margin: 1.8rem 0 0.6rem;
+}
+.handbook table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 1.2rem;
+}
+.handbook th {
+  display: none;
+}
+.handbook td {
+  width: 50%;
+  vertical-align: top;
+  padding: 0.4rem 0.6rem 0.8rem 0;
+  font-size: 0.92rem;
+}
+.handbook td img {
+  display: block;
+  max-width: 100%;
+  border: 1px solid var(--line);
+}
+.handbook pre {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 0.7rem 0.9rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+}
+.handbook code {
+  font-size: 0.9em;
+}
+.handbook ul {
+  padding-left: 1.2rem;
+}
+.footer-board + .footer-board {
+  margin-left: 1rem;
+}

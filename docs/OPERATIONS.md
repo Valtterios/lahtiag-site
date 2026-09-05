@@ -18,6 +18,7 @@ revision: September 2026.
   - [Link the payment to a person](#link-the-payment-to-a-person)
   - [Buyers with their own phone](#buyers-with-their-own-phone)
   - [Shop items on the spot](#shop-items-on-the-spot)
+- [Editing this handbook](#editing-this-handbook)
 - [Editing the site's pages](#editing-the-sites-pages)
 - [The moving parts](#the-moving-parts)
 - [Local development](#local-development)
@@ -453,6 +454,14 @@ so a stand without an event works too. Pick the item and the quantity,
 press Attach, and it is sold and marked handed over in one go, with the
 amount that was tapped. Stock goes down; the buyer gets no link, they
 have the item.
+
+## Editing this handbook
+
+This file is the handbook. The board reads it rendered at
+[lahtiag.fi/handbook](https://lahtiag.fi/handbook) (Board role or
+register login) and on GitHub. Pictures go in `docs/images/…`; the site
+serves a copy from `public/handbook/images`, so after adding or changing
+one, run `cp -r docs/images public/handbook/` before pushing.
 
 ## Editing the site's pages
 
