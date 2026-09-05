@@ -18,6 +18,7 @@ import {
   setEventCover,
   getEventCover,
   coverVersion,
+  coverInfo,
   deleteEventCover,
   deleteEvent,
 } from '../src/lib/db';
@@ -46,6 +47,7 @@ import {
 } from '../src/lib/purchases';
 import { parseBasket, serializeBasket, withLine, basketCount, writeBasket } from '../src/lib/basket';
 import { parseAnswers } from '../src/lib/questions';
+import { imageSize } from '../src/lib/images';
 
 // Purchases (migration 0015): the basket, tickets for friends by name,
 // shop items, and what Stripe's verdict does to a whole purchase.
@@ -285,13 +287,15 @@ describe('a purchase of tickets', () => {
 describe('event covers', () => {
   it('stores one image per event, replaces it, and goes with the event', async () => {
     const id = await event();
-    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]).buffer;
+    // a PNG header claiming 680 × 240
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 2, 168, 0, 0, 0, 240, 8, 6, 0, 0, 0]).buffer;
     await expect(setEventCover(db(), id, 'image/gif', png, NOW)).rejects.toMatchObject({ code: 'bad_input' });
     await expect(setEventCover(db(), id, 'image/png', new ArrayBuffer(0), NOW)).rejects.toMatchObject({ code: 'bad_input' });
     await expect(setEventCover(db(), 999, 'image/png', png, NOW)).rejects.toMatchObject({ code: 'missing' });
     expect(await coverVersion(db(), id)).toBeNull();
     await setEventCover(db(), id, 'image/png', png, NOW);
     expect(await coverVersion(db(), id)).toBe(NOW);
+    expect(await coverInfo(db(), id)).toMatchObject({ width: 680, height: 240 });
     const stored = (await getEventCover(db(), id))!;
     expect(stored.content_type).toBe('image/png');
     expect(new Uint8Array(stored.bytes)).toEqual(new Uint8Array(png));
@@ -313,5 +317,19 @@ describe('event location', () => {
     await expect(
       createEvent(db(), { title: 'LAN', description: null, starts_at: NOW + 86400, ends_at: null, capacity: null, team_size: null, location: 'x'.repeat(121), created_by: 'admin' }, NOW),
     ).rejects.toMatchObject({ code: 'bad_input' });
+  });
+});
+
+describe('image headers', () => {
+  it('reads the pixel size of PNG, JPEG and WebP, and rejects the rest', () => {
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 4, 176, 0, 0, 2, 118, 8, 6, 0, 0, 0]).buffer;
+    expect(imageSize(png)).toEqual({ width: 1200, height: 630 });
+    // JPEG: SOI, an APP0 segment, then SOF0 with height 630 and width 1200
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0, 0xff, 0xc0, 0, 17, 8, 2, 118, 4, 176, 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]).buffer;
+    expect(imageSize(jpeg)).toEqual({ width: 1200, height: 630 });
+    // WebP VP8X: canvas size minus one, little-endian 24-bit
+    const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x58, 10, 0, 0, 0, 0, 0, 0, 0, 0xaf, 4, 0, 0x75, 2, 0]).buffer;
+    expect(imageSize(webp)).toEqual({ width: 1200, height: 630 });
+    expect(imageSize(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]).buffer)).toBeNull();
   });
 });

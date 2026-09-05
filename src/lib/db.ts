@@ -6,6 +6,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { ApplicationInput, MemberType, RegisterStatus } from './register';
 import { deriveMemberType, searchKey } from './register';
 import { newTicketCode } from './qr';
+import { imageSize } from './images';
 import { QUESTION_LIMITS, questionOptions, type EventQuestionRow, type QuestionKind } from './questions';
 
 export class RuleError extends Error {
@@ -2230,10 +2231,25 @@ export async function ensureYesSignup(db: D1Database, eventId: number, discordId
 export const COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const COVER_MAX_BYTES = 1_500_000;
 
-// The cover's version (its upload time), for the image URL and caching.
+// The cover's version (its upload time) for the image URL, and its pixel
+// size so the page reserves a box of the right shape.
+export interface CoverInfo {
+  updated_at: number;
+  width: number;
+  height: number;
+}
+
+export async function coverInfo(db: D1Database, eventId: number): Promise<CoverInfo | null> {
+  const row = await db
+    .prepare('SELECT updated_at, width, height FROM event_covers WHERE event_id = ?1')
+    .bind(eventId)
+    .first<{ updated_at: number; width: number | null; height: number | null }>();
+  if (!row) return null;
+  return { updated_at: row.updated_at, width: row.width ?? 1200, height: row.height ?? 630 };
+}
+
 export async function coverVersion(db: D1Database, eventId: number): Promise<number | null> {
-  const row = await db.prepare('SELECT updated_at FROM event_covers WHERE event_id = ?1').bind(eventId).first<{ updated_at: number }>();
-  return row?.updated_at ?? null;
+  return (await coverInfo(db, eventId))?.updated_at ?? null;
 }
 
 // D1 hands a BLOB back as an ArrayBuffer locally and as a plain array of
@@ -2261,14 +2277,17 @@ export async function getEventCover(db: D1Database, eventId: number): Promise<{ 
 export async function setEventCover(db: D1Database, eventId: number, contentType: string, bytes: ArrayBuffer, now: number): Promise<void> {
   if (!(COVER_TYPES as readonly string[]).includes(contentType)) throw new RuleError('bad_input', 'JPEG, PNG or WebP only.');
   if (bytes.byteLength === 0 || bytes.byteLength > COVER_MAX_BYTES) throw new RuleError('bad_input', 'The image is empty or over 1.5 MB.');
+  const size = imageSize(bytes);
+  if (!size || size.width < 1 || size.height < 1) throw new RuleError('bad_input', 'That file is not a readable image.');
   const event = await getEvent(db, eventId);
   if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
   await db
     .prepare(
-      `INSERT INTO event_covers (event_id, content_type, bytes, size, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
-       ON CONFLICT (event_id) DO UPDATE SET content_type = excluded.content_type, bytes = excluded.bytes, size = excluded.size, updated_at = excluded.updated_at`,
+      `INSERT INTO event_covers (event_id, content_type, bytes, size, updated_at, width, height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+       ON CONFLICT (event_id) DO UPDATE SET content_type = excluded.content_type, bytes = excluded.bytes, size = excluded.size,
+         updated_at = excluded.updated_at, width = excluded.width, height = excluded.height`,
     )
-    .bind(eventId, contentType, bytes, bytes.byteLength, now)
+    .bind(eventId, contentType, bytes, bytes.byteLength, now, size.width, size.height)
     .run();
 }
 

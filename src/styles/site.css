@@ -2957,11 +2957,12 @@ details.admin-panel[open] > summary {
     margin-left: auto;
   }
 }
-/* A cover is never cropped: it fits inside a 1200 × 630 box; a transparent
-   logo shows on the same light ground as the rest of the site. */
+/* A cover keeps its own proportions (the page knows its pixel size), up
+   to a cap in height; a very tall poster is centred inside the cap. */
 .event-head .event-cover {
   height: auto;
-  aspect-ratio: 1200 / 630;
+  max-height: 32rem;
+  aspect-ratio: auto;
   object-fit: contain;
   background: var(--bg, #f4f4f2);
 }

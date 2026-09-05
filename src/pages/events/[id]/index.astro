@@ -9,7 +9,7 @@ import {
   listSignups,
   listEventTeams,
   getBracket,
-  coverVersion,
+  coverInfo,
   listTicketTypes,
   signupAccess,
   getTicketForHolder,
@@ -42,7 +42,8 @@ const csrf = ensureCsrf(Astro.cookies);
 
 const eventTeams = event?.team_size != null ? await listEventTeams(env.DB, event.id) : [];
 const hasBracket = event ? (await getBracket(env.DB, event.id)).length > 0 : false;
-const coverAt = event ? await coverVersion(env.DB, event.id) : null;
+const cover = event ? await coverInfo(env.DB, event.id) : null;
+const coverAt = cover?.updated_at ?? null;
 // Blank lines split the description into paragraphs; single line breaks stay.
 const paragraphs = event?.description ? event.description.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean) : [];
 
@@ -168,7 +169,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
     <>
       <div class="event-layout">
       <header class="event-head">
-        {coverAt !== null && <img class="event-cover" src={`/events/${event.id}/cover?t=${coverAt}`} alt="" width="1200" height="630" />}
+        {cover && <img class="event-cover" src={`/events/${event.id}/cover?t=${cover.updated_at}`} alt="" width={cover.width} height={cover.height} />}
         <div class="event-head-body">
           <h1>{event.title}</h1>
           {event.organizers && <p class="event-by">by {event.organizers}</p>}
