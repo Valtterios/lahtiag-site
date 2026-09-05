@@ -294,7 +294,7 @@ describe('event covers', () => {
     expect(await coverVersion(db(), id)).toBe(NOW);
     const stored = (await getEventCover(db(), id))!;
     expect(stored.content_type).toBe('image/png');
-    expect(new Uint8Array(stored.bytes)).toEqual(new Uint8Array(png));
+    expect(stored.bytes).toEqual(new Uint8Array(png));
     await setEventCover(db(), id, 'image/webp', png, NOW + 5);
     expect(await coverVersion(db(), id)).toBe(NOW + 5);
     expect(await deleteEventCover(db(), id)).toBe(true);

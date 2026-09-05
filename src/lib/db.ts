@@ -2228,12 +2228,22 @@ export async function coverVersion(db: D1Database, eventId: number): Promise<num
   return row?.updated_at ?? null;
 }
 
-export async function getEventCover(db: D1Database, eventId: number): Promise<{ content_type: string; bytes: ArrayBuffer; updated_at: number } | null> {
+// D1 hands a BLOB back as an ArrayBuffer locally and as a plain array of
+// bytes over its JSON transport in production; both become a Uint8Array.
+function blobBytes(value: unknown): Uint8Array {
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  if (Array.isArray(value)) return Uint8Array.from(value as number[]);
+  if (value && typeof value === 'object') return Uint8Array.from(Object.values(value as Record<string, number>));
+  return new Uint8Array();
+}
+
+export async function getEventCover(db: D1Database, eventId: number): Promise<{ content_type: string; bytes: Uint8Array; updated_at: number } | null> {
   const row = await db
     .prepare('SELECT content_type, bytes, updated_at FROM event_covers WHERE event_id = ?1')
     .bind(eventId)
-    .first<{ content_type: string; bytes: ArrayBuffer; updated_at: number }>();
-  return row ?? null;
+    .first<{ content_type: string; bytes: unknown; updated_at: number }>();
+  return row ? { content_type: row.content_type, bytes: blobBytes(row.bytes), updated_at: row.updated_at } : null;
 }
 
 export async function setEventCover(db: D1Database, eventId: number, contentType: string, bytes: ArrayBuffer, now: number): Promise<void> {

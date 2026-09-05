@@ -16,6 +16,7 @@ export const GET: APIRoute = async ({ params, request }) => {
   return new Response(cover.bytes, {
     headers: {
       'content-type': cover.content_type,
+      'content-length': String(cover.bytes.byteLength),
       'cache-control': 'public, max-age=86400',
       etag,
     },
