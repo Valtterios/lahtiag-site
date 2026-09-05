@@ -22,5 +22,5 @@ export const POST: APIRoute = async ({ request, redirect, cookies }) => {
   const exists = kind === 'ticket' ? await getTicketType(env.DB, id) : await getProduct(env.DB, id, now);
   if (!exists || exists.active !== 1) return redirect(`${next}${join}err=missing`, 303);
   writeBasket(cookies, withLine(readBasket(cookies), { kind, id, count }, form.get('set') === '1'));
-  return redirect(form.get('checkout') === '1' ? '/checkout' : `${next}${join}ok=added#buy`, 303);
+  return redirect(form.get('checkout') === '1' ? '/checkout' : `${next}${join}ok=added`, 303);
 };

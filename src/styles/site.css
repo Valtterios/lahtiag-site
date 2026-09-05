@@ -2695,13 +2695,27 @@ details.admin-panel[open] > summary::before {
 details.admin-panel[open] > summary {
   margin-bottom: 0.8rem;
 }
+/* A floating pill for board members, outside the page flow. */
 .view-as {
-  max-width: var(--prose-measure);
-  margin: 0 0 1rem;
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 50;
+  max-width: min(22rem, calc(100vw - 2rem));
+  margin: 0;
   padding: 0.5rem 0.9rem;
-  font-size: 0.85rem;
-  color: var(--muted);
-  border: 1px dashed var(--line);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--blue);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+@media print {
+  .view-as {
+    display: none;
+  }
 }
 
 /* ---------- event page: header, a side column for tickets and signups, the body ---------- */
@@ -2943,10 +2957,11 @@ details.admin-panel[open] > summary {
     margin-left: auto;
   }
 }
-/* A cover is never cropped: it fits inside a 1200 × 630 box on brand blue. */
+/* A cover is never cropped: it fits inside a 1200 × 630 box; a transparent
+   logo shows on the same light ground as the rest of the site. */
 .event-head .event-cover {
   height: auto;
   aspect-ratio: 1200 / 630;
   object-fit: contain;
-  background: var(--blue);
+  background: var(--bg, #f4f4f2);
 }
