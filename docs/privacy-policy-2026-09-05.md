@@ -15,9 +15,9 @@ This privacy policy explains what personal data Lahti Association of Gaming LAG 
 
 ## Data controller
 
-Lahti Association of Gaming LAG ry
-Business ID (Y-tunnus) 3485167-1
-Mukkulankatu 19, 15210 Lahti, Finland
+Lahti Association of Gaming LAG ry\
+Business ID (Y-tunnus) 3485167-1\
+Mukkulankatu 19, 15210 Lahti, Finland\
 board@lahtiag.fi
 
 Questions about this policy and requests concerning your data go to board@lahtiag.fi.
