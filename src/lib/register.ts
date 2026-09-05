@@ -235,3 +235,16 @@ export function eligibilityWarning(entry: { student_status: StudentStatus; email
   return `Says ${entry.student_status} but the email isn't a student address`;
 }
 
+// Whether two Discord names are the same account name as people type
+// them: case, a leading @, and a legacy #1234 discriminator don't count.
+export function sameHandle(a: string | null | undefined, b: string | null | undefined): boolean {
+  const norm = (v: string | null | undefined) =>
+    (v ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/^@/, '')
+      .replace(/#\d{4}$/, '');
+  const x = norm(a);
+  return x !== '' && x === norm(b);
+}
+

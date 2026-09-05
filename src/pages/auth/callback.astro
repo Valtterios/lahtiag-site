@@ -10,7 +10,7 @@ import {
   sealSession,
   newCsrfToken,
 } from '../../lib/auth';
-import { upsertMember } from '../../lib/db';
+import { upsertMember, refreshLinkedDiscordName } from '../../lib/db';
 
 // The OAuth return leg. The three failure modes the spec's error handling
 // distinguishes each get their own message: a stale state or exchange
@@ -77,6 +77,7 @@ sign: {
     { discord_id: user.id, username, avatar_hash: user.avatar },
     now,
   );
+  await refreshLinkedDiscordName(env.DB, user.id, user.username, now);
 
   const token = await sealSession(
     {

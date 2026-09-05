@@ -19,6 +19,7 @@ import {
   listLinkRequests,
   resolveLinkRequest,
   setOwnActive,
+  refreshLinkedDiscordName,
   createBoardEntry,
   findSimilarEntries,
   registerStats,
@@ -32,6 +33,7 @@ import {
   deriveMemberType,
   searchKey,
   eligibilityWarning,
+  sameHandle,
   type ApplicationInput,
 } from '../src/lib/register';
 import { applicationNotice } from '../src/lib/discord';
@@ -447,6 +449,25 @@ describe('numbers and housekeeping', () => {
     await decideApplication(db(), recent, 'approve', 'x', NOW);
     await setRegisterStatus(db(), recent, 'former', NOW);
     expect((await listHousekeeping(db(), NOW)).map((r) => r.id).sort()).toEqual([stale, old].sort());
+  });
+});
+
+describe('Discord names over time', () => {
+  it('compares handles the way people type them', () => {
+    expect(sameHandle('Aino_V', '@aino_v')).toBe(true);
+    expect(sameHandle('aino_v#1234', 'aino_v')).toBe(true);
+    expect(sameHandle('aino_v', 'aino')).toBe(false);
+    expect(sameHandle(null, 'aino')).toBe(false);
+    expect(sameHandle('', '')).toBe(false);
+  });
+
+  it('refreshes the stored name of a linked entry on sign-in, and only then', async () => {
+    const id = await applyForMembership(db(), application({ discord_name: 'oldname' }), '77', NOW);
+    await refreshLinkedDiscordName(db(), '77', 'newname', NOW + 1);
+    expect(await getRegisterEntry(db(), id)).toMatchObject({ discord_name: 'newname', updated_at: NOW + 1 });
+    expect((await listRegister(db(), { q: 'newname' })).map((r) => r.id)).toEqual([id]);
+    await refreshLinkedDiscordName(db(), '99', 'stranger', NOW + 2);
+    expect((await getRegisterEntry(db(), id))?.updated_at).toBe(NOW + 1);
   });
 });
 

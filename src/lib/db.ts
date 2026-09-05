@@ -1490,6 +1490,22 @@ export async function resolveLinkRequest(
     .run();
 }
 
+// A linked member signed in again: their current handle replaces the one
+// stored on the entry, so the register shows the name they go by now.
+export async function refreshLinkedDiscordName(
+  db: D1Database,
+  discordId: string,
+  handle: string,
+  now: number,
+): Promise<void> {
+  const entry = await getRegisterByDiscord(db, discordId);
+  if (!entry || entry.discord_name === handle) return;
+  await db
+    .prepare('UPDATE register SET discord_name = ?2, updated_at = ?3, search_key = ?4 WHERE id = ?1')
+    .bind(entry.id, handle, now, searchKey([entry.full_name, entry.email, handle, entry.telegram]))
+    .run();
+}
+
 // --- self-service ------------------------------------------------------------
 
 // What a linked member may change about themselves without the board:

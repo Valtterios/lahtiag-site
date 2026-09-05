@@ -2068,3 +2068,14 @@ html.display-mode,
 .self-row .check input[type='checkbox'] {
   margin: 0;
 }
+
+.match-tag {
+  display: inline-block;
+  margin: 0.4rem 0 0;
+  padding: 0.3rem 0.7rem;
+  background: #e6f4ea;
+  border-left: 4px solid #1f7a3f;
+  color: #1f7a3f;
+  font-size: 0.88rem;
+}
+

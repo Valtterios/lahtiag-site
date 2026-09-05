@@ -21,6 +21,7 @@ import {
   MEMBER_TYPES,
   MEMBER_TYPE_LABELS,
   eligibilityWarning,
+  sameHandle,
   type RegisterStatus,
 } from '../../lib/register';
 import { formatHelsinkiDate } from '../../lib/time';
@@ -164,6 +165,13 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                   The entry says: <strong>{r.discord_name ?? 'no Discord name'}</strong>.
                   {' '}Asked {formatHelsinkiDate(r.link_requested_at ?? r.updated_at)}.
                 </p>
+                {sameHandle(r.discord_name, r.link_discord_name) ? (
+                  <p class="match-tag">Names match</p>
+                ) : (
+                  <p class="warn-tag warn-soft">
+                    {r.discord_name ? 'Names differ: confirm only if you know this is the same person.' : 'The entry has no Discord name to compare: confirm only if you know the person.'}
+                  </p>
+                )}
               </div>
               <form method="post" action={`/register/${r.id}/action`} class="queue-actions">
                 <input type="hidden" name="csrf" value={csrf} />
