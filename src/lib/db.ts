@@ -2284,6 +2284,18 @@ export async function coverInfo(db: D1Database, eventId: number): Promise<CoverI
   return { updated_at: row.updated_at, width: row.width ?? 1200, height: row.height ?? 630 };
 }
 
+// Versions for a whole list (the events page tiles).
+export async function coverVersions(db: D1Database, ids: number[]): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  if (ids.length === 0) return out;
+  const { results } = await db
+    .prepare(`SELECT event_id, updated_at FROM event_covers WHERE event_id IN (${ids.map((_, i) => `?${i + 1}`).join(',')})`)
+    .bind(...ids)
+    .all<{ event_id: number; updated_at: number }>();
+  for (const row of results) out.set(row.event_id, row.updated_at);
+  return out;
+}
+
 export async function coverVersion(db: D1Database, eventId: number): Promise<number | null> {
   return (await coverInfo(db, eventId))?.updated_at ?? null;
 }

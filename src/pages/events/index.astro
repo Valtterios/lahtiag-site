@@ -4,7 +4,7 @@ import Base from '../../layouts/Base.astro';
 import SessionBox from '../../components/SessionBox.astro';
 import { currentSession, ensureCsrf, viewAs } from '../../lib/guard';
 import ViewAs from '../../components/ViewAs.astro';
-import { listUpcomingEvents, listPastEvents } from '../../lib/db';
+import { listUpcomingEvents, listPastEvents, coverVersions } from '../../lib/db';
 import { formatHelsinki, formatHelsinkiRange } from '../../lib/time';
 
 // Server-rendered: the events list lives in D1. The Phase 1 Markdown page
@@ -19,6 +19,7 @@ const [upcoming, past] = await Promise.all([
   listUpcomingEvents(env.DB, now, session?.isAdmin === true),
   listPastEvents(env.DB, now, 10),
 ]);
+const covers = await coverVersions(env.DB, upcoming.map((e) => e.id));
 
 const FLASH: Record<string, string> = {
   forbidden: 'That needs the admin role in Discord.',
@@ -46,28 +47,38 @@ const flash =
       Nothing scheduled right now. Announcements land on <a href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Discord</a> first.
     </p>
   ) : (
-    <ul class="event-list">
+    <ul class="event-grid">
       {upcoming.map((event) => (
-        <li class="event-card">
-          <p class="event-when">
-            {event.starts_at <= now && <span class="live-badge">Happening now</span>}
-            {formatHelsinkiRange(event.starts_at, event.ends_at)}
-          </p>
-          <h2><a href={`/events/${event.id}`}>{event.title}</a>{event.published_at === null && <> <span class="status-badge status-muted">Draft</span></>}</h2>
-          <p class="event-meta">
-            {event.organizers && <span>By {event.organizers}, </span>}
-            {event.team_size !== null ? (
-              <span>
-                teams of {event.team_size}, {event.teams_count}
-                {event.capacity !== null ? ` / ${event.capacity}` : ''} teams in
-              </span>
+        <li class="event-tile">
+          <a class="event-tile-cover" href={`/events/${event.id}`} tabindex="-1" aria-hidden="true">
+            {covers.has(event.id) ? (
+              <img src={`/events/${event.id}/cover?t=${covers.get(event.id)}`} alt="" loading="lazy" />
             ) : (
-              <span>
-                {event.yes_count}{event.capacity !== null ? ` / ${event.capacity}` : ''} going
-                {event.maybe_count > 0 ? `, ${event.maybe_count} maybe` : ''}
-              </span>
+              <span class="event-tile-empty"><img src="/brand/mark-blue.png" alt="" width="512" height="443" /></span>
             )}
-          </p>
+          </a>
+          <div class="event-tile-body">
+            <p class="event-when">
+              {event.starts_at <= now && <span class="live-badge">Happening now</span>}
+              {formatHelsinkiRange(event.starts_at, event.ends_at)}
+            </p>
+            <h2><a href={`/events/${event.id}`}>{event.title}</a>{event.published_at === null && <> <span class="status-badge status-muted">Draft</span></>}</h2>
+            <p class="event-meta">
+              {event.organizers && <span>By {event.organizers}, </span>}
+              {event.team_size !== null ? (
+                <span>
+                  teams of {event.team_size}, {event.teams_count}
+                  {event.capacity !== null ? ` / ${event.capacity}` : ''} teams in
+                </span>
+              ) : (
+                <span>
+                  {event.yes_count}{event.capacity !== null ? ` / ${event.capacity}` : ''} going
+                  {event.maybe_count > 0 ? `, ${event.maybe_count} maybe` : ''}
+                </span>
+              )}
+            </p>
+            <p class="event-tile-actions"><a class="btn btn-primary btn-sm" href={`/events/${event.id}`}>Open</a></p>
+          </div>
         </li>
       ))}
     </ul>
