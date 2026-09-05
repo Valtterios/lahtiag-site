@@ -2,9 +2,17 @@
 import { env } from 'cloudflare:workers';
 import Base from '../layouts/Base.astro';
 import { currentSession, ensureCsrf, checkCsrf } from '../lib/guard';
-import { applyForMembership, getRegisterByDiscord, RuleError } from '../lib/db';
+import {
+  applyForMembership,
+  getRegisterByDiscord,
+  getPendingLinkByDiscord,
+  requestDiscordLink,
+  setOwnActive,
+  RuleError,
+} from '../lib/db';
 import {
   parseApplication,
+  normalizeHandle,
   GAMES,
   STUDENT_STATUSES,
   STUDENT_STATUS_LABELS,
@@ -13,20 +21,29 @@ import {
   LIMITS,
   type FieldError,
 } from '../lib/register';
-import { postWebhook, applicationNotice, NO_MENTIONS } from '../lib/discord';
+import {
+  postWebhook,
+  applicationNotice,
+  linkRequestNotice,
+  activeNotice,
+  NO_MENTIONS,
+} from '../lib/discord';
 import { formatHelsinkiDate } from '../lib/time';
 
-// The membership application, replacing the Google Form. Public: applicants
-// need not be on Discord. Unlike the admin routes this page handles its own
-// POST so a rejected submission re-renders with what was typed instead of
-// bouncing to an empty form. Success redirects (post/redirect/get).
-//
-// A signed-in applicant gets their Discord account linked to the entry,
-// which is what later shows the member mark on event signups.
+// The membership page, replacing the Google Form. Three things happen
+// here, told apart by the form's `intent`:
+//   apply  - the public application (no sign-in needed);
+//   claim  - a signed-in Discord user says an existing entry (by email)
+//            is theirs; the board confirms the link;
+//   self   - a linked member changes what they may change themselves:
+//            the actives flag and their Telegram handle.
+// The page handles its own POST so a rejected application re-renders with
+// what was typed. Success redirects (post/redirect/get).
 
 const session = await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
 const existing = session ? await getRegisterByDiscord(env.DB, session.discordId) : null;
+const pendingLink = session && !existing ? await getPendingLinkByDiscord(env.DB, session.discordId) : null;
 
 let errors: FieldError[] = [];
 let problem: 'csrf' | null = null;
@@ -34,38 +51,82 @@ const values: Record<string, string> = {};
 let pickedGames: string[] = [];
 let wantsActive = false;
 
-if (Astro.request.method === 'POST' && !existing) {
+if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  for (const name of [
-    'full_name',
-    'domicile',
-    'email',
-    'student_status',
-    'union_member',
-    'telegram',
-    'discord_name',
-    'games_other',
-    'message',
-  ]) {
-    values[name] = String(form.get(name) ?? '');
-  }
-  pickedGames = form.getAll('games').map(String);
-  wantsActive = form.get('wants_active') === 'on';
+  const intent = String(form.get('intent') ?? 'apply');
+  const now = Math.floor(Date.now() / 1000);
+  // Board notices go out after the response, never before it (security
+  // review): awaiting Discord only on some paths made response time reveal
+  // whether an email was already in the register.
+  const notify = (content: string) => {
+    if (env.BOARD_WEBHOOK_URL) {
+      Astro.locals.cfContext.waitUntil(postWebhook(env.BOARD_WEBHOOK_URL, content, NO_MENTIONS));
+    }
+  };
 
   if (!(await checkCsrf(Astro.request, form))) {
     problem = 'csrf';
-  } else if (String(form.get('website') ?? '') !== '') {
-    // Honeypot: no human sees that field. Pretend it worked.
-    return Astro.redirect('/join?ok=1', 303);
-  } else {
+  } else if (intent === 'self' && session && existing) {
+    const wants = form.get('wants_active') === 'on';
+    const telegramRaw = String(form.get('telegram') ?? '');
+    if (telegramRaw.length > LIMITS.telegram) return Astro.redirect('/join?err=telegram', 303);
+    const telegram = normalizeHandle(telegramRaw);
+    const updated = await setOwnActive(env.DB, session.discordId, wants, telegram, now);
+    if (updated && wants && !existing.wants_active) {
+      notify(
+        activeNotice({
+          name: updated.full_name,
+          telegram: updated.telegram,
+          url: `${Astro.url.origin}/register/${updated.id}`,
+        }),
+      );
+    }
+    return Astro.redirect('/join?ok=saved', 303);
+  } else if (intent === 'claim' && session && !existing) {
+    const email = String(form.get('claim_email') ?? '')
+      .trim()
+      .toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > LIMITS.email) {
+      return Astro.redirect('/join?err=claim_email', 303);
+    }
+    const handle = session.handle ?? session.username;
+    const result = await requestDiscordLink(env.DB, email, session.discordId, handle, now);
+    // Matched or not, the same answer: nobody learns whether an email is
+    // in the register. Only a real match reaches the board.
+    if (result === 'requested') {
+      notify(linkRequestNotice({ handle, url: `${Astro.url.origin}/register` }));
+    }
+    return Astro.redirect('/join?ok=claim', 303);
+  } else if (intent === 'apply' && !existing) {
+    for (const name of [
+      'full_name',
+      'domicile',
+      'email',
+      'student_status',
+      'union_member',
+      'telegram',
+      'discord_name',
+      'games_other',
+      'message',
+    ]) {
+      values[name] = String(form.get(name) ?? '');
+    }
+    pickedGames = form.getAll('games').map(String);
+    wantsActive = form.get('wants_active') === 'on';
+
+    if (String(form.get('website') ?? '') !== '') {
+      // Honeypot: no human sees that field. Pretend it worked.
+      return Astro.redirect('/join?ok=1', 303);
+    }
     const parsed = parseApplication(form, true);
     if (!parsed.ok) {
       errors = parsed.errors;
     } else {
-      const now = Math.floor(Date.now() / 1000);
       // A signed-in applicant's Discord identity comes from the session,
       // never from the form.
-      const input = session ? { ...parsed.value, discord_name: session.username } : parsed.value;
+      const input = session
+        ? { ...parsed.value, discord_name: session.handle ?? session.username }
+        : parsed.value;
       try {
         await applyForMembership(env.DB, input, session?.discordId ?? null, now);
       } catch (error) {
@@ -77,29 +138,31 @@ if (Astro.request.method === 'POST' && !existing) {
         }
         throw error;
       }
-      // After the response, not before it (security review): awaiting the
-      // Discord round trip only on the new-application path made response
-      // time reveal whether an email was already in the register.
-      if (env.BOARD_WEBHOOK_URL) {
-        Astro.locals.cfContext.waitUntil(
-          postWebhook(
-            env.BOARD_WEBHOOK_URL,
-            applicationNotice({
-              name: input.full_name,
-              studentStatus: STUDENT_STATUS_LABELS[input.student_status],
-              url: `${Astro.url.origin}/register`,
-            }),
-            NO_MENTIONS,
-          ),
-        );
-      }
+      notify(
+        applicationNotice({
+          name: input.full_name,
+          studentStatus: STUDENT_STATUS_LABELS[input.student_status],
+          url: `${Astro.url.origin}/register`,
+        }),
+      );
       return Astro.redirect('/join?ok=1', 303);
     }
   }
+  if (problem === null && errors.length === 0) return Astro.redirect('/join', 303);
   Astro.response.status = 422;
 }
 
-const submitted = Astro.url.searchParams.get('ok') === '1';
+const ok = Astro.url.searchParams.get('ok');
+const err = Astro.url.searchParams.get('err');
+const submitted = ok === '1';
+const NOTES: Record<string, string> = {
+  saved: 'Saved.',
+  claim:
+    'Thanks. If that email matches an entry, the board will confirm the link and this page will then show your membership. Nothing else to do.',
+  claim_email: "That email address doesn't look right.",
+  telegram: 'That Telegram handle is too long.',
+};
+const note = NOTES[ok ?? err ?? ''] ?? null;
 const bad = (field: FieldError) => (errors.includes(field) ? 'field-error' : undefined);
 const FIELD_MESSAGES: Record<FieldError, string> = {
   full_name: 'Your full name, 2 to 100 characters.',
@@ -119,7 +182,7 @@ const FIELD_MESSAGES: Record<FieldError, string> = {
   description="Join Lahti Association of Gaming LAG ry. Membership is free and open to higher education students in Lahti."
 >
   <article class="prose">
-    <h1>Become a member</h1>
+    <h1>{existing ? 'Your membership' : 'Become a member'}</h1>
     {submitted ? (
       <>
         <p class="flash">
@@ -144,8 +207,9 @@ const FIELD_MESSAGES: Record<FieldError, string> = {
           )}
         </p>
         <p>
-          Registered as <strong>{existing.full_name}</strong> ({existing.email}). To update your
-          details or to resign, email <a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a>.
+          Registered as <strong>{existing.full_name}</strong> ({existing.email}), linked to your
+          Discord account <strong>{session!.username}</strong>. To change other details or to
+          resign, email <a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a>.
         </p>
       </>
     ) : (
@@ -174,6 +238,58 @@ const FIELD_MESSAGES: Record<FieldError, string> = {
     )}
   </article>
 
+  {!submitted && note && <p class="flash">{note}</p>}
+
+  {!submitted && existing && (
+    <section class="admin-panel self-panel">
+      <h2>Actives</h2>
+      <p class="event-meta">
+        Actives hear about event ideas, planning and meetings first, through the LahtiAG Telegram
+        group. It commits you to nothing. The board adds you to the group, so give your Telegram
+        handle.
+      </p>
+      <form method="post" action="/join" class="app-form">
+        <input type="hidden" name="csrf" value={csrf} />
+        <input type="hidden" name="intent" value="self" />
+        <label class="check check-standalone">
+          <input type="checkbox" name="wants_active" checked={existing.wants_active} />
+          <span><strong>I want to be an active.</strong></span>
+        </label>
+        <label>
+          Telegram username
+          <input name="telegram" maxlength={LIMITS.telegram} placeholder="@handle" value={existing.telegram ?? ''} />
+        </label>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </form>
+    </section>
+  )}
+
+  {!submitted && !existing && session && (
+    <section class="claim-box">
+      {pendingLink ? (
+        <p class="event-meta">
+          <strong>Already a member?</strong> Your request to link this Discord account is waiting
+          for the board. Once confirmed, this page shows your membership.
+        </p>
+      ) : (
+        <details class="admin-edit">
+          <summary>Already a member from before? Link this Discord account</summary>
+          <p class="event-meta">
+            Members who joined through the old form aren't linked to Discord yet. Enter the email
+            you registered with; the board confirms the link, and after that you can manage your
+            actives status here and get the member mark at events.
+          </p>
+          <form method="post" action="/join" class="app-form app-form-row">
+            <input type="hidden" name="csrf" value={csrf} />
+            <input type="hidden" name="intent" value="claim" />
+            <label>Registered email <input name="claim_email" type="email" required maxlength={LIMITS.email} /></label>
+            <button class="btn btn-ghost" type="submit">Request link</button>
+          </form>
+        </details>
+      )}
+    </section>
+  )}
+
   {!submitted && !existing && (
     <>
       {problem === 'csrf' && <p class="flash">The form was stale. Please send it again.</p>}
@@ -184,6 +300,7 @@ const FIELD_MESSAGES: Record<FieldError, string> = {
       )}
       <form method="post" action="/join" class="app-form join-form" novalidate>
         <input type="hidden" name="csrf" value={csrf} />
+        <input type="hidden" name="intent" value="apply" />
         <div class="hp" aria-hidden="true">
           <label>Website <input name="website" tabindex="-1" autocomplete="off" /></label>
         </div>
@@ -222,7 +339,7 @@ const FIELD_MESSAGES: Record<FieldError, string> = {
           <label class={bad('discord_name')}>
             Discord username
             {session ? (
-              <input name="discord_name" value={session.username} readonly />
+              <input name="discord_name" value={session.handle ?? session.username} readonly />
             ) : (
               <input name="discord_name" maxlength={LIMITS.discord_name} placeholder="optional" value={values.discord_name ?? ''} />
             )}

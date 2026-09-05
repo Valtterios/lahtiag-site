@@ -34,6 +34,8 @@ const otherGames = gamesList.filter((g) => !(GAMES as readonly string[]).include
 
 const FLASH: Record<string, string> = {
   saved: 'Entry saved.',
+  linked: 'Discord account linked.',
+  link_dismissed: 'Link request dismissed.',
   former: 'Marked as a former member.',
   member: 'Membership reinstated.',
   approved: 'Application approved.',
@@ -70,6 +72,17 @@ const flash =
       <BoardBox email={board.email} csrf={csrf} />
       {flash && <p class="flash">{flash}</p>}
 
+      {entry.link_discord_id !== null && (
+        <form method="post" action={`/register/${entry.id}/action`} class="signup-bar">
+          <input type="hidden" name="csrf" value={csrf} />
+          <span class="event-meta">
+            Discord user <strong>{entry.link_discord_name}</strong> asks to be linked to this entry
+            (entry says: {entry.discord_name ?? 'no Discord name'}).
+          </span>
+          <button class="btn btn-primary" name="action" value="link_confirm" type="submit">Confirm link</button>
+          <button class="btn btn-ghost" name="action" value="link_dismiss" type="submit">Dismiss</button>
+        </form>
+      )}
       {entry.status === 'pending' && (
         <form method="post" action={`/register/${entry.id}/action`} class="signup-bar">
           <input type="hidden" name="csrf" value={csrf} />

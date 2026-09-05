@@ -1505,3 +1505,18 @@ html.display-mode,
   font-weight: 600;
 }
 
+/* join page: self-service and claim boxes */
+.self-panel {
+  margin-top: 1.5rem;
+}
+
+.claim-box {
+  margin: 0 0 2rem;
+}
+
+.filter-check {
+  font-size: 0.85rem;
+  color: var(--muted);
+  align-items: center;
+}
+

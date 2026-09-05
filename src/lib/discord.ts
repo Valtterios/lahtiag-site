@@ -34,6 +34,22 @@ export function applicationNotice(input: { name: string; studentStatus: string; 
   return `📝 **New membership application**: \`${name}\` (${input.studentStatus})\nReview: ${input.url}`;
 }
 
+// A member asking to link their Discord account to an existing entry, and
+// a member turning on "I want to be an active" (the board adds them to the
+// Telegram group). Same code-span treatment for user-supplied text.
+function codeSpan(text: string): string {
+  return `\`${text.replace(/[`\r\n]/g, '').trim() || '(blank)'}\``;
+}
+
+export function linkRequestNotice(input: { handle: string; url: string }): string {
+  return `🔗 **Link request**: Discord user ${codeSpan(input.handle)} says an entry in the register is theirs.\nConfirm or dismiss: ${input.url}`;
+}
+
+export function activeNotice(input: { name: string; telegram: string | null; url: string }): string {
+  const tg = input.telegram ? ` (Telegram ${codeSpan(`@${input.telegram}`)})` : ' (no Telegram handle given)';
+  return `🙋 **New active**: ${codeSpan(input.name)}${tg} wants to be an active. Add them to the Telegram group.\nEntry: ${input.url}`;
+}
+
 // For messages carrying user-supplied text: Discord resolves no mentions
 // at all, whatever the content says.
 export const NO_MENTIONS = { parse: [] as string[] };

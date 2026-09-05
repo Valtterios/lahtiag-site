@@ -14,6 +14,11 @@ import {
   createEvent,
   setSignup,
   listSignups,
+  requestDiscordLink,
+  getPendingLinkByDiscord,
+  listLinkRequests,
+  resolveLinkRequest,
+  setOwnActive,
   RuleError,
 } from '../src/lib/db';
 import { parseApplication, csvCell, deriveMemberType, type ApplicationInput } from '../src/lib/register';
@@ -272,6 +277,71 @@ describe('listRegister and counts', () => {
     expect((await listRegister(db(), { q: 'aino_v' })).map((r) => r.full_name)).toEqual(['Aino Virtanen']);
     expect(await listRegister(db(), { q: '%' })).toEqual([]);
     expect(await listRegister(db(), { q: 'a_no' })).toEqual([]);
+  });
+});
+
+describe('linking an existing entry to Discord', () => {
+  it('parks a request on the matching unlinked entry, silently otherwise', async () => {
+    const id = await applyForMembership(db(), application(), null, NOW);
+    expect(await requestDiscordLink(db(), 'nobody@example.com', '77', 'seven', NOW)).toBe('none');
+    expect(await listLinkRequests(db())).toEqual([]);
+    expect(await requestDiscordLink(db(), 'AINO@example.com', '77', 'seven', NOW + 1)).toBe('requested');
+    expect(await getRegisterEntry(db(), id)).toMatchObject({
+      link_discord_id: '77',
+      link_discord_name: 'seven',
+      link_requested_at: NOW + 1,
+      discord_id: null,
+    });
+    expect((await getPendingLinkByDiscord(db(), '77'))?.id).toBe(id);
+  });
+
+  it('keeps one request per Discord account and none for linked accounts', async () => {
+    const a = await applyForMembership(db(), application(), null, NOW);
+    const b = await applyForMembership(db(), application({ email: 'b@example.com' }), null, NOW);
+    await requestDiscordLink(db(), 'aino@example.com', '77', 'seven', NOW);
+    await requestDiscordLink(db(), 'b@example.com', '77', 'seven', NOW);
+    expect((await getRegisterEntry(db(), a))?.link_discord_id).toBeNull();
+    expect((await getRegisterEntry(db(), b))?.link_discord_id).toBe('77');
+    await applyForMembership(db(), application({ email: 'c@example.com' }), '88', NOW);
+    expect(await requestDiscordLink(db(), 'aino@example.com', '88', 'eight', NOW)).toBe('none');
+  });
+
+  it('confirm links and records the handle; dismiss clears; both refuse when nothing is pending', async () => {
+    const id = await applyForMembership(db(), application({ discord_name: 'old name' }), null, NOW);
+    await expect(resolveLinkRequest(db(), id, 'confirm', NOW)).rejects.toMatchObject({ code: 'missing' });
+    await requestDiscordLink(db(), 'aino@example.com', '77', 'seven', NOW);
+    await resolveLinkRequest(db(), id, 'confirm', NOW + 5);
+    expect(await getRegisterEntry(db(), id)).toMatchObject({
+      discord_id: '77',
+      discord_name: 'seven',
+      link_discord_id: null,
+      link_discord_name: null,
+      updated_at: NOW + 5,
+    });
+    const other = await applyForMembership(db(), application({ email: 'o@example.com' }), null, NOW);
+    await requestDiscordLink(db(), 'o@example.com', '99', 'nine', NOW);
+    await resolveLinkRequest(db(), other, 'dismiss', NOW);
+    expect(await getRegisterEntry(db(), other)).toMatchObject({ discord_id: null, link_discord_id: null });
+  });
+
+  it('confirm refuses when that Discord account got linked elsewhere meanwhile', async () => {
+    const a = await applyForMembership(db(), application(), null, NOW);
+    await requestDiscordLink(db(), 'aino@example.com', '77', 'seven', NOW);
+    await applyForMembership(db(), application({ email: 'z@example.com' }), '77', NOW);
+    await expect(resolveLinkRequest(db(), a, 'confirm', NOW)).rejects.toMatchObject({ code: 'duplicate' });
+  });
+});
+
+describe('self-service actives flag', () => {
+  it('updates the linked entry only', async () => {
+    expect(await setOwnActive(db(), '77', true, 'me', NOW)).toBeNull();
+    const id = await applyForMembership(db(), application(), '77', NOW);
+    const updated = await setOwnActive(db(), '77', true, 'aino_tg', NOW + 9);
+    expect(updated).toMatchObject({ id, wants_active: true, telegram: 'aino_tg', updated_at: NOW + 9 });
+    expect(await getRegisterEntry(db(), id)).toMatchObject({ wants_active: true, telegram: 'aino_tg' });
+    expect((await listRegister(db(), { activesOnly: true })).map((r) => r.id)).toEqual([id]);
+    await setOwnActive(db(), '77', false, null, NOW + 10);
+    expect(await listRegister(db(), { activesOnly: true })).toEqual([]);
   });
 });
 

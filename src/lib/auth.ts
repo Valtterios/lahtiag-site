@@ -9,7 +9,8 @@
 
 export interface Session {
   discordId: string;
-  username: string;
+  username: string; // display name: server nick, else global name, else handle
+  handle?: string; // the unique @handle; absent on cookies from before it was stored
   avatarHash: string | null;
   isAdmin: boolean;
   accessToken: string;

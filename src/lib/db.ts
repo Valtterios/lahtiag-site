@@ -1032,6 +1032,9 @@ export interface RegisterRow extends ApplicationInput {
   id: number;
   member_type: MemberType;
   discord_id: string | null;
+  link_discord_id: string | null; // a pending request to link this Discord account
+  link_discord_name: string | null;
+  link_requested_at: number | null;
   board_note: string | null;
   status: RegisterStatus;
   source: 'web' | 'import';
@@ -1115,6 +1118,7 @@ export async function getRegisterByDiscord(
 export interface RegisterFilter {
   status?: RegisterStatus | 'all';
   q?: string;
+  activesOnly?: boolean;
   limit?: number;
 }
 
@@ -1128,6 +1132,7 @@ export async function listRegister(db: D1Database, filter: RegisterFilter = {}):
     binds.push(status);
     clauses.push(`status = ?${binds.length}`);
   }
+  if (filter.activesOnly) clauses.push('wants_active = 1');
   const q = (filter.q ?? '').trim();
   if (q) {
     binds.push(`%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
@@ -1252,6 +1257,123 @@ export async function setRegisterStatus(
     .prepare('UPDATE register SET status = ?2, updated_at = ?3 WHERE id = ?1')
     .bind(id, status, now)
     .run();
+}
+
+// --- linking an existing entry to a Discord account -------------------------
+
+// A signed-in Discord user says "entry with this email is mine". Matched
+// or not, the caller answers the same way (no enumeration); a match parks
+// the request on the entry for the board. A new request from the same
+// Discord account replaces its earlier one.
+export async function requestDiscordLink(
+  db: D1Database,
+  email: string,
+  discordId: string,
+  discordName: string,
+  now: number,
+): Promise<'requested' | 'none'> {
+  const linked = await db
+    .prepare('SELECT id FROM register WHERE discord_id = ?1')
+    .bind(discordId)
+    .first();
+  if (linked) return 'none';
+  const entry = await db
+    .prepare('SELECT id FROM register WHERE email = ?1 COLLATE NOCASE AND discord_id IS NULL')
+    .bind(email.trim().toLowerCase())
+    .first<{ id: number }>();
+  await db
+    .prepare(
+      `UPDATE register SET link_discord_id = NULL, link_discord_name = NULL, link_requested_at = NULL
+       WHERE link_discord_id = ?1`,
+    )
+    .bind(discordId)
+    .run();
+  if (!entry) return 'none';
+  await db
+    .prepare(
+      `UPDATE register SET link_discord_id = ?2, link_discord_name = ?3, link_requested_at = ?4, updated_at = ?4
+       WHERE id = ?1`,
+    )
+    .bind(entry.id, discordId, discordName, now)
+    .run();
+  return 'requested';
+}
+
+export async function getPendingLinkByDiscord(
+  db: D1Database,
+  discordId: string,
+): Promise<RegisterRow | null> {
+  const row = await db
+    .prepare('SELECT * FROM register WHERE link_discord_id = ?1')
+    .bind(discordId)
+    .first<RegisterDbRow>();
+  return row ? fromDb(row) : null;
+}
+
+export async function listLinkRequests(db: D1Database): Promise<RegisterRow[]> {
+  const { results } = await db
+    .prepare('SELECT * FROM register WHERE link_discord_id IS NOT NULL ORDER BY link_requested_at ASC')
+    .all<RegisterDbRow>();
+  return results.map(fromDb);
+}
+
+// Confirm makes the requesting account the entry's linked account (and
+// records its handle as the Discord name); dismiss just clears the request.
+export async function resolveLinkRequest(
+  db: D1Database,
+  id: number,
+  decision: 'confirm' | 'dismiss',
+  now: number,
+): Promise<void> {
+  const entry = await getRegisterEntry(db, id);
+  if (!entry || entry.link_discord_id === null) {
+    throw new RuleError('missing', 'No pending link request on that entry.');
+  }
+  if (decision === 'confirm') {
+    const clash = await db
+      .prepare('SELECT id FROM register WHERE discord_id = ?1 AND id != ?2')
+      .bind(entry.link_discord_id, id)
+      .first();
+    if (clash) throw new RuleError('duplicate', 'That Discord account is already linked to another entry.');
+    await db
+      .prepare(
+        `UPDATE register SET discord_id = link_discord_id, discord_name = link_discord_name,
+           link_discord_id = NULL, link_discord_name = NULL, link_requested_at = NULL, updated_at = ?2
+         WHERE id = ?1`,
+      )
+      .bind(id, now)
+      .run();
+    return;
+  }
+  await db
+    .prepare(
+      `UPDATE register SET link_discord_id = NULL, link_discord_name = NULL, link_requested_at = NULL,
+         updated_at = ?2
+       WHERE id = ?1`,
+    )
+    .bind(id, now)
+    .run();
+}
+
+// --- self-service ------------------------------------------------------------
+
+// What a linked member may change about themselves without the board:
+// the actives flag and the Telegram handle it needs. Returns the entry,
+// or null when this Discord account is not linked to one.
+export async function setOwnActive(
+  db: D1Database,
+  discordId: string,
+  wantsActive: boolean,
+  telegram: string | null,
+  now: number,
+): Promise<RegisterRow | null> {
+  const entry = await getRegisterByDiscord(db, discordId);
+  if (!entry) return null;
+  await db
+    .prepare('UPDATE register SET wants_active = ?2, telegram = ?3, updated_at = ?4 WHERE id = ?1')
+    .bind(entry.id, wantsActive ? 1 : 0, telegram, now)
+    .run();
+  return { ...entry, wants_active: wantsActive, telegram, updated_at: now };
 }
 
 // The GDPR erasure path for the register: the row is gone, nothing is

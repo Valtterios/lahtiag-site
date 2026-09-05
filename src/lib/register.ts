@@ -117,10 +117,16 @@ function optional(form: FormData, name: string, max: number): string | null {
 
 // Telegram and Discord handles: people paste "@name", "name", or a full
 // t.me link. Keep what they typed minus a leading @ and surrounding noise.
+export function normalizeHandle(raw: string): string | null {
+  const value = raw.replace(/\s+/g, ' ').trim();
+  if (value === '') return null;
+  return value.replace(/^https?:\/\/(t\.me|telegram\.me)\//i, '').replace(/^@/, '');
+}
+
 function handle(form: FormData, name: string, max: number): string | null {
   const value = optional(form, name, max);
   if (value === null) return null;
-  return value.replace(/^https?:\/\/(t\.me|telegram\.me)\//i, '').replace(/^@/, '');
+  return normalizeHandle(value);
 }
 
 // Parse and validate the form. `requireConsent` is true for the public

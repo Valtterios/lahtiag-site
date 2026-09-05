@@ -27,8 +27,9 @@ meetings through our Telegram channel. Be the first to hear about upcoming
 activities, share your ideas, and help us organize exciting events!
 
 Signing up doesn't commit you to anything. Tick **I want to be an active** on
-the [membership form](/join); already a member? Email
-[board@lahtiag.fi](mailto:board@lahtiag.fi) and we'll add you.
+the [membership form](/join). Already a member? Sign in with Discord on that
+same page and tick the box yourself; if you joined through the old form,
+link your Discord account there first (the board confirms it).
 
 ## Still unsure?
 

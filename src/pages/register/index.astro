@@ -5,7 +5,7 @@ import BoardBox from '../../components/BoardBox.astro';
 import BoardGate from '../../components/BoardGate.astro';
 import { ensureCsrf } from '../../lib/guard';
 import { requireBoard, boardStatus, allowedBoardEmails, WORKSPACE_DOMAIN } from '../../lib/board';
-import { listRegister, registerCounts, listRegisterAdmins } from '../../lib/db';
+import { listRegister, registerCounts, listRegisterAdmins, listLinkRequests } from '../../lib/db';
 import {
   REGISTER_STATUSES,
   STUDENT_STATUS_LABELS,
@@ -28,14 +28,16 @@ const status: RegisterStatus | 'all' = (REGISTER_STATUSES as readonly string[]).
   ? (statusParam as RegisterStatus)
   : 'all';
 const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 100);
+const activesOnly = Astro.url.searchParams.get('active') === '1';
 
-const [counts, rows, addedAdmins] = board.ok
+const [counts, rows, addedAdmins, linkRequests] = board.ok
   ? await Promise.all([
       registerCounts(env.DB),
-      listRegister(env.DB, { status, q }),
+      listRegister(env.DB, { status, q, activesOnly }),
       listRegisterAdmins(env.DB),
+      listLinkRequests(env.DB),
     ])
-  : [null, [], []];
+  : [null, [], [], []];
 const pending = rows.filter((r) => r.status === 'pending');
 const fixedAdmins = allowedBoardEmails(env.REGISTER_ADMINS);
 
@@ -49,6 +51,8 @@ const FLASH: Record<string, string> = {
   missing: 'That entry no longer exists.',
   duplicate: 'Another entry already uses that email or Discord account.',
   bad_input: "The entry couldn't be saved from those values.",
+  linked: 'Discord account linked. They can manage their actives status on the join page now.',
+  link_dismissed: 'Link request dismissed.',
   access_added: 'Access granted. They can sign in with that Google account now.',
   access_removed: 'Access removed.',
   bad_email: `That must be a ${WORKSPACE_DOMAIN} Google Workspace address.`,
@@ -110,6 +114,33 @@ const exportHref = `/register/export.csv${status !== 'all' ? `?status=${status}`
         </section>
       )}
 
+      {linkRequests.length > 0 && (
+        <section class="pending-queue">
+          <h2 class="section-label">Discord link requests</h2>
+          <p class="event-meta">
+            A signed-in Discord user gave the email of this entry and asks to be linked to it.
+            Confirm when the Discord name on the entry (or the person) matches; dismiss otherwise.
+          </p>
+          {linkRequests.map((r) => (
+            <div class="pending-card">
+              <div class="pending-body">
+                <p class="pending-name"><a href={`/register/${r.id}`}>{r.full_name}</a> <span class="event-meta">{r.email}</span></p>
+                <p class="event-meta">
+                  Discord on the entry: <strong>{r.discord_name ?? 'none given'}</strong>
+                  {' · '}requesting account: <strong>{r.link_discord_name}</strong>
+                  {' · '}asked {formatHelsinkiDate(r.link_requested_at ?? r.updated_at)}
+                </p>
+              </div>
+              <form method="post" action={`/register/${r.id}/action`} class="pending-actions">
+                <input type="hidden" name="csrf" value={csrf} />
+                <button class="btn btn-primary btn-sm" name="action" value="link_confirm" type="submit">Confirm link</button>
+                <button class="btn btn-ghost btn-sm" name="action" value="link_dismiss" type="submit">Dismiss</button>
+              </form>
+            </div>
+          ))}
+        </section>
+      )}
+
       <form method="get" action="/register" class="register-filter">
         <input type="search" name="q" value={q} placeholder="Search name, email, Discord, Telegram" aria-label="Search the register" />
         <select name="status" aria-label="Status">
@@ -118,6 +149,9 @@ const exportHref = `/register/export.csv${status !== 'all' ? `?status=${status}`
           <option value="pending" selected={status === 'pending'}>Pending</option>
           <option value="former" selected={status === 'former'}>Former</option>
         </select>
+        <label class="check filter-check">
+          <input type="checkbox" name="active" value="1" checked={activesOnly} /> Actives only
+        </label>
         <button class="btn btn-ghost btn-sm" type="submit">Filter</button>
         <a class="btn btn-ghost btn-sm" href={exportHref}>Export CSV</a>
       </form>

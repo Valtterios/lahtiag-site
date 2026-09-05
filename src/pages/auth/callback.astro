@@ -82,6 +82,7 @@ sign: {
     {
       discordId: user.id,
       username,
+      handle: user.username,
       avatarHash: user.avatar,
       isAdmin: hasAdminRole(membership.roles, env.ADMIN_ROLE_ID),
       accessToken,

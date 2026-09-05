@@ -7,12 +7,14 @@ import {
   updateRegisterEntry,
   setRegisterStatus,
   eraseRegisterEntry,
+  resolveLinkRequest,
   RuleError,
 } from '../../../lib/db';
 import { parseApplication, LIMITS, MEMBER_TYPES, type MemberType } from '../../../lib/register';
 
 // Every board write on one register entry, dispatched on `action`:
-// approve | reject | update | former | member | erase. Google step-up
+// approve | reject | update | former | member | erase | link_confirm |
+// link_dismiss. Google step-up
 // (board.ts) and CSRF checked, like every register route.
 
 export const POST: APIRoute = async ({ request, redirect, params }) => {
@@ -35,6 +37,12 @@ export const POST: APIRoute = async ({ request, redirect, params }) => {
       case 'reject':
         await decideApplication(env.DB, id, 'reject', board.email, now);
         return redirect('/register?ok=rejected', 303);
+      case 'link_confirm':
+        await resolveLinkRequest(env.DB, id, 'confirm', now);
+        return redirect('/register?ok=linked', 303);
+      case 'link_dismiss':
+        await resolveLinkRequest(env.DB, id, 'dismiss', now);
+        return redirect('/register?ok=link_dismissed', 303);
       case 'former':
       case 'member':
         await setRegisterStatus(env.DB, id, action, now);

@@ -85,6 +85,18 @@ explicit allowlist, not the domain.
   to verify the email); the board links by hand from the entry page.
 - Search is ASCII-case-insensitive (SQLite LIKE without ICU).
 
+## Phase 2, first slice (shipped 2026-09-05): actives self-service + claiming
+
+- `migrations/0007_link_requests.sql`: `link_discord_id/name/requested_at`
+  on `register`, one pending request per Discord account.
+- /join gained `intent`: `claim` (signed-in, unlinked: email → request on
+  the matching unlinked entry, same answer either way, board notified only
+  on a match) and `self` (linked: `wants_active` + Telegram; board notified
+  when the flag turns on). Session now carries the unique Discord `handle`.
+- /register: "Discord link requests" queue with Confirm/Dismiss
+  (`resolveLinkRequest`), "Actives only" filter.
+- Not yet: editing the other fields (name, domicile, email, games).
+
 ## Phase 2 (next): members manage their own entry
 
 Agreed with the user 2026-09-05, not built yet. Members should be able to

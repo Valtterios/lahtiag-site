@@ -41,7 +41,10 @@ play) and for nothing else.
 
 If you were signed in with Discord when you applied, your Discord account is
 linked to your entry: that lets board members see who at an event is a
-member. A pending application that the board does not approve is deleted.
+member, and lets you change your own actives status and Telegram handle on
+the join page. A member from before can ask for that link on the join page;
+the request (your Discord id and name) stays on the entry until the board
+confirms or dismisses it. A pending application that the board does not approve is deleted.
 As a member you stay in the register until you resign or the board removes
 you; either way, email [board@lahtiag.fi](mailto:board@lahtiag.fi) to have
 your entry corrected or erased. Entries from the earlier Google Form were

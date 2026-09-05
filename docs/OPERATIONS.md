@@ -136,6 +136,17 @@ Workspace accounts on the list; the register is only as safe as they are.
   membership but keeps the record; **Erase** deletes it for good, which is
   the answer to a GDPR erasure request. Event signups are separate data:
   "Remove a member everywhere" on /events handles those.
+- **Discord link requests**: a member from the old form who signs in with
+  Discord can ask, on /join, to have that account linked to their entry by
+  giving the email they registered with. The request shows at the top of
+  /register with the Discord name the entry already had next to the
+  requesting account: **Confirm link** when they match (or you know the
+  person), **Dismiss** otherwise. Nothing tells the requester whether the
+  email existed. Once linked, the member manages their own actives status.
+- **Actives**: a linked member ticks "I want to be an active" on /join
+  themselves (and gives their Telegram handle); the board channel gets a
+  notice and someone adds them to the Telegram group. The **Actives only**
+  box on /register lists everyone who has ticked it.
 - **At the door**: /register/lookup is the phone view. Type a name, see
   MEMBER / PENDING / FORMER in big letters. On event pages, admins also see
   a small *member* mark next to signups from linked Discord accounts.
