@@ -254,7 +254,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                   <div class="ticket-type-main">
                     <p class="ticket-type-name">{t.name}</p>
                     <p class="ticket-type-tags">
-                      <span class="ticket-price">
+                      <span class="ticket-type-price">
                         {t.member_price_cents !== null && t.member_price_cents !== t.price_cents
                           ? `${euro(t.price_cents)} · members ${euro(t.member_price_cents)}`
                           : t.price_cents === 0 ? 'Free' : euro(t.price_cents)}

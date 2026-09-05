@@ -2870,7 +2870,7 @@ details.admin-panel[open] > summary {
   align-items: center;
   font-size: 0.9rem;
 }
-.ticket-price {
+.ticket-type-price {
   font-weight: 600;
 }
 .status-muted {
@@ -2907,4 +2907,46 @@ details.admin-panel[open] > summary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+/* The cart sits at the end of the header row; on a phone it shares the
+   first row with the brand and the nav drops below. */
+.site-header .inner {
+  justify-content: flex-start;
+}
+.site-header nav {
+  margin-left: auto;
+}
+.site-cart {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  padding: 0.3rem 0.2rem;
+}
+.site-cart:hover,
+.site-cart[aria-current='page'] {
+  color: var(--blue);
+}
+.site-cart svg {
+  width: 22px;
+  height: 22px;
+}
+@media (max-width: 600px) {
+  .site-header nav {
+    order: 3;
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+  .site-cart {
+    order: 2;
+    margin-left: auto;
+  }
+}
+/* A cover is never cropped: it fits inside a 1200 × 630 box on brand blue. */
+.event-head .event-cover {
+  height: auto;
+  aspect-ratio: 1200 / 630;
+  object-fit: contain;
+  background: var(--blue);
 }
