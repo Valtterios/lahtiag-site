@@ -3190,7 +3190,7 @@ details.admin-panel[open] > summary {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .event-tile-empty {
   display: flex;
