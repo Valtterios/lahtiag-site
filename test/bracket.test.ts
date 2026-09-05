@@ -16,6 +16,7 @@ import {
   listResults,
   getEvent,
   listSignups,
+  listEventTeams,
   RuleError,
 } from '../src/lib/db';
 
@@ -108,7 +109,29 @@ describe('generateBracket', () => {
 
   it('refuses a bracket with fewer than two participants', async () => {
     const eventId = await soloEventWith(['a']);
-    await expect(generateBracket(db(), eventId)).rejects.toMatchObject({ code: 'bad_input' });
+    await expect(generateBracket(db(), eventId)).rejects.toMatchObject({ code: 'too_few' });
+  });
+
+  it('groups players without a team into teams before the draw', async () => {
+    for (const id of ['admin', 'a', 'b', 'c', 'd', 'e']) await member(id);
+    const eventId = await createEvent(db(), { title: 'Doubles', description: null, starts_at: NOW + 86400, capacity: null, team_size: 2, created_by: 'admin' }, NOW);
+    const t1 = await createEventTeam(db(), eventId, 'Ready', 'a', NOW);
+    for (const id of ['b', 'c', 'd', 'e']) await setSignup(db(), eventId, id, 'yes', NOW);
+    await generateBracket(db(), eventId, NOW);
+    const teams = await listEventTeams(db(), eventId);
+    expect(teams).toHaveLength(3);
+    expect(teams.map((t) => t.name).sort()).toEqual(['Ready', 'Team user-b', 'Team user-d'].sort());
+    const signups = await listSignups(db(), eventId);
+    expect(signups.every((s) => s.event_team_id !== null)).toBe(true);
+    const matches = await getBracket(db(), eventId);
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+    expect(matches.some((m) => m.side_a === `t:${t1}` || m.side_b === `t:${t1}`)).toBe(true);
+    // two loose players only: one team, not enough for a draw
+    const small = await createEvent(db(), { title: 'Pair', description: null, starts_at: NOW + 86400, capacity: null, team_size: 2, created_by: 'admin' }, NOW);
+    await setSignup(db(), small, 'b', 'yes', NOW);
+    await setSignup(db(), small, 'c', 'yes', NOW);
+    await expect(generateBracket(db(), small, NOW)).rejects.toMatchObject({ code: 'too_few' });
+    expect(await listEventTeams(db(), small)).toHaveLength(1);
   });
 });
 

@@ -32,6 +32,7 @@ export class RuleError extends Error {
       | 'payments_off'
       | 'needs_ticket'
       | 'ticket_holder'
+      | 'too_few'
       | 'answers',
     message: string,
   ) {
@@ -839,12 +840,37 @@ async function advance(
 // Builds the whole bracket from the event's current participants: full
 // 'yes' signups on a solo event, formed teams on a team event. Replaces any
 // existing bracket. Byes auto-advance immediately.
-export async function generateBracket(db: D1Database, eventId: number): Promise<void> {
+// On a team event, players who signed up without a team are grouped into
+// teams of the event's size (the last one may be short) before the draw,
+// named after their first player. The board can still move people around
+// under Manage participants and regenerate.
+export async function autoTeamLoosePlayers(db: D1Database, eventId: number, now: number): Promise<number> {
+  const event = await getEvent(db, eventId);
+  if (!event || event.team_size === null) return 0;
+  const loose = (await listSignups(db, eventId)).filter((s) => s.status === 'yes' && s.event_team_id === null);
+  let made = 0;
+  for (let i = 0; i < loose.length; i += event.team_size) {
+    const group = loose.slice(i, i + event.team_size);
+    const name = `Team ${group[0].username}`.slice(0, 40);
+    const row = await db
+      .prepare(`INSERT INTO event_teams (event_id, name, created_by, created_at) VALUES (?1, ?2, ?3, ?4) RETURNING id`)
+      .bind(eventId, name, group[0].discord_id, now)
+      .first<{ id: number }>();
+    for (const s of group) {
+      await db.prepare('UPDATE signups SET event_team_id = ?3 WHERE event_id = ?1 AND discord_id = ?2').bind(eventId, s.discord_id, row!.id).run();
+    }
+    made++;
+  }
+  return made;
+}
+
+export async function generateBracket(db: D1Database, eventId: number, now = Math.floor(Date.now() / 1000)): Promise<void> {
   const event = await getEvent(db, eventId);
   if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
 
   let keys: string[];
   if (event.team_size !== null) {
+    await autoTeamLoosePlayers(db, eventId, now);
     keys = (await listEventTeams(db, eventId)).map((team) => `t:${team.id}`);
   } else {
     keys = (await listSignups(db, eventId))
@@ -852,7 +878,7 @@ export async function generateBracket(db: D1Database, eventId: number): Promise<
       .map((signup) => `u:${signup.discord_id}`);
   }
   if (keys.length < 2) {
-    throw new RuleError('bad_input', 'A bracket needs at least two participants.');
+    throw new RuleError('too_few', event.team_size !== null ? 'A bracket needs at least two teams.' : 'A bracket needs at least two participants.');
   }
 
   // Random seeding.

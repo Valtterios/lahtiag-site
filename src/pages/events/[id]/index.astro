@@ -134,6 +134,7 @@ const FLASH: Record<string, string> = {
   cover_missing: 'Pick an image file first.',
   cover_bad: 'The cover must be a JPEG, PNG or WebP under 1.5 MB.',
   ticket_holder: 'That person holds a paid ticket, so they are going. Refund it in Stripe to remove them.',
+  too_few: 'A bracket needs at least two teams or players. Players without a team are grouped into teams when you generate.',
 };
 // Short tags on ticket rows for why a type is not open to this person.
 const TYPE_TAGS: Record<string, string> = {
@@ -563,13 +564,6 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
         <details class="admin-panel" open={ADMIN_OPEN.has(Astro.url.searchParams.get('ok') ?? '') || ADMIN_OPEN.has(Astro.url.searchParams.get('err') ?? '')}>
           <summary>Board tools · sales, roster, questions, settings</summary>
           <h2>Admin</h2>
-          <form method="post" action={`/events/${event.id}/cover`} enctype="multipart/form-data" class="signup-bar cover-form">
-            <input type="hidden" name="csrf" value={csrf} />
-            <label class="cover-pick">Cover image <input type="file" name="cover" accept="image/jpeg,image/png,image/webp" /></label>
-            <button class="btn btn-ghost" type="submit">{coverAt !== null ? 'Replace cover' : 'Upload cover'}</button>
-            {coverAt !== null && <button class="btn btn-ghost" name="action" value="remove" type="submit" formnovalidate data-confirm="Remove the cover image?">Remove</button>}
-            <span class="queue-meta">JPEG, PNG or WebP, up to 1.5 MB; about 1200 × 630 looks best.</span>
-          </form>
           {event.cancelled_at !== null && (
             <form method="post" action={`/events/${event.id}/cancel`} class="signup-bar">
               <input type="hidden" name="csrf" value={csrf} />
@@ -637,6 +631,13 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               )}
               <button class="btn btn-primary" type="submit">Save changes</button>
             </form>
+          <form method="post" action={`/events/${event.id}/cover`} enctype="multipart/form-data" class="signup-bar cover-form">
+            <input type="hidden" name="csrf" value={csrf} />
+            <label class="cover-pick">Cover image <input type="file" name="cover" accept="image/jpeg,image/png,image/webp" /></label>
+            <button class="btn btn-ghost" type="submit">{coverAt !== null ? 'Replace cover' : 'Upload cover'}</button>
+            {coverAt !== null && <button class="btn btn-ghost" name="action" value="remove" type="submit" formnovalidate data-confirm="Remove the cover image?">Remove</button>}
+            <span class="queue-meta">JPEG, PNG or WebP, up to 1.5 MB; about 1200 × 630 looks best.</span>
+          </form>
           </details>
           )}
           <details class="admin-edit" id="tickets" open={types.length > 0}>
