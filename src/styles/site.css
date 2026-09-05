@@ -2551,3 +2551,15 @@ html.display-mode,
   width: 14rem;
 }
 
+
+/* "Continue to payment" beside "Release this seat", inside a flash box or
+   a ticket card: a tight row, no trailing gap. */
+.flash .entry-actions,
+.queue-card .entry-actions,
+.ticket-meta .entry-actions {
+  margin: 0.5rem 0 0;
+  align-items: center;
+}
+.flash > p:first-child {
+  margin: 0;
+}

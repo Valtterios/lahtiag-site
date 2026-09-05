@@ -106,7 +106,11 @@ const REASONS: Record<string, string> = {
   cancelled_checkout: 'Payment cancelled. Nothing was charged.',
   csrf: 'The form was stale. Try again.',
 };
-const message = REASONS[problem ?? Astro.url.searchParams.get('err') ?? ''] ?? (offer && !offer.ok ? REASONS[offer.reason] : null);
+const OKS: Record<string, string> = {
+  released: 'Seat released. Nothing was charged.',
+};
+const message =
+  REASONS[problem ?? Astro.url.searchParams.get('err') ?? ''] ?? OKS[Astro.url.searchParams.get('ok') ?? ''] ?? (offer && !offer.ok ? REASONS[offer.reason] : null);
 ---
 <Base title={valid ? `Ticket: ${event.title}` : 'Ticket'} description="Buy a ticket to a LahtiAG event.">
   {!valid ? (
@@ -128,10 +132,18 @@ const message = REASONS[problem ?? Astro.url.searchParams.get('err') ?? ''] ?? (
         ) : (
           <p class="queue-meta">You'll type your name on the payment page; the ticket is issued by name. <a href={`/login?next=/events/${event.id}/pay/${type.id}`}>Sign in with Discord</a> instead to get the member price and keep the ticket on your account.</p>
         )}
-        {resume && (
-          <p class="flash">
-            A payment for this ticket is already open. <a class="btn btn-cta" href={resume}>Continue to payment</a>
-          </p>
+        {resume && pendingMine && (
+          <div class="flash">
+            <p>{pendingMine.ticket_type_id === type.id ? 'A payment for this ticket is already open.' : `A payment for the ${pendingMine.type_name} ticket is already open. Release it to buy this one instead.`}</p>
+            <div class="entry-actions">
+              <a class="btn btn-cta" href={resume}>Continue to payment</a>
+              <form method="post" action={`/tickets/${pendingMine.code}/release`}>
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="next" value={`/events/${event.id}/pay/${type.id}`} />
+                <button class="btn btn-ghost" type="submit">Release this seat</button>
+              </form>
+            </div>
+          </div>
         )}
         {message && <p class="flash">{message}</p>}
         {answerErrors.length > 0 && (

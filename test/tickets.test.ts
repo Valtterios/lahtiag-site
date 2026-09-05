@@ -222,8 +222,18 @@ describe('ticket lifecycle', () => {
     const id = await event({ capacity: 5 });
     const typeId = await createTicketType(db(), id, { name: 'Door', price_cents: 1000, member_price_cents: null, members_only: false, quantity: null, sales_close_at: null });
     const pending = await createTicket(db(), { event_id: id, ticket_type_id: typeId, discord_id: null, holder_name: 'Someone', amount_cents: 1000, status: 'pending', source: 'online', stripe_session_id: 'cs_2' }, NOW);
-    await voidTicket(db(), pending.id);
+    expect(await voidTicket(db(), pending.id)).toBe(true);
+    expect(await voidTicket(db(), pending.id)).toBe(false);
     expect((await getTicketByCode(db(), pending.code))?.status).toBe('void');
+    // "Release this seat": the pending ticket blocked a second buy on the
+    // account; void, the account may pick another type.
+    await person('a', false);
+    const held = await createTicket(db(), { event_id: id, ticket_type_id: typeId, discord_id: 'a', holder_name: 'A', amount_cents: 1000, status: 'pending', source: 'online', stripe_session_id: 'cs_3' }, NOW);
+    const ev = (await getEvent(db(), id))!;
+    const type = (await getTicketType(db(), typeId))!;
+    expect(await ticketOffer(db(), ev, type, 'a', NOW)).toMatchObject({ ok: false, reason: 'has_ticket' });
+    expect(await voidTicket(db(), held.id)).toBe(true);
+    expect(await ticketOffer(db(), ev, type, 'a', NOW)).toMatchObject({ ok: true, amount_cents: 1000 });
     await recordDoorPayment(db(), 'pi_tap', 1000, NOW);
     await recordDoorPayment(db(), 'pi_tap', 1000, NOW); // idempotent
     expect((await listUnattachedDoorPayments(db(), NOW - 3600)).map((p) => p.stripe_payment_intent)).toEqual(['pi_tap']);

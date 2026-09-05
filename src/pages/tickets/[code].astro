@@ -1,7 +1,7 @@
 ---
 import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
-import { currentSession } from '../../lib/guard';
+import { currentSession, ensureCsrf } from '../../lib/guard';
 import { getTicketByCode, resumableCheckout } from '../../lib/db';
 import { normalizeTicketCode, qrSvg, ticketUrl } from '../../lib/qr';
 import { formatHelsinkiRange } from '../../lib/time';
@@ -13,12 +13,15 @@ const code = normalizeTicketCode(Astro.params.code ?? '');
 const ticket = code ? await getTicketByCode(env.DB, code) : null;
 if (!ticket) Astro.response.status = 404;
 const session = await currentSession(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
 const justPaid = Astro.url.searchParams.get('paid') === '1';
 const issued = Astro.url.searchParams.get('ok') === 'issued';
 // Stripe sends the buyer back before the webhook may have landed; the
 // page says so and refreshes itself once.
 const waiting = justPaid && ticket?.status === 'pending';
 const resume = !justPaid ? resumableCheckout(ticket, Math.floor(Date.now() / 1000)) : null;
+// Anyone with the code may release a door ticket; one on an account, only that account.
+const canRelease = ticket?.status === 'pending' && !justPaid && (!ticket.discord_id || session?.discordId === ticket.discord_id);
 Astro.response.headers.set('cache-control', 'no-store');
 ---
 <Base title={ticket ? `Ticket: ${ticket.event_title}` : 'Ticket'} description="LahtiAG event ticket.">
@@ -50,12 +53,20 @@ Astro.response.headers.set('cache-control', 'no-store');
             {ticket.status === 'void' && 'Cancelled'}
           </p>
           {ticket.amount_cents > 0 && <p class="queue-meta">{(ticket.amount_cents / 100).toFixed(2)} €</p>}
-          {ticket.status === 'pending' && !justPaid && (
-            resume ? (
-              <p><a class="btn btn-cta" href={resume}>Continue to payment</a></p>
-            ) : (
-              <p class="queue-meta">The payment window closed. Go back to the <a href={`/events/${ticket.event_id}`}>event</a> and buy again.</p>
-            )
+          {ticket.status === 'pending' && !justPaid && !resume && (
+            <p class="queue-meta">The payment window closed. Release the seat, then buy again from the <a href={`/events/${ticket.event_id}`}>event</a>.</p>
+          )}
+          {(resume || canRelease) && (
+            <div class="entry-actions">
+              {resume && <a class="btn btn-cta" href={resume}>Continue to payment</a>}
+              {canRelease && (
+                <form method="post" action={`/tickets/${ticket.code}/release`}>
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="next" value={`/events/${ticket.event_id}`} />
+                  <button class="btn btn-ghost" type="submit">Release this seat</button>
+                </form>
+              )}
+            </div>
           )}
         </div>
       </section>

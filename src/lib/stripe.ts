@@ -103,6 +103,31 @@ export async function createCheckoutSession(
   }
 }
 
+// "Release this seat": expire an open Checkout Session so its page can no
+// longer be paid. 'paid' means it had already completed with money, so the
+// seat must not be freed; the webhook marks the ticket. 'failed' is Stripe
+// unreachable: the caller frees the seat anyway, and should the buyer still
+// pay on the old page, the webhook revives the ticket.
+export async function expireCheckoutSession(secretKey: string, sessionId: string): Promise<'expired' | 'paid' | 'failed'> {
+  const headers = { authorization: `Bearer ${secretKey}`, 'stripe-version': API_VERSION };
+  const path = `${API}/checkout/sessions/${encodeURIComponent(sessionId)}`;
+  try {
+    const response = await fetch(`${path}/expire`, { method: 'POST', headers });
+    if (response.ok) return 'expired';
+    // Not open any more: completed, or expired on its own. Ask which.
+    const lookup = await fetch(path, { headers });
+    if (!lookup.ok) {
+      console.error(`stripe session lookup failed: ${lookup.status}`);
+      return 'failed';
+    }
+    const session = (await lookup.json()) as { status?: string; payment_status?: string };
+    return session.status === 'complete' && session.payment_status !== 'unpaid' ? 'paid' : 'expired';
+  } catch (error) {
+    console.error(`stripe expire threw: ${String(error).slice(0, 300)}`);
+    return 'failed';
+  }
+}
+
 // Stripe-Signature: t=<unix>,v1=<hex hmac of "<t>.<payload>">[,v1=...]
 // HMAC-SHA256 with the endpoint's signing secret; a few minutes of
 // tolerance against replay.

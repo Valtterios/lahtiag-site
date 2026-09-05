@@ -2263,8 +2263,10 @@ export function resumableCheckout(ticket: TicketRow | null, now: number): string
   return ticket.created_at > now - PENDING_TICKET_SECONDS ? ticket.checkout_url : null;
 }
 
-export async function voidTicket(db: D1Database, ticketId: number): Promise<void> {
-  await db.prepare("UPDATE tickets SET status = 'void' WHERE id = ?1 AND status = 'pending'").bind(ticketId).run();
+// Only a pending ticket can be voided; true when this call did it.
+export async function voidTicket(db: D1Database, ticketId: number): Promise<boolean> {
+  const result = await db.prepare("UPDATE tickets SET status = 'void' WHERE id = ?1 AND status = 'pending'").bind(ticketId).run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
 // A refund (from Stripe's dashboard, reported by the webhook, or a comp

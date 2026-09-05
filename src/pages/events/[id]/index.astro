@@ -108,12 +108,13 @@ const FLASH: Record<string, string> = {
   has_ticket: 'You already have a ticket for this event.',
   payments_off: 'Card payments are not set up yet. Free tickets work; paid ones at the door.',
   stripe_down: "The payment page didn't open. Try again in a moment.",
-  cancelled_checkout: 'Payment cancelled. Nothing was charged; the seat is released shortly.',
+  cancelled_checkout: 'Payment cancelled. Nothing was charged. Continue below, or release the seat to pick another ticket.',
   answers: 'Please answer the required questions.',
   needs_ticket: 'This event needs a ticket first. Buy one above, then form or join a team.',
 };
 const OK: Record<string, string> = {
   reinstated: 'The event is back on. The Discord cancellation line was removed.',
+  released: 'Seat released. Nothing was charged.',
   type_saved: 'Ticket type saved.',
   type_deleted: 'Ticket type removed (or retired, if tickets were sold on it).',
   question_saved: 'Questions saved.',
@@ -188,10 +189,17 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                 <p class="queue-name">{myTicket.status === 'paid' ? 'You have a ticket' : 'Your payment is not finished'}</p>
                 <p class="queue-meta">{myTicket.type_name} · {myTicket.holder_name}{myTicket.checked_in_at ? ' · checked in' : ''}</p>
               </div>
-              {resume ? (
-                <a class="btn btn-cta" href={resume}>Continue to payment</a>
+              {myTicket.status === 'pending' ? (
+                <div class="entry-actions">
+                  {resume && <a class="btn btn-cta" href={resume}>Continue to payment</a>}
+                  <form method="post" action={`/tickets/${myTicket.code}/release`}>
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="next" value={`/events/${event.id}`} />
+                    <button class="btn btn-ghost" type="submit">Release this seat</button>
+                  </form>
+                </div>
               ) : (
-                <a class="btn btn-primary" href={`/tickets/${myTicket.code}`}>{myTicket.status === 'paid' ? 'Show ticket' : 'Open ticket'}</a>
+                <a class="btn btn-primary" href={`/tickets/${myTicket.code}`}>Show ticket</a>
               )}
             </div>
           ) : questions.length > 0 && session ? (

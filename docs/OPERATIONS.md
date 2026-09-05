@@ -265,6 +265,11 @@ version:
   forming a team. Answers show on the admin roster, on the door page, in
   the tickets CSV and in "Export roster with answers". People can edit
   their own answers while signups are open.
+- **Release this seat**: a pending ticket (payment started, not finished)
+  holds its seat for 35 minutes and blocks the account from buying another
+  type. The buyer's own "Release this seat" button, on the event page, the
+  pay page and the ticket page, expires Stripe's page and voids the ticket
+  at once, so they can pick the right ticket. Nothing is charged.
 - **Refunds**: from the Stripe dashboard; the webhook marks the ticket
   refunded and frees the seat. Cancelling an event does not refund by
   itself — refund in Stripe (all charges of that event), then cancel.
