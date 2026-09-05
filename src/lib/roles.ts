@@ -113,24 +113,38 @@ export function planRoleChanges(
   return changes;
 }
 
+// What a sync would do right now, for showing on the register before
+// anyone clicks. 'intent' = the bot cannot list members (Server Members
+// intent off in the Developer Portal).
+export type RolePlan =
+  | { ok: true; changes: RoleChange[] }
+  | { ok: false; reason: 'unconfigured' | 'intent' | 'error' };
+
+export async function planRoles(env: RoleConfig, db: D1Database): Promise<RolePlan> {
+  if (!rolesConfigured(env)) return { ok: false, reason: 'unconfigured' };
+  const members = await listGuildMemberRoles(env.DISCORD_BOT_TOKEN!, DISCORD_GUILD_ID);
+  if (!members.ok) return { ok: false, reason: members.reason };
+  return { ok: true, changes: planRoleChanges(await listLinkedEntries(db), members.roles, env) };
+}
+
 export interface SyncSummary {
   planned: number;
   applied: number;
+  forbidden: number; // Discord refused: the bot's role sits below the target role, or Manage Roles is missing
   failed: number;
   remaining: number;
-  error: 'unconfigured' | 'discord' | null;
+  error: 'unconfigured' | 'intent' | 'error' | null;
 }
 
 // Workers allow a limited number of outgoing requests per invocation, so
 // one click applies at most `limit` changes and says how many are left.
 export async function syncAllRoles(env: RoleConfig, db: D1Database, limit = 40): Promise<SyncSummary> {
-  if (!rolesConfigured(env)) return { planned: 0, applied: 0, failed: 0, remaining: 0, error: 'unconfigured' };
-  const guildRoles = await listGuildMemberRoles(env.DISCORD_BOT_TOKEN!, DISCORD_GUILD_ID);
-  if (!guildRoles) return { planned: 0, applied: 0, failed: 0, remaining: 0, error: 'discord' };
-  const changes = planRoleChanges(await listLinkedEntries(db), guildRoles, env);
+  const plan = await planRoles(env, db);
+  if (!plan.ok) return { planned: 0, applied: 0, forbidden: 0, failed: 0, remaining: 0, error: plan.reason };
   let applied = 0;
+  let forbidden = 0;
   let failed = 0;
-  for (const change of changes.slice(0, limit)) {
+  for (const change of plan.changes.slice(0, limit)) {
     const result = await setGuildMemberRole(
       env.DISCORD_BOT_TOKEN!,
       DISCORD_GUILD_ID,
@@ -139,13 +153,15 @@ export async function syncAllRoles(env: RoleConfig, db: D1Database, limit = 40):
       change.on,
     );
     if (result === 'ok' || result === 'not_in_guild') applied++;
+    else if (result === 'forbidden') forbidden++;
     else failed++;
   }
   return {
-    planned: changes.length,
+    planned: plan.changes.length,
     applied,
+    forbidden,
     failed,
-    remaining: Math.max(0, changes.length - limit),
+    remaining: Math.max(0, plan.changes.length - limit),
     error: null,
   };
 }

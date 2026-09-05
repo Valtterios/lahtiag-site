@@ -2103,3 +2103,36 @@ html.display-mode,
   min-width: 12rem;
 }
 
+.role-plan {
+  margin: 0.8rem 0 0;
+}
+
+.role-plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  max-width: var(--prose-measure);
+}
+
+.plan-add,
+.plan-remove {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid currentColor;
+}
+
+.plan-add {
+  color: #1f7a3f;
+}
+
+.plan-remove {
+  color: #b32626;
+}
+

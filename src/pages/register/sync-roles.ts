@@ -20,6 +20,7 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     ok: 'synced',
     planned: String(summary.planned),
     applied: String(summary.applied),
+    forbidden: String(summary.forbidden),
     failed: String(summary.failed),
     remaining: String(summary.remaining),
   });

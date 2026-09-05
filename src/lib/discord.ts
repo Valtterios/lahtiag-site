@@ -327,11 +327,14 @@ export async function setGuildMemberRole(
 }
 
 // Every member of the server with their roles, for the sync: one request
-// per 1000 members. Needs the Server Members intent on the bot.
-export async function listGuildMemberRoles(
-  botToken: string,
-  guildId: string,
-): Promise<Map<string, string[]> | null> {
+// per 1000 members. Needs the Server Members intent on the bot; without
+// it Discord answers 403, which is reported as such so the page can say
+// exactly what to switch on.
+export type GuildMembers =
+  | { ok: true; roles: Map<string, string[]> }
+  | { ok: false; reason: 'intent' | 'error' };
+
+export async function listGuildMemberRoles(botToken: string, guildId: string): Promise<GuildMembers> {
   const roles = new Map<string, string[]>();
   let after = '0';
   for (let page = 0; page < 5; page++) {
@@ -341,15 +344,16 @@ export async function listGuildMemberRoles(
         headers: { authorization: `Bot ${botToken}` },
       });
     } catch {
-      return null;
+      return { ok: false, reason: 'error' };
     }
-    if (!response.ok) return null;
+    if (response.status === 403) return { ok: false, reason: 'intent' };
+    if (!response.ok) return { ok: false, reason: 'error' };
     const members = (await response.json()) as { user: { id: string }; roles: string[] }[];
     for (const m of members) roles.set(m.user.id, m.roles);
     if (members.length < 1000) break;
     after = members[members.length - 1].user.id;
   }
-  return roles;
+  return { ok: true, roles };
 }
 
 export interface GuildRole {

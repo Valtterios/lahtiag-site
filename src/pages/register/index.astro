@@ -16,7 +16,7 @@ import {
   HOUSEKEEPING,
   type RegisterRow,
 } from '../../lib/db';
-import { rolesConfigured, loadRoleConfig } from '../../lib/roles';
+import { rolesConfigured, loadRoleConfig, planRoles, type RolePlan } from '../../lib/roles';
 import { listGuildRoles, type GuildRole } from '../../lib/discord';
 import { DISCORD_GUILD_ID } from '../../lib/config';
 import {
@@ -69,6 +69,25 @@ const rolesOn = rolesConfigured(roleCfg);
 // the page, and only when a token exists to fetch them with.
 const guildRoles: GuildRole[] | null =
   board.ok && env.DISCORD_BOT_TOKEN ? await listGuildRoles(env.DISCORD_BOT_TOKEN, DISCORD_GUILD_ID) : null;
+// What Sync would change, shown before the button so the board can see
+// whether the bot is able to read the server and what it would touch.
+const rolePlan: RolePlan | null = board.ok && rolesOn ? await planRoles(roleCfg, env.DB) : null;
+const roleName = (id: string) => guildRoles?.find((r) => r.id === id)?.name ?? id;
+const linkedNames = new Map<string, string>();
+if (rolePlan?.ok && rolePlan.changes.length > 0) {
+  const ids = [...new Set(rolePlan.changes.map((c) => c.discordId))].slice(0, 40);
+  const { results } = await env.DB
+    .prepare(`SELECT discord_id, full_name FROM register WHERE discord_id IN (${ids.map(() => '?').join(',')})`)
+    .bind(...ids)
+    .all<{ discord_id: string; full_name: string }>();
+  for (const r of results) linkedNames.set(r.discord_id, r.full_name);
+  const { results: cached } = await env.DB
+    .prepare(`SELECT discord_id, username FROM members WHERE discord_id IN (${ids.map(() => '?').join(',')})`)
+    .bind(...ids)
+    .all<{ discord_id: string; username: string }>();
+  for (const r of cached) if (!linkedNames.has(r.discord_id)) linkedNames.set(r.discord_id, r.username);
+}
+const whoIs = (id: string) => linkedNames.get(id) ?? `Discord id ${id}`;
 
 const pending = view === 'all' || view === 'pending' ? rows.filter((r) => r.status === 'pending') : [];
 const hints = new Map<number, { warning: string | null; similar: RegisterRow[] }>();
@@ -94,8 +113,10 @@ const FLASH: Record<string, string> = {
   synced: 'Discord roles synced.',
   roles_saved: 'Role choice saved. Click Sync Discord roles to apply it to everyone.',
   bad_role: 'Pick roles from the list.',
-  roles_unconfigured: 'Discord roles are not configured on this deployment (bot token and role ids).',
-  roles_discord: "Discord didn't answer, or the bot lacks the Server Members intent. Try again.",
+  roles_unconfigured: 'Discord roles are not configured: set the bot token and pick the roles below.',
+  roles_intent: 'The bot cannot list the server\'s members: turn on Server Members Intent in the Developer Portal (Bot tab), then try again.',
+  roles_error: "Discord didn't answer. Try again in a moment.",
+  roles_discord: "Discord didn't answer. Try again in a moment.",
   missing: 'That entry no longer exists.',
   duplicate: 'Another entry already uses that email or Discord account.',
   bad_input: "The entry couldn't be saved from those values.",
@@ -107,9 +128,15 @@ const okKey = Astro.url.searchParams.get('ok');
 let flash = FLASH[okKey ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
 if (okKey === 'synced') {
   const p = Astro.url.searchParams;
-  flash = `Discord roles synced: ${p.get('applied')} of ${p.get('planned')} changes applied` +
-    (Number(p.get('failed')) > 0 ? `, ${p.get('failed')} failed (bot role too low, or no permission)` : '') +
-    (Number(p.get('remaining')) > 0 ? `, ${p.get('remaining')} left: click again.` : '.');
+  const planned = Number(p.get('planned'));
+  flash = planned === 0
+    ? 'Discord roles already match the register. Nothing to change.'
+    : `Discord roles synced: ${p.get('applied')} of ${planned} changes applied` +
+      (Number(p.get('forbidden')) > 0
+        ? `, ${p.get('forbidden')} refused by Discord: in Server Settings → Roles drag the bot's role above the Member and Actives roles, then sync again`
+        : '') +
+      (Number(p.get('failed')) > 0 ? `, ${p.get('failed')} failed (Discord error)` : '') +
+      (Number(p.get('remaining')) > 0 ? `, ${p.get('remaining')} left: click again.` : '.');
 }
 if (Astro.url.searchParams.get('roles') === 'failed') {
   flash = `${flash ?? ''} The Discord role could not be set: check the bot's permissions and role order, then use Sync.`.trim();
@@ -367,6 +394,39 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                 <input type="hidden" name="csrf" value={csrf} />
                 <button class="btn btn-primary" type="submit">Sync Discord roles</button>
               </form>
+            )}
+          </div>
+        )}
+        {rolePlan && !rolePlan.ok && rolePlan.reason === 'intent' && (
+          <p class="warn-tag">
+            The bot can't list the server's members, so Sync can't work yet: Developer Portal →
+            the application → Bot → Privileged Gateway Intents → turn on <strong>Server Members
+            Intent</strong>, save, then reload this page.
+          </p>
+        )}
+        {rolePlan && !rolePlan.ok && rolePlan.reason === 'error' && (
+          <p class="warn-tag warn-soft">Discord didn't answer while reading the member list. Reload in a moment.</p>
+        )}
+        {rolePlan?.ok && (
+          <div class="role-plan">
+            {rolePlan.changes.length === 0 ? (
+              <p class="match-tag">Discord roles match the register. Nothing to sync.</p>
+            ) : (
+              <>
+                <p class="queue-intro">
+                  Sync would make {rolePlan.changes.length} change{rolePlan.changes.length === 1 ? '' : 's'}
+                  {rolePlan.changes.length > 40 ? ' (40 per click)' : ''}:
+                </p>
+                <ul class="role-plan-list">
+                  {rolePlan.changes.slice(0, 40).map((c) => (
+                    <li>
+                      <span class={c.on ? 'plan-add' : 'plan-remove'}>{c.on ? 'give' : 'remove'}</span>
+                      {' '}<strong>{roleName(c.roleId)}</strong> {c.on ? 'to' : 'from'} {whoIs(c.discordId)}
+                    </li>
+                  ))}
+                  {rolePlan.changes.length > 40 && <li class="queue-meta">and {rolePlan.changes.length - 40} more.</li>}
+                </ul>
+              </>
             )}
           </div>
         )}
