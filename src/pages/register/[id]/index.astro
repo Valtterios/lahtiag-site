@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import Base from '../../../layouts/Base.astro';
 import RegisterToolbar from '../../../components/RegisterToolbar.astro';
 import BoardGate from '../../../components/BoardGate.astro';
-import { ensureCsrf } from '../../../lib/guard';
+import { ensureCsrf, currentSession } from '../../../lib/guard';
 import { requireBoard, boardStatus } from '../../../lib/board';
 import { getRegisterEntry, findSimilarEntries } from '../../../lib/db';
 import {
@@ -25,6 +25,7 @@ import { formatHelsinkiDate } from '../../../lib/time';
 
 const board = await requireBoard(Astro.request, env);
 Astro.response.status = boardStatus(board);
+const discordSession = board.ok ? null : await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
 const id = Number(Astro.params.id);
 const entry = board.ok && Number.isInteger(id) ? await getRegisterEntry(env.DB, id) : null;
@@ -66,7 +67,7 @@ const SOURCE: Record<string, string> = {
 ---
 <Base title={entry ? entry.full_name : 'Register entry'} description="Board-only member register entry." wide>
   {!board.ok ? (
-    <BoardGate check={board} />
+    <BoardGate check={board} session={discordSession} />
   ) : !entry ? (
     <>
       <RegisterToolbar email={board.email} csrf={csrf} current="register" />

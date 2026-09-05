@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
 import RegisterToolbar from '../../components/RegisterToolbar.astro';
 import BoardGate from '../../components/BoardGate.astro';
-import { ensureCsrf } from '../../lib/guard';
+import { ensureCsrf, currentSession } from '../../lib/guard';
 import { requireBoard, boardStatus, allowedBoardEmails, WORKSPACE_DOMAIN } from '../../lib/board';
 import { listRegisterAdmins } from '../../lib/db';
 import { formatHelsinkiDate } from '../../lib/time';
@@ -14,6 +14,7 @@ import { formatHelsinkiDate } from '../../lib/time';
 
 const board = await requireBoard(Astro.request, env);
 Astro.response.status = boardStatus(board);
+const discordSession = board.ok ? null : await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
 const fixed = allowedBoardEmails(env.REGISTER_ADMINS);
 const added = board.ok ? (await listRegisterAdmins(env.DB)).filter((a) => !fixed.includes(a.email)) : [];
@@ -31,7 +32,7 @@ const flash =
 ---
 <Base title="Register access" description="Board-only member register." wide>
   {!board.ok ? (
-    <BoardGate check={board} />
+    <BoardGate check={board} session={discordSession} />
   ) : (
     <>
       <RegisterToolbar email={board.email} csrf={csrf} current="access" />

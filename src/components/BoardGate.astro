@@ -1,27 +1,49 @@
 ---
 // What the register pages show instead of their content when the Google
-// step-up is missing. Renders no data whatsoever.
+// step-up is missing. Two doors: the rest of the board signs in with
+// Discord and gets the member check; the accounts with register access
+// sign in with Google. Renders no data whatsoever.
 import type { BoardCheck } from '../lib/board';
+import type { Session } from '../lib/auth';
 
 interface Props {
   check: Exclude<BoardCheck, { ok: true }>;
+  // The Discord session, if any, only to word the page: access itself is
+  // re-verified by the pages people are sent to.
+  session?: Session | null;
 }
 
-// The HTTP status is set by the page (boardStatus in board.ts), not here:
-// by the time this component renders inside the layout, Astro has already
-// streamed the response head and a status set here is lost.
-const { check } = Astro.props;
+const { check, session = null } = Astro.props;
 ---
 <article class="prose">
   {check.reason === 'unauthenticated' && (
     <>
       <h1>Member register</h1>
-      <p>
-        The register holds members' personal data, so it opens only to the board members
-        listed for it, signed in with their lahtiag.fi Google account. The sign-in lasts
-        eight hours.
-      </p>
-      <p><a class="btn btn-primary" href="/auth/google">Sign in with Google</a></p>
+      {session?.isAdmin ? (
+        <>
+          <p>
+            Signed in as <strong>{session.username}</strong> with the Board role. The full register,
+            with members' personal data, opens only for the accounts with register access (the chair
+            and the treasurer). Board members can check whether someone is a member:
+          </p>
+          <p class="entry-actions">
+            <a class="btn btn-primary" href="/register/lookup">Member check</a>
+            <a class="btn btn-ghost" href="/auth/google">Register sign-in with Google</a>
+          </p>
+        </>
+      ) : (
+        <>
+          <p>
+            Board members sign in with Discord to check whether someone is a member. The full
+            register, with members' personal data, opens for the accounts with register access
+            (the chair and the treasurer) through a lahtiag.fi Google sign-in that lasts eight hours.
+          </p>
+          <p class="entry-actions">
+            <a class="btn btn-primary" href="/login?next=/register/lookup">Sign in with Discord</a>
+            <a class="btn btn-ghost" href="/auth/google">Register sign-in with Google</a>
+          </p>
+        </>
+      )}
     </>
   )}
   {check.reason === 'unconfigured' && (
