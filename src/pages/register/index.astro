@@ -5,6 +5,7 @@ import RegisterToolbar from '../../components/RegisterToolbar.astro';
 import BoardGate from '../../components/BoardGate.astro';
 import { ensureCsrf, currentSession } from '../../lib/guard';
 import { requireBoard, boardStatus } from '../../lib/board';
+import { listUpcomingEvents } from '../../lib/db';
 import {
   listRegister,
   registerCounts,
@@ -165,7 +166,7 @@ const days = (t: number) => Math.floor((now - t) / 86400);
 ---
 <Base title="Member register" description="Board-only member register of Lahti Association of Gaming LAG ry." wide>
   {!board.ok ? (
-    <BoardGate check={board} session={discordSession} />
+    <BoardGate check={board} session={discordSession} events={discordSession?.isAdmin ? (await listUpcomingEvents(env.DB, Math.floor(Date.now() / 1000), true)).slice(0, 6) : []} />
   ) : (
     <>
       <RegisterToolbar email={board.email} csrf={csrf} current="register" />

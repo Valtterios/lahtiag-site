@@ -5,15 +5,18 @@
 // sign in with Google. Renders no data whatsoever.
 import type { BoardCheck } from '../lib/board';
 import type { Session } from '../lib/auth';
+import { formatHelsinki } from '../lib/time';
 
 interface Props {
   check: Exclude<BoardCheck, { ok: true }>;
   // The Discord session, if any, only to word the page: access itself is
   // re-verified by the pages people are sent to.
   session?: Session | null;
+  // Upcoming events, for the door-page shortcuts a board member gets.
+  events?: { id: number; title: string; starts_at: number }[];
 }
 
-const { check, session = null } = Astro.props;
+const { check, session = null, events = [] } = Astro.props;
 ---
 <article class="prose">
   {check.reason === 'unauthenticated' && (
@@ -24,12 +27,42 @@ const { check, session = null } = Astro.props;
           <p>
             Signed in as <strong>{session.username}</strong> with the Board role. The full register,
             with members' personal data, opens only for the accounts with register access (the chair
-            and the treasurer). Board members can check whether someone is a member:
+            and the treasurer). Everything else the board does is a click away:
           </p>
-          <p class="entry-actions">
-            <a class="btn btn-primary" href="/register/lookup">Member check</a>
-            <a class="btn btn-ghost" href="/auth/google">Register sign-in with Google</a>
-          </p>
+          <div class="paths board-links">
+            <section class="path-card">
+              <h2>At the door</h2>
+              {events.length === 0 ? (
+                <p>No upcoming events. Create one on the events page; its door page appears here.</p>
+              ) : (
+                <ul class="board-doors">
+                  {events.map((e) => (
+                    <li><a href={`/events/${e.id}/door`}>{e.title}</a> <span class="queue-meta">{formatHelsinki(e.starts_at)}</span></li>
+                  ))}
+                </ul>
+              )}
+              <p class="entry-actions"><a class="btn btn-ghost btn-sm" href="/shop/orders">Items to hand over</a></p>
+            </section>
+            <section class="path-card">
+              <h2>Members</h2>
+              <p>Is someone a member? Name and status only.</p>
+              <p class="entry-actions"><a class="btn btn-primary" href="/register/lookup">Member check</a></p>
+            </section>
+            <section class="path-card">
+              <h2>Run things</h2>
+              <ul class="board-doors">
+                <li><a href="/events">Events</a> <span class="queue-meta">create, tickets, questions</span></li>
+                <li><a href="/shop">Shop</a> <span class="queue-meta">products and pictures</span></li>
+                <li><a href="/announcements">News</a> <span class="queue-meta">write and publish</span></li>
+              </ul>
+            </section>
+            <section class="path-card">
+              <h2>How it all works</h2>
+              <p>The handbook: tickets, the door, Tap to Pay, the register.</p>
+              <p class="entry-actions"><a class="btn btn-ghost" href="/handbook">Handbook</a></p>
+            </section>
+          </div>
+          <p class="queue-meta">Register access: <a href="/auth/google">sign in with the lahtiag.fi Google account</a>.</p>
         </>
       ) : (
         <>

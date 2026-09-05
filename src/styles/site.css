@@ -3386,3 +3386,20 @@ details.admin-panel[open] > summary {
 .footer-board + .footer-board {
   margin-left: 1rem;
 }
+
+.board-links {
+  max-width: 44rem;
+}
+.board-doors {
+  list-style: none;
+  margin: 0 0 0.6rem;
+  padding: 0;
+}
+.board-doors li {
+  margin: 0 0 0.35rem;
+}
+@media (max-width: 600px) {
+  .paths.board-links {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
