@@ -222,7 +222,13 @@ describe('ticket lifecycle', () => {
 
   it('voids an abandoned checkout and attaches door payments to walk-ins', async () => {
     const id = await event({ capacity: 5 });
-    const typeId = await createTicketType(db(), id, { name: 'Door', price_cents: 1000, member_price_cents: null, members_only: false, quantity: null, sales_close_at: null });
+    const typeId = await createTicketType(db(), id, { name: 'Door', price_cents: 1000, member_price_cents: null, members_only: false, quantity: null, sales_close_at: null, description: '  Entry only ' });
+    expect((await getTicketType(db(), typeId))!.description).toBe('Entry only');
+    await updateTicketType(db(), typeId, { name: 'Door', price_cents: 1000, member_price_cents: null, members_only: false, quantity: null, sales_close_at: null, active: true, description: 'Entry and the afterparty' });
+    expect((await getTicketType(db(), typeId))!.description).toBe('Entry and the afterparty');
+    await expect(
+      createTicketType(db(), id, { name: 'Long', price_cents: 0, member_price_cents: null, members_only: false, quantity: null, sales_close_at: null, description: 'x'.repeat(301) }),
+    ).rejects.toMatchObject({ code: 'bad_input' });
     const pending = await createTicket(db(), { event_id: id, ticket_type_id: typeId, discord_id: null, holder_name: 'Someone', amount_cents: 1000, status: 'pending', source: 'online', stripe_session_id: 'cs_2' }, NOW);
     expect(await voidTicket(db(), pending.id)).toBe(true);
     expect(await voidTicket(db(), pending.id)).toBe(false);

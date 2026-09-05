@@ -135,7 +135,7 @@ const FLASH: Record<string, string> = {
 // Short tags on ticket rows for why a type is not open to this person.
 const TYPE_TAGS: Record<string, string> = {
   sold_out: 'Sold out',
-  full: 'Full',
+  full: 'Sold out',
   reserved: 'Members only now',
   sales_closed: 'Sales closed',
   cancelled: 'Cancelled',
@@ -254,6 +254,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                 <li class="ticket-type">
                   <div class="ticket-type-main">
                     <p class="ticket-type-name">{t.name}</p>
+                    {t.description && <p class="queue-meta ticket-type-desc">{t.description}</p>}
                     <p class="ticket-type-tags">
                       <span class="ticket-type-price">
                         {t.member_price_cents !== null && t.member_price_cents !== t.price_cents
@@ -640,6 +641,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                 <input type="hidden" name="action" value="update" />
                 <input type="hidden" name="ticket_type_id" value={t.id} />
                 <label>Name <input name="name" required maxlength="60" value={t.name} /></label>
+                <label class="type-desc">Description <input name="description" maxlength="300" value={t.description} placeholder="What it includes" /></label>
                 <label>Price € <input name="price" type="text" inputmode="decimal" value={(t.price_cents / 100).toFixed(2)} /></label>
                 <label>Member € <input name="member_price" type="text" inputmode="decimal" value={t.member_price_cents === null ? '' : (t.member_price_cents / 100).toFixed(2)} placeholder="same" /></label>
                 <label>Qty <input name="quantity" type="number" min="1" value={t.quantity ?? ''} placeholder="∞" /></label>
@@ -656,6 +658,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               <input type="hidden" name="csrf" value={csrf} />
               <input type="hidden" name="action" value="create" />
               <label>Name <input name="name" required maxlength="60" placeholder="Standard" /></label>
+              <label class="type-desc">Description <input name="description" maxlength="300" placeholder="What it includes" /></label>
               <label>Price € <input name="price" type="text" inputmode="decimal" placeholder="10.00" required /></label>
               <label>Member € <input name="member_price" type="text" inputmode="decimal" placeholder="same" /></label>
               <label>Qty <input name="quantity" type="number" min="1" placeholder="∞" /></label>

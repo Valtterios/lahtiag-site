@@ -50,6 +50,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
       members_only: form.get('members_only') === 'on',
       quantity,
       sales_close_at: salesClose,
+      description: String(form.get('description') ?? '').replace(/\s+/g, ' ').trim().slice(0, 300),
     };
     if (action === 'create') {
       await createTicketType(env.DB, id, input);

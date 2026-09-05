@@ -1960,6 +1960,7 @@ export interface TicketTypeRow {
   sales_close_at: number | null;
   sort: number;
   active: number;
+  description: string; // what the ticket includes, shown under its name
 }
 
 export interface TicketTypeWithSales extends TicketTypeRow {
@@ -2003,9 +2004,11 @@ function checkTicketTypeInput(input: {
   price_cents: number;
   member_price_cents: number | null;
   quantity: number | null;
+  description?: string;
 }): void {
   const name = input.name.trim();
   if (!name || name.length > 60) throw new RuleError('bad_input', 'A ticket type name is 1 to 60 characters.');
+  if ((input.description ?? '').length > 300) throw new RuleError('bad_input', 'A ticket description is at most 300 characters.');
   if (!Number.isInteger(input.price_cents) || input.price_cents < 0 || input.price_cents > 100000) {
     throw new RuleError('bad_input', 'The price must be between 0 and 1000 euros.');
   }
@@ -2056,6 +2059,7 @@ export async function createTicketType(
     members_only: boolean;
     quantity: number | null;
     sales_close_at: number | null;
+    description?: string;
   },
 ): Promise<number> {
   const event = await getEvent(db, eventId);
@@ -2067,10 +2071,10 @@ export async function createTicketType(
     .first<{ s: number }>();
   const row = await db
     .prepare(
-      `INSERT INTO ticket_types (event_id, name, price_cents, member_price_cents, members_only, quantity, sales_close_at, sort)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) RETURNING id`,
+      `INSERT INTO ticket_types (event_id, name, price_cents, member_price_cents, members_only, quantity, sales_close_at, sort, description)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) RETURNING id`,
     )
-    .bind(eventId, input.name.trim(), input.price_cents, input.member_price_cents, input.members_only ? 1 : 0, input.quantity, input.sales_close_at, (last?.s ?? 0) + 1)
+    .bind(eventId, input.name.trim(), input.price_cents, input.member_price_cents, input.members_only ? 1 : 0, input.quantity, input.sales_close_at, (last?.s ?? 0) + 1, (input.description ?? '').trim())
     .first<{ id: number }>();
   return row!.id;
 }
@@ -2086,6 +2090,7 @@ export async function updateTicketType(
     quantity: number | null;
     sales_close_at: number | null;
     active: boolean;
+    description?: string;
   },
 ): Promise<void> {
   const type = await getTicketType(db, id);
@@ -2094,9 +2099,9 @@ export async function updateTicketType(
   await db
     .prepare(
       `UPDATE ticket_types SET name = ?2, price_cents = ?3, member_price_cents = ?4, members_only = ?5,
-         quantity = ?6, sales_close_at = ?7, active = ?8 WHERE id = ?1`,
+         quantity = ?6, sales_close_at = ?7, active = ?8, description = ?9 WHERE id = ?1`,
     )
-    .bind(id, input.name.trim(), input.price_cents, input.member_price_cents, input.members_only ? 1 : 0, input.quantity, input.sales_close_at, input.active ? 1 : 0)
+    .bind(id, input.name.trim(), input.price_cents, input.member_price_cents, input.members_only ? 1 : 0, input.quantity, input.sales_close_at, input.active ? 1 : 0, (input.description ?? '').trim())
     .run();
 }
 

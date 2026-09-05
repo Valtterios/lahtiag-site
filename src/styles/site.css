@@ -3117,3 +3117,10 @@ details.admin-panel[open] > summary {
   flex: none;
   margin-left: auto;
 }
+
+.type-row .type-desc {
+  flex: 1 1 100%;
+}
+.ticket-type-desc {
+  margin: 0 0 0.4rem;
+}

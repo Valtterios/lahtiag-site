@@ -415,6 +415,7 @@ Astro.response.headers.set('cache-control', 'no-store');
                 <p class="ticket-type-name">{line.quoted.event.title}</p>
                 <p class="queue-meta">
                   {formatHelsinkiRange(line.quoted.event.starts_at, line.quoted.event.ends_at)} · {line.quoted.type.name}
+                  {line.quoted.type.description ? ` · ${line.quoted.type.description}` : ''}
                 </p>
               </div>
               <p class="checkout-sub">{euro(line.quoted.subtotal_cents)}</p>
