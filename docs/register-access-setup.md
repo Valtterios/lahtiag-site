@@ -115,3 +115,34 @@ Google Forms → the membership form → **Responses** tab → switch off
 **Accepting responses**, message: `Apply at https://lahtiag.fi/join`. Same
 for the actives form. The site's Members page and front page already point
 at /join.
+
+## 9. Discord roles (Member and Actives)
+
+The site can give linked members the **Member** role and approved actives
+the **Actives** role. That needs a bot user, the one bot credential in the
+whole system, used for roles and nothing else.
+
+1. Discord Developer Portal → the LahtiAG application → **Bot**. If there
+   is no bot user yet, add one. **Reset Token**, copy the token (shown
+   once). Under Privileged Gateway Intents turn on **Server Members
+   Intent** (the sync reads the member list).
+2. Invite the bot: **OAuth2** → URL Generator → scope `bot`, permission
+   **Manage Roles** only → open the URL, pick the LahtiAG server.
+3. In the server: Server Settings → **Roles**. Create `Member` and
+   `Actives` if they don't exist. Drag the bot's own role (named after the
+   application) **above** both of them; Discord refuses otherwise. Copy
+   each role's id (Developer Mode on: right-click the role → Copy Role ID).
+4. Gate the actives channel: channel settings → Permissions → add the
+   `Actives` role with View Channel, remove it from @everyone.
+5. Put the ids in `wrangler.toml` under `[vars]` **and** `[env.preview.vars]`
+   (`MEMBER_ROLE_ID`, `ACTIVES_ROLE_ID`), push, then set the token:
+
+   ```
+   cd ~/projects/lahtiag-site
+   npx wrangler secret put DISCORD_BOT_TOKEN
+   ```
+
+6. On /register, click **Sync Discord roles** once. It gives every linked
+   member the Member role and every approved active the Actives role, and
+   removes either from people who shouldn't have it. Repeat if it says
+   changes are left.

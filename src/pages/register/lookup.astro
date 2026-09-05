@@ -2,31 +2,60 @@
 import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
 import RegisterToolbar from '../../components/RegisterToolbar.astro';
-import BoardGate from '../../components/BoardGate.astro';
-import { ensureCsrf } from '../../lib/guard';
-import { requireBoard, boardStatus } from '../../lib/board';
+import { ensureCsrf, requireAdmin } from '../../lib/guard';
+import { requireBoard } from '../../lib/board';
 import { listRegister } from '../../lib/db';
 import { STUDENT_STATUS_LABELS, MEMBER_TYPE_LABELS } from '../../lib/register';
 import { formatHelsinkiDate } from '../../lib/time';
 
-// At the door, on a phone: is this person a member? One big search box,
-// a short list of matches, the status in large type.
+// At the door, on a phone: is this person a member? Two levels of access.
+// With the Google register sign-in (chair, treasurer, whoever they add)
+// the full lookup with a way into the entry. With the Discord Board role
+// alone, the member check: name and status, nothing else, so any board
+// member can answer the question at an event without seeing the register.
 
 const board = await requireBoard(Astro.request, env);
-Astro.response.status = boardStatus(board);
+const admin = board.ok ? null : await requireAdmin(Astro.request, env);
+const full = board.ok;
+const allowed = full || admin?.ok === true;
+const adminName = admin && admin.ok ? admin.session.username : null;
+Astro.response.status = allowed ? 200 : admin?.reason === 'unauthenticated' ? 401 : admin?.reason === 'discord_down' ? 503 : 403;
 const csrf = ensureCsrf(Astro.cookies);
 const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 100);
-const rows = board.ok && q ? await listRegister(env.DB, { q, limit: 20 }) : [];
+const rows = allowed && q ? await listRegister(env.DB, { q, limit: 20 }) : [];
 ---
-<Base title="Venue lookup" description="Board-only member lookup for the door." wide>
-  {!board.ok ? (
-    <BoardGate check={board} />
+<Base title="Member check" description="Board-only member lookup for the door." wide={full}>
+  {!allowed ? (
+    <article class="prose">
+      <h1>Member check</h1>
+      {admin?.reason === 'discord_down' ? (
+        <p>Discord didn't answer while checking your role. Wait a moment and reload.</p>
+      ) : (
+        <>
+          <p>
+            Board members check whether someone is a member here: sign in with Discord with the
+            Board role. Register access (the chair and treasurer) opens the full lookup.
+          </p>
+          <p class="entry-actions">
+            <a class="btn btn-primary" href="/login?next=/register/lookup">Sign in with Discord</a>
+            <a class="btn btn-ghost" href="/auth/google">Register sign-in with Google</a>
+          </p>
+        </>
+      )}
+    </article>
   ) : (
     <>
-      <RegisterToolbar email={board.email} csrf={csrf} current="lookup" />
+      {full ? (
+        <RegisterToolbar email={board.email} csrf={csrf} current="lookup" />
+      ) : (
+        <p class="queue-intro">
+          Signed in as <strong>{adminName}</strong> (board). This shows names and
+          membership status only.
+        </p>
+      )}
       <article class="prose"><h1>Is this person a member?</h1></article>
       <form method="get" action="/register/lookup" class="lookup-form">
-        <input type="search" name="q" value={q} placeholder="Name, Discord or email" aria-label="Search" autofocus autocomplete="off" />
+        <input type="search" name="q" value={q} placeholder={full ? 'Name, Discord or email' : 'Name or Discord name'} aria-label="Search" autofocus autocomplete="off" />
         <button class="btn btn-primary" type="submit">Look up</button>
       </form>
       {q && rows.length === 0 && <p class="lookup-none">Nobody in the register matches “{q}”.</p>}
@@ -37,16 +66,18 @@ const rows = board.ok && q ? await listRegister(env.DB, { q, limit: 20 }) : [];
               <div>
                 <p class="lookup-name">{r.full_name}</p>
                 <p class="lookup-status">
-                  {r.status === 'member' && <>{MEMBER_TYPE_LABELS[r.member_type]} since {formatHelsinkiDate(r.decided_at ?? r.applied_at)}</>}
+                  {r.status === 'member' && <>{MEMBER_TYPE_LABELS[r.member_type]}{full && <> since {formatHelsinkiDate(r.decided_at ?? r.applied_at)}</>}{r.is_active ? ', active' : ''}</>}
                   {r.status === 'pending' && <>Application pending, not a member yet</>}
                   {r.status === 'former' && <>Former member</>}
                 </p>
-                <p class="queue-meta">
-                  {STUDENT_STATUS_LABELS[r.student_status]}
-                  {r.discord_name && <> · Discord {r.discord_name}</>}
-                </p>
+                {full && (
+                  <p class="queue-meta">
+                    {STUDENT_STATUS_LABELS[r.student_status]}
+                    {r.discord_name && <> · Discord {r.discord_name}</>}
+                  </p>
+                )}
               </div>
-              <a class="btn btn-ghost btn-sm" href={`/register/${r.id}`}>Open entry</a>
+              {full && <a class="btn btn-ghost btn-sm" href={`/register/${r.id}`}>Open entry</a>}
             </li>
           ))}
         </ul>

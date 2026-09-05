@@ -45,14 +45,19 @@ const FLASH: Record<string, string> = {
   former: 'Marked as a former member.',
   member: 'Membership reinstated.',
   approved: 'Application approved.',
+  active_approve: 'Approved as an active.',
+  active_revoke: 'No longer an active.',
   duplicate: 'Another entry already uses that email or Discord account.',
   bad_input: "The entry couldn't be saved from those values. Check the required fields.",
   missing: 'That action no longer applies to this entry.',
   unauthenticated: 'Sign in with your Google account first.',
   csrf: 'The form was stale. Try again.',
 };
-const flash =
+let flash =
   FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
+if (Astro.url.searchParams.get('roles') === 'failed') {
+  flash = `${flash ?? ''} The Discord role could not be set: check the bot's permissions and role order, then use Sync on the register.`.trim();
+}
 const SOURCE: Record<string, string> = {
   web: 'applied on the site',
   import: 'from the old sheet',
@@ -77,10 +82,12 @@ const SOURCE: Record<string, string> = {
       <article class="prose entry-head">
         <h1>{entry.full_name}</h1>
         <p class="entry-badges">
-          <span class={`status-badge status-${entry.status}`}>{entry.status}</span>
-          <span class="status-badge">{MEMBER_TYPE_LABELS[entry.member_type]}</span>
-          {entry.discord_id && <span class="status-badge status-member">Discord linked</span>}
-          {entry.wants_active && <span class="status-badge">active</span>}
+          {entry.status === 'member' && <span class="status-badge status-member">{MEMBER_TYPE_LABELS[entry.member_type]}</span>}
+          {entry.status === 'pending' && <span class="status-badge status-pending">Pending application</span>}
+          {entry.status === 'former' && <span class="status-badge status-former">Former member</span>}
+          {entry.discord_id && <span class="status-badge">Discord linked</span>}
+          {entry.is_active && <span class="status-badge status-member">active</span>}
+          {!entry.is_active && entry.wants_active && <span class="status-badge status-pending">asked to be an active</span>}
         </p>
         <p class="queue-meta">
           {SOURCE[entry.source]} {formatHelsinkiDate(entry.applied_at)}
@@ -129,6 +136,14 @@ const SOURCE: Record<string, string> = {
             <button class="btn btn-primary" name="action" value="approve" type="submit">Approve membership</button>
             <button class="btn btn-ghost" name="action" value="reject" type="submit">Reject and delete</button>
           </>
+        )}
+        {entry.status === 'member' && !entry.is_active && (
+          <button class="btn btn-primary" name="action" value="active_approve" type="submit">
+            {entry.wants_active ? 'Approve as active' : 'Make an active'}
+          </button>
+        )}
+        {entry.status === 'member' && entry.is_active && (
+          <button class="btn btn-ghost" name="action" value="active_revoke" type="submit">Remove from actives</button>
         )}
         {entry.status === 'member' && (
           <button class="btn btn-ghost" name="action" value="former" type="submit">Mark as former member</button>
@@ -186,7 +201,7 @@ const SOURCE: Record<string, string> = {
             <label class="check-other">Other<input name="games_other" maxlength={LIMITS.games_other} value={otherGames} /></label>
           </fieldset>
           <label class="check check-standalone">
-            <input type="checkbox" name="wants_active" checked={entry.wants_active} /> <span>Wants to be an active</span>
+            <input type="checkbox" name="wants_active" checked={entry.wants_active} /> <span>Has asked to be an active (approval is the button above)</span>
           </label>
           <label>Message from the person<textarea name="message" rows="2" maxlength={LIMITS.message}>{entry.message ?? ''}</textarea></label>
           <label>Board note (never shown to the member)<textarea name="board_note" rows="2" maxlength={LIMITS.board_note}>{entry.board_note ?? ''}</textarea></label>

@@ -47,7 +47,7 @@ export function linkRequestNotice(input: { handle: string; url: string }): strin
 
 export function activeNotice(input: { name: string; telegram: string | null; url: string }): string {
   const tg = input.telegram ? ` (Telegram ${codeSpan(`@${input.telegram}`)})` : ' (no Telegram handle given)';
-  return `🙋 **New active**: ${codeSpan(input.name)}${tg} wants to be an active. Add them to the Telegram group.\nEntry: ${input.url}`;
+  return `🙋 **Actives request**: ${codeSpan(input.name)}${tg} wants to be an active. Approve on the register.\nEntry: ${input.url}`;
 }
 
 // For messages carrying user-supplied text: Discord resolves no mentions
@@ -296,3 +296,59 @@ export async function editInteractionReply(
     body: JSON.stringify({ content, components }),
   }).catch(() => {});
 }
+
+// --- bot: roles ------------------------------------------------------------------
+// The one thing a bot token is needed for (spec relaxed 2026-09-05 with the
+// user's go-ahead): giving members the Member and Actives roles. The token
+// only ever reaches Discord's API from here. Add and remove are idempotent
+// on Discord's side (204 either way), so callers never have to look first.
+
+export type RoleResult = 'ok' | 'not_in_guild' | 'forbidden' | 'error';
+
+export async function setGuildMemberRole(
+  botToken: string,
+  guildId: string,
+  userId: string,
+  roleId: string,
+  on: boolean,
+): Promise<RoleResult> {
+  try {
+    const response = await fetch(`${API}/guilds/${guildId}/members/${userId}/roles/${roleId}`, {
+      method: on ? 'PUT' : 'DELETE',
+      headers: { authorization: `Bot ${botToken}`, 'x-audit-log-reason': 'lahtiag.fi member register' },
+    });
+    if (response.status === 204) return 'ok';
+    if (response.status === 404) return 'not_in_guild';
+    if (response.status === 403) return 'forbidden';
+    return 'error';
+  } catch {
+    return 'error';
+  }
+}
+
+// Every member of the server with their roles, for the sync: one request
+// per 1000 members. Needs the Server Members intent on the bot.
+export async function listGuildMemberRoles(
+  botToken: string,
+  guildId: string,
+): Promise<Map<string, string[]> | null> {
+  const roles = new Map<string, string[]>();
+  let after = '0';
+  for (let page = 0; page < 5; page++) {
+    let response: Response;
+    try {
+      response = await fetch(`${API}/guilds/${guildId}/members?limit=1000&after=${after}`, {
+        headers: { authorization: `Bot ${botToken}` },
+      });
+    } catch {
+      return null;
+    }
+    if (!response.ok) return null;
+    const members = (await response.json()) as { user: { id: string }; roles: string[] }[];
+    for (const m of members) roles.set(m.user.id, m.roles);
+    if (members.length < 1000) break;
+    after = members[members.length - 1].user.id;
+  }
+  return roles;
+}
+

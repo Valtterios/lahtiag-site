@@ -114,6 +114,21 @@ explicit allowlist, not the domain.
   Export CSV / Sign out) replaces the small links; stat tiles; segmented
   status filter; leaner table; access management moved to /register/access.
 
+## Phase 2, third slice (shipped 2026-09-05): actives as a decision, Discord roles, member check
+
+- `migrations/0009_actives.sql`: `is_active`, `active_since`, `active_by`.
+  `wants_active` = the request; `setActive` = the board's decision;
+  `setOwnActive(false)` = leaving (drops the approval); former ends both.
+- `src/lib/roles.ts`: Member role for linked current members, Actives role
+  for approved actives; `applyRoles` after every relevant register action
+  (idempotent PUT/DELETE), `syncAllRoles` from the server's member list
+  (needs Server Members intent), 40 changes per click. `DISCORD_BOT_TOKEN`
+  secret + `MEMBER_ROLE_ID`/`ACTIVES_ROLE_ID` vars; off until set.
+- /register: "Actives requests" queue, "Discord roles" section with Sync.
+- /register/lookup now has two levels: Google register access = full;
+  Discord Board role = member check (name + status only). Linked from the
+  Events admin panel and the signed-in strip.
+
 ## Phase 2 (next): members manage their own entry
 
 Agreed with the user 2026-09-05, not built yet. Members should be able to

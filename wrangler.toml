@@ -71,6 +71,10 @@ ADMIN_ROLE_ID = "1299000982218211469,1210626196354895932"
 # Google Workspace accounts that can always open the member register (the
 # recovery path); the rest are managed on /register itself and stored in D1.
 REGISTER_ADMINS = "hanna.toth-mogyorosi@lahtiag.fi,cristian.radu@lahtiag.fi,valtteri.ostberg@lahtiag.fi"
+# Discord roles mirrored from the register (src/lib/roles.ts). Empty = off.
+# Needs the DISCORD_BOT_TOKEN secret and the bot's own role above these two.
+MEMBER_ROLE_ID = ""
+ACTIVES_ROLE_ID = ""
 
 [[d1_databases]]
 binding = "DB"
@@ -121,6 +125,10 @@ enabled = true
 [env.preview.vars]
 ADMIN_ROLE_ID = "1299000982218211469,1210626196354895932"
 REGISTER_ADMINS = "hanna.toth-mogyorosi@lahtiag.fi,cristian.radu@lahtiag.fi,valtteri.ostberg@lahtiag.fi"
+# Discord roles mirrored from the register (src/lib/roles.ts). Empty = off.
+# Needs the DISCORD_BOT_TOKEN secret and the bot's own role above these two.
+MEMBER_ROLE_ID = ""
+ACTIVES_ROLE_ID = ""
 
 [[env.preview.d1_databases]]
 binding = "DB"

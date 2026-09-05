@@ -24,6 +24,12 @@ type WorkerEnv = {
   // Fixed allowlist of Workspace accounts for the register; more are
   // added on the register page itself.
   REGISTER_ADMINS: string;
+  // Discord roles that mirror the register (src/lib/roles.ts). The bot
+  // token is the only bot credential in the system and is used for
+  // nothing but roles.
+  DISCORD_BOT_TOKEN?: string;
+  MEMBER_ROLE_ID: string;
+  ACTIVES_ROLE_ID: string;
 };
 
 // Astro v6+ with @astrojs/cloudflare 14: request env is imported from

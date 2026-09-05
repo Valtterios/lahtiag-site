@@ -1035,6 +1035,9 @@ export interface RegisterRow extends ApplicationInput {
   link_discord_id: string | null; // a pending request to link this Discord account
   link_discord_name: string | null;
   link_requested_at: number | null;
+  is_active: boolean; // board-approved active (wants_active is the request)
+  active_since: number | null;
+  active_by: string | null;
   board_note: string | null;
   status: RegisterStatus;
   source: 'web' | 'import' | 'board';
@@ -1045,12 +1048,13 @@ export interface RegisterRow extends ApplicationInput {
   updated_at: number;
 }
 
-interface RegisterDbRow extends Omit<RegisterRow, 'wants_active'> {
+interface RegisterDbRow extends Omit<RegisterRow, 'wants_active' | 'is_active'> {
   wants_active: number;
+  is_active: number;
 }
 
 function fromDb(row: RegisterDbRow): RegisterRow {
-  return { ...row, wants_active: row.wants_active === 1 };
+  return { ...row, wants_active: row.wants_active === 1, is_active: row.is_active === 1 };
 }
 
 // A public application. One row per email and per linked Discord account:
@@ -1133,7 +1137,7 @@ export async function listRegister(db: D1Database, filter: RegisterFilter = {}):
     binds.push(status);
     clauses.push(`status = ?${binds.length}`);
   }
-  if (filter.activesOnly) clauses.push('wants_active = 1');
+  if (filter.activesOnly) clauses.push('is_active = 1');
   const q = searchKey([filter.q ?? '']).trim();
   if (q) {
     binds.push(`%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
@@ -1334,7 +1338,7 @@ export interface RegisterStats {
 export async function registerStats(db: D1Database): Promise<RegisterStats> {
   const [actives, byType, bySchool, byYear] = await Promise.all([
     db
-      .prepare("SELECT COUNT(*) AS n FROM register WHERE status = 'member' AND wants_active = 1")
+      .prepare("SELECT COUNT(*) AS n FROM register WHERE status = 'member' AND is_active = 1")
       .first<{ n: number }>(),
     db
       .prepare("SELECT member_type AS k, COUNT(*) AS n FROM register WHERE status = 'member' GROUP BY 1")
@@ -1388,9 +1392,58 @@ export async function setRegisterStatus(
     throw new RuleError('missing', 'No decided register entry with that id.');
   }
   await db
-    .prepare('UPDATE register SET status = ?2, updated_at = ?3 WHERE id = ?1')
+    .prepare(
+      status === 'former'
+        ? 'UPDATE register SET status = ?2, updated_at = ?3, is_active = 0, wants_active = 0 WHERE id = ?1'
+        : 'UPDATE register SET status = ?2, updated_at = ?3 WHERE id = ?1',
+    )
     .bind(id, status, now)
     .run();
+}
+
+// --- actives -------------------------------------------------------------------
+
+// Members who asked to be an active and are not one yet.
+export async function listActiveRequests(db: D1Database): Promise<RegisterRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM register WHERE status = 'member' AND wants_active = 1 AND is_active = 0
+       ORDER BY updated_at ASC`,
+    )
+    .all<RegisterDbRow>();
+  return results.map(fromDb);
+}
+
+// The board's decision. Approve records when and by whom; decline or
+// revoke clears both the approval and the request, so the person can ask
+// again later and it shows up as new.
+export async function setActive(
+  db: D1Database,
+  id: number,
+  active: boolean,
+  by: string,
+  now: number,
+): Promise<RegisterRow> {
+  const entry = await getRegisterEntry(db, id);
+  if (!entry || entry.status !== 'member') throw new RuleError('missing', 'No member with that id.');
+  if (active) {
+    await db
+      .prepare(
+        `UPDATE register SET is_active = 1, wants_active = 1, active_since = ?2, active_by = ?3, updated_at = ?2
+         WHERE id = ?1`,
+      )
+      .bind(id, now, by)
+      .run();
+    return { ...entry, is_active: true, wants_active: true, active_since: now, active_by: by, updated_at: now };
+  }
+  await db
+    .prepare(
+      `UPDATE register SET is_active = 0, wants_active = 0, active_since = NULL, active_by = NULL, updated_at = ?2
+       WHERE id = ?1`,
+    )
+    .bind(id, now)
+    .run();
+  return { ...entry, is_active: false, wants_active: false, active_since: null, active_by: null, updated_at: now };
 }
 
 // --- linking an existing entry to a Discord account -------------------------
@@ -1509,8 +1562,9 @@ export async function refreshLinkedDiscordName(
 // --- self-service ------------------------------------------------------------
 
 // What a linked member may change about themselves without the board:
-// the actives flag and the Telegram handle it needs. Returns the entry,
-// or null when this Discord account is not linked to one.
+// asking to be an active (or leaving the actives, which also drops the
+// board's approval) and the Telegram handle. Returns the entry, or null
+// when this Discord account is not linked to one.
 export async function setOwnActive(
   db: D1Database,
   discordId: string,
@@ -1520,11 +1574,41 @@ export async function setOwnActive(
 ): Promise<RegisterRow | null> {
   const entry = await getRegisterByDiscord(db, discordId);
   if (!entry) return null;
+  const isActive = wantsActive && entry.is_active;
   await db
-    .prepare('UPDATE register SET wants_active = ?2, telegram = ?3, updated_at = ?4, search_key = ?5 WHERE id = ?1')
-    .bind(entry.id, wantsActive ? 1 : 0, telegram, now, searchKey([entry.full_name, entry.email, entry.discord_name, telegram]))
+    .prepare(
+      `UPDATE register SET wants_active = ?2, is_active = ?3,
+         active_since = CASE WHEN ?3 = 1 THEN active_since ELSE NULL END,
+         active_by = CASE WHEN ?3 = 1 THEN active_by ELSE NULL END,
+         telegram = ?4, updated_at = ?5, search_key = ?6
+       WHERE id = ?1`,
+    )
+    .bind(
+      entry.id,
+      wantsActive ? 1 : 0,
+      isActive ? 1 : 0,
+      telegram,
+      now,
+      searchKey([entry.full_name, entry.email, entry.discord_name, telegram]),
+    )
     .run();
-  return { ...entry, wants_active: wantsActive, telegram, updated_at: now };
+  return {
+    ...entry,
+    wants_active: wantsActive,
+    is_active: isActive,
+    active_since: isActive ? entry.active_since : null,
+    active_by: isActive ? entry.active_by : null,
+    telegram,
+    updated_at: now,
+  };
+}
+
+// Everyone with a linked Discord account: what the role sync works from.
+export async function listLinkedEntries(db: D1Database): Promise<RegisterRow[]> {
+  const { results } = await db
+    .prepare('SELECT * FROM register WHERE discord_id IS NOT NULL')
+    .all<RegisterDbRow>();
+  return results.map(fromDb);
 }
 
 // The GDPR erasure path for the register: the row is gone, nothing is

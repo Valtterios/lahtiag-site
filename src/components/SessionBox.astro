@@ -18,7 +18,7 @@ const { session, csrf } = Astro.props;
       <p>
         Signed in as <strong>{session.username}</strong>
         {session.isAdmin && <span class="session-admin">admin</span>}
-        {session.isAdmin && <a class="session-link" href="/register">Member register</a>}
+        {session.isAdmin && <a class="session-link" href="/register/lookup">Member check</a>}
       </p>
       <form method="post" action="/logout">
         <input type="hidden" name="csrf" value={csrf} />

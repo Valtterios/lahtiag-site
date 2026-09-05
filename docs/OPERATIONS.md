@@ -158,10 +158,24 @@ Workspace accounts on the list; the register is only as safe as they are.
   requesting account: **Confirm link** when they match (or you know the
   person), **Dismiss** otherwise. Nothing tells the requester whether the
   email existed. Once linked, the member manages their own actives status.
-- **Actives**: a linked member ticks "I want to be an active" on /join
-  themselves (and gives their Telegram handle); the board channel gets a
-  notice and someone adds them to the Telegram group. The **Actives only**
-  box on /register lists everyone who has ticked it.
+- **Actives**: a member ticks "I want to be an active" (on the form or,
+  once linked, on /join). That is a request: it shows under **Actives
+  requests** on /register with a board notice, and **Approve as active**
+  makes them one (or **Decline**). Approved actives with a linked Discord
+  account get the Actives role, which is what opens the actives channel;
+  gate the channel on that role in Discord. A member unticks the box to
+  leave, which drops the approval and the role. The **Actives** filter
+  lists approved actives.
+- **Discord roles**: linked members carry the Member role, approved
+  actives the Actives role, set as decisions are made on the register.
+  **Sync Discord roles** (bottom of /register) reconciles everyone, 40
+  changes per click. Needs the bot: step 9 of
+  docs/register-access-setup.md. Until then the register works, only the
+  roles are skipped.
+- **Member check for the rest of the board**: /register/lookup with the
+  Discord Board role (no Google sign-in) shows names and membership status
+  only, nothing else. It is linked as **Member check** from the Events
+  page admin panel and the signed-in strip, for the door at events.
 - **At the door**: /register/lookup is the phone view. Type a name, see
   MEMBER / PENDING / FORMER in big letters. On event pages, admins also see
   a small *member* mark next to signups from linked Discord accounts.
@@ -212,9 +226,11 @@ no subdirectories.
 Secrets (set with `npx wrangler secret put NAME`, never committed):
 `SESSION_SECRET`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`,
 `DISCORD_PUBLIC_KEY`, `DISCORD_WEBHOOK_URL`, `GOOGLE_CLIENT_ID`,
-`GOOGLE_CLIENT_SECRET` (the register sign-in), and the optional
+`GOOGLE_CLIENT_SECRET` (the register sign-in), the optional
 `BOARD_WEBHOOK_URL` (a webhook into a board-only channel; membership
-applications are announced there by name and school). The Discord application lives
+applications are announced there by name and school), and the optional
+`DISCORD_BOT_TOKEN` (roles only; with `MEMBER_ROLE_ID` / `ACTIVES_ROLE_ID`
+in `wrangler.toml`). The Discord application lives
 in the [developer portal](https://discord.com/developers/applications) under
 the association's account; its custom emojis (`lag_*`, used by the panel
 buttons) live in the app's Emojis tab.

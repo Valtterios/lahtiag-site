@@ -20,6 +20,8 @@ import {
   resolveLinkRequest,
   setOwnActive,
   refreshLinkedDiscordName,
+  listActiveRequests,
+  setActive,
   createBoardEntry,
   findSimilarEntries,
   registerStats,
@@ -347,14 +349,16 @@ describe('linking an existing entry to Discord', () => {
 });
 
 describe('self-service actives flag', () => {
-  it('updates the linked entry only', async () => {
+  it('updates the linked entry only, as a request until the board approves', async () => {
     expect(await setOwnActive(db(), '77', true, 'me', NOW)).toBeNull();
     const id = await applyForMembership(db(), application(), '77', NOW);
+    await decideApplication(db(), id, 'approve', 'board', NOW);
     const updated = await setOwnActive(db(), '77', true, 'aino_tg', NOW + 9);
-    expect(updated).toMatchObject({ id, wants_active: true, telegram: 'aino_tg', updated_at: NOW + 9 });
-    expect(await getRegisterEntry(db(), id)).toMatchObject({ wants_active: true, telegram: 'aino_tg' });
+    expect(updated).toMatchObject({ id, wants_active: true, is_active: false, telegram: 'aino_tg', updated_at: NOW + 9 });
+    expect(await listRegister(db(), { activesOnly: true })).toEqual([]);
+    await setActive(db(), id, true, 'chair', NOW + 10);
     expect((await listRegister(db(), { activesOnly: true })).map((r) => r.id)).toEqual([id]);
-    await setOwnActive(db(), '77', false, null, NOW + 10);
+    await setOwnActive(db(), '77', false, null, NOW + 11);
     expect(await listRegister(db(), { activesOnly: true })).toEqual([]);
   });
 });
@@ -429,6 +433,8 @@ describe('numbers and housekeeping', () => {
     await applyForMembership(db(), application({ email: 'c@example.com', wants_active: true }), null, NOW);
     await decideApplication(db(), a, 'approve', 'x', NOW);
     await decideApplication(db(), b, 'approve', 'x', NOW + 366 * 86400);
+    expect((await registerStats(db())).actives).toBe(0);
+    await setActive(db(), a, true, 'chair', NOW);
     const stats = await registerStats(db());
     expect(stats.actives).toBe(1);
     expect(stats.membersByType).toEqual({ full: 1, external: 1, supporting: 0, honorary: 0 });
@@ -468,6 +474,53 @@ describe('Discord names over time', () => {
     expect((await listRegister(db(), { q: 'newname' })).map((r) => r.id)).toEqual([id]);
     await refreshLinkedDiscordName(db(), '99', 'stranger', NOW + 2);
     expect((await getRegisterEntry(db(), id))?.updated_at).toBe(NOW + 1);
+  });
+});
+
+describe('actives: request, decision, leaving', () => {
+  async function member(email: string, discordId: string | null, wants = false): Promise<number> {
+    const id = await applyForMembership(db(), application({ email, wants_active: wants }), discordId, NOW);
+    await decideApplication(db(), id, 'approve', 'board', NOW);
+    return id;
+  }
+
+  it('lists requests from members only, and approval records who and when', async () => {
+    const a = await member('a@example.com', '1', true);
+    await applyForMembership(db(), application({ email: 'p@example.com', wants_active: true }), '2', NOW); // pending, not listed
+    await member('b@example.com', '3', false);
+    expect((await listActiveRequests(db())).map((r) => r.id)).toEqual([a]);
+    const approved = await setActive(db(), a, true, 'chair@lahtiag.fi', NOW + 5);
+    expect(approved).toMatchObject({ is_active: true, wants_active: true, active_since: NOW + 5, active_by: 'chair@lahtiag.fi' });
+    expect(await listActiveRequests(db())).toEqual([]);
+    expect((await registerStats(db())).actives).toBe(1);
+    expect((await listRegister(db(), { activesOnly: true })).map((r) => r.id)).toEqual([a]);
+  });
+
+  it('decline and revoke clear both the approval and the request', async () => {
+    const a = await member('a@example.com', '1', true);
+    await setActive(db(), a, false, 'chair', NOW);
+    expect(await getRegisterEntry(db(), a)).toMatchObject({ is_active: false, wants_active: false, active_since: null });
+    await expect(setActive(db(), 404, true, 'chair', NOW)).rejects.toMatchObject({ code: 'missing' });
+  });
+
+  it('a member unticking the box leaves the actives; re-ticking asks again', async () => {
+    const a = await member('a@example.com', '1', true);
+    await setActive(db(), a, true, 'chair', NOW);
+    const left = await setOwnActive(db(), '1', false, null, NOW + 1);
+    expect(left).toMatchObject({ is_active: false, wants_active: false, active_since: null });
+    const asked = await setOwnActive(db(), '1', true, 'tg', NOW + 2);
+    expect(asked).toMatchObject({ is_active: false, wants_active: true, telegram: 'tg' });
+    expect((await listActiveRequests(db())).map((r) => r.id)).toEqual([a]);
+    // ticking again while active changes nothing about the approval
+    await setActive(db(), a, true, 'chair', NOW + 3);
+    expect(await setOwnActive(db(), '1', true, 'tg', NOW + 4)).toMatchObject({ is_active: true, active_since: NOW + 3 });
+  });
+
+  it('becoming a former member ends being an active', async () => {
+    const a = await member('a@example.com', '1', true);
+    await setActive(db(), a, true, 'chair', NOW);
+    await setRegisterStatus(db(), a, 'former', NOW + 1);
+    expect(await getRegisterEntry(db(), a)).toMatchObject({ status: 'former', is_active: false, wants_active: false });
   });
 });
 

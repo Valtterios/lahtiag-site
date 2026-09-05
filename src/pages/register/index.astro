@@ -10,11 +10,13 @@ import {
   registerCounts,
   registerStats,
   listLinkRequests,
+  listActiveRequests,
   listHousekeeping,
   findSimilarEntries,
   HOUSEKEEPING,
   type RegisterRow,
 } from '../../lib/db';
+import { rolesConfigured } from '../../lib/roles';
 import {
   STUDENT_STATUSES,
   STUDENT_STATUS_LABELS,
@@ -49,15 +51,17 @@ const view: View = VIEWS.some((v) => v.key === viewParam) ? (viewParam as View) 
 const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 100);
 const filter = view === 'actives' ? { status: 'member' as const, activesOnly: true } : { status: view };
 
-const [counts, stats, rows, linkRequests, housekeeping] = board.ok
+const [counts, stats, rows, linkRequests, activeRequests, housekeeping] = board.ok
   ? await Promise.all([
       registerCounts(env.DB),
       registerStats(env.DB),
       listRegister(env.DB, { ...filter, q }),
       view === 'all' ? listLinkRequests(env.DB) : Promise.resolve([] as RegisterRow[]),
+      view === 'all' || view === 'actives' ? listActiveRequests(env.DB) : Promise.resolve([] as RegisterRow[]),
       view === 'all' && !q ? listHousekeeping(env.DB, now) : Promise.resolve([] as RegisterRow[]),
     ])
-  : [null, null, [], [], []];
+  : [null, null, [], [], [], []];
+const rolesOn = rolesConfigured(env);
 
 const pending = view === 'all' || view === 'pending' ? rows.filter((r) => r.status === 'pending') : [];
 const hints = new Map<number, { warning: string | null; similar: RegisterRow[] }>();
@@ -78,6 +82,11 @@ const FLASH: Record<string, string> = {
   erased: 'Entry erased from the register.',
   linked: 'Discord account linked. They can manage their actives status on the join page now.',
   link_dismissed: 'Link request dismissed.',
+  active_approve: 'Approved as an active.',
+  active_revoke: 'No longer an active.',
+  synced: 'Discord roles synced.',
+  roles_unconfigured: 'Discord roles are not configured on this deployment (bot token and role ids).',
+  roles_discord: "Discord didn't answer, or the bot lacks the Server Members intent. Try again.",
   missing: 'That entry no longer exists.',
   duplicate: 'Another entry already uses that email or Discord account.',
   bad_input: "The entry couldn't be saved from those values.",
@@ -85,8 +94,17 @@ const FLASH: Record<string, string> = {
   unconfigured: 'Register access is not configured on this deployment.',
   csrf: 'The form was stale. Try again.',
 };
-const flash =
-  FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
+const okKey = Astro.url.searchParams.get('ok');
+let flash = FLASH[okKey ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
+if (okKey === 'synced') {
+  const p = Astro.url.searchParams;
+  flash = `Discord roles synced: ${p.get('applied')} of ${p.get('planned')} changes applied` +
+    (Number(p.get('failed')) > 0 ? `, ${p.get('failed')} failed (bot role too low, or no permission)` : '') +
+    (Number(p.get('remaining')) > 0 ? `, ${p.get('remaining')} left: click again.` : '.');
+}
+if (Astro.url.searchParams.get('roles') === 'failed') {
+  flash = `${flash ?? ''} The Discord role could not be set: check the bot's permissions and role order, then use Sync.`.trim();
+}
 
 const viewHref = (key: View) => `/register?view=${key}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
 const since = (r: RegisterRow) =>
@@ -183,6 +201,34 @@ const days = (t: number) => Math.floor((now - t) / 86400);
         </section>
       )}
 
+      {activeRequests.length > 0 && (
+        <section class="queue">
+          <h2 class="section-label">Actives requests</h2>
+          <p class="queue-intro">
+            Members who asked to be an active. Approving gives them the Actives role on Discord
+            {rolesOn ? '' : ' (once roles are configured)'}; declining clears the request.
+          </p>
+          {activeRequests.map((r) => (
+            <div class="queue-card">
+              <div class="queue-body">
+                <p class="queue-name"><a href={`/register/${r.id}`}>{r.full_name}</a></p>
+                <p class="queue-meta">
+                  {STUDENT_STATUS_LABELS[r.student_status]}
+                  {r.discord_name && <> · Discord {r.discord_name}{r.discord_id ? ' (linked)' : ' (not linked: no role until they link)'}</>}
+                  {!r.discord_name && <> · no Discord account linked</>}
+                  {r.telegram && <> · Telegram @{r.telegram}</>}
+                </p>
+              </div>
+              <form method="post" action={`/register/${r.id}/action`} class="queue-actions">
+                <input type="hidden" name="csrf" value={csrf} />
+                <button class="btn btn-primary" name="action" value="active_approve" type="submit">Approve as active</button>
+                <button class="btn btn-ghost" name="action" value="active_revoke" type="submit">Decline</button>
+              </form>
+            </div>
+          ))}
+        </section>
+      )}
+
       {housekeeping.length > 0 && (
         <section class="queue">
           <h2 class="section-label">Housekeeping</h2>
@@ -259,6 +305,29 @@ const days = (t: number) => Math.floor((now - t) / 86400);
               </tbody>
             </table>
           </div>
+        )}
+      </section>
+
+      <section class="roles" id="roles">
+        <h2 class="section-label">Discord roles</h2>
+        {rolesOn ? (
+          <div class="queue-card queue-quiet">
+            <div class="queue-body">
+              <p class="queue-meta">
+                Linked members carry the Member role, approved actives the Actives role, set as
+                decisions are made here. Sync puts everyone right if something drifted.
+              </p>
+            </div>
+            <form method="post" action="/register/sync-roles" class="queue-actions">
+              <input type="hidden" name="csrf" value={csrf} />
+              <button class="btn btn-ghost" type="submit">Sync Discord roles</button>
+            </form>
+          </div>
+        ) : (
+          <p class="queue-intro">
+            Not configured yet: the bot token and the role ids are missing. See
+            docs/register-access-setup.md, step 9.
+          </p>
         )}
       </section>
 
