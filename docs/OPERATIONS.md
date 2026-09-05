@@ -371,7 +371,9 @@ Secrets (set with `npx wrangler secret put NAME`, never committed):
 `DISCORD_PUBLIC_KEY`, `DISCORD_WEBHOOK_URL`, `GOOGLE_CLIENT_ID`,
 `GOOGLE_CLIENT_SECRET` (the register sign-in), the optional
 `BOARD_WEBHOOK_URL` (a webhook into a board-only channel; membership
-applications are announced there by name and school), and the optional
+applications are announced there by name and school), the optional
+`WELCOME_WEBHOOK_URL` (a public channel; an approved member is welcomed
+there by mention or handle, never by name), and the optional
 `DISCORD_BOT_TOKEN` (roles only; with `MEMBER_ROLE_ID` / `ACTIVES_ROLE_ID`
 in `wrangler.toml`). The Discord application lives
 in the [developer portal](https://discord.com/developers/applications) under

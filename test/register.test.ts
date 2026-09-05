@@ -36,7 +36,6 @@ import {
   csvCell,
   deriveMemberType,
   searchKey,
-  eligibilityWarning,
   sameHandle,
   type ApplicationInput,
 } from '../src/lib/register';
@@ -410,13 +409,6 @@ describe('board-created entries', () => {
 });
 
 describe('hints for the board', () => {
-  it('warns when a LUT/LAB claim comes without a student address', () => {
-    expect(eligibilityWarning({ student_status: 'LUT', email: 'a@student.lut.fi' })).toBeNull();
-    expect(eligibilityWarning({ student_status: 'LAB', email: 'a@LAB.fi' })).toBeNull();
-    expect(eligibilityWarning({ student_status: 'LUT', email: 'a@gmail.com' })).toMatch(/LUT/);
-    expect(eligibilityWarning({ student_status: 'alumni', email: 'a@gmail.com' })).toBeNull();
-  });
-
   it('finds entries with the same surname or email local part', async () => {
     const a = await applyForMembership(db(), application({ full_name: 'Aino Virtanen', email: 'aino.v@example.com' }), null, NOW);
     const b = await applyForMembership(db(), application({ full_name: 'Aino Virtanen', email: 'aino.v@other.example' }), null, NOW);

@@ -18,6 +18,7 @@ type WorkerEnv = {
   DISCORD_WEBHOOK_URL?: string;
   // Board-only channel: new membership applications are announced here.
   BOARD_WEBHOOK_URL?: string;
+  WELCOME_WEBHOOK_URL?: string; // a public channel: "@x joined as a member!" on approval
   // The Google step-up in front of the member register (src/lib/board.ts).
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;

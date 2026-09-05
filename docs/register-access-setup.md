@@ -86,6 +86,12 @@ at the bottom of the register page by someone already on it.
    Paste the URL, Enter. Also into Bitwarden. The message posted is only
    the applicant's name and school plus a link to the register.
 
+   Optional welcome: a second webhook into a public channel such as
+   #general, stored as `WELCOME_WEBHOOK_URL` the same way. When the board
+   approves someone, that channel gets "🎉 @them joined as a member!",
+   with a real mention when their Discord is linked, their handle when
+   they only typed one, and nothing when they gave neither.
+
 ## 7. Import the old sheet
 
 1. In the nonprofit's Drive open the form's responses sheet → File →

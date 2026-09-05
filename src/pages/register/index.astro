@@ -26,7 +26,6 @@ import {
   STUDENT_STATUS_LABELS,
   MEMBER_TYPES,
   MEMBER_TYPE_LABELS,
-  eligibilityWarning,
   sameHandle,
   type RegisterStatus,
 } from '../../lib/register';
@@ -95,10 +94,10 @@ if (rolePlan?.ok && rolePlan.changes.length > 0) {
 const whoIs = (id: string) => linkedNames.get(id) ?? `Discord id ${id}`;
 
 const pending = view === 'all' || view === 'pending' ? rows.filter((r) => r.status === 'pending') : [];
-const hints = new Map<number, { warning: string | null; similar: SimilarEntry[] }>();
+const hints = new Map<number, { similar: SimilarEntry[] }>();
 if (board.ok) {
   for (const r of pending.slice(0, 20)) {
-    hints.set(r.id, { warning: eligibilityWarning(r), similar: await findSimilarEntries(env.DB, r) });
+    hints.set(r.id, { similar: await findSimilarEntries(env.DB, r) });
   }
 }
 const stale = new Set(housekeeping.map((r) => r.id));
@@ -203,7 +202,6 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                   </p>
                   {r.games && <p class="queue-meta">Plays: {r.games}</p>}
                   {r.message && <p class="queue-message">“{r.message}”</p>}
-                  {hint?.warning && <p class="warn-tag">{hint.warning}</p>}
                   {hint && hint.similar.length > 0 && (
                     <div class="warn-tag warn-soft similar-box">
                       <p>Might already be in the register:</p>

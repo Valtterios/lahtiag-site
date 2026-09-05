@@ -15,7 +15,6 @@ import {
   MEMBER_TYPES,
   MEMBER_TYPE_LABELS,
   LIMITS,
-  eligibilityWarning,
   sameHandle,
 } from '../../../lib/register';
 import { formatHelsinkiDate } from '../../../lib/time';
@@ -32,7 +31,6 @@ const entry = board.ok && Number.isInteger(id) ? await getRegisterEntry(env.DB, 
 if (board.ok && !entry) Astro.response.status = 404;
 
 const similar = entry && entry.status === 'pending' ? await findSimilarEntries(env.DB, entry) : [];
-const warning = entry && entry.status === 'pending' ? eligibilityWarning(entry) : null;
 
 const gamesList = entry?.games ? entry.games.split(',').map((g) => g.trim()) : [];
 const knownGames = gamesList.filter((g) => (GAMES as readonly string[]).includes(g));
@@ -99,7 +97,6 @@ const SOURCE: Record<string, string> = {
         </p>
       </article>
       {flash && <p class="flash">{flash}</p>}
-      {warning && <p class="warn-tag">{warning}</p>}
       {similar.length > 0 && (
         <div class="warn-tag warn-soft similar-box">
           <p>Might already be in the register:</p>

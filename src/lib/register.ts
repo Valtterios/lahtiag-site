@@ -224,17 +224,6 @@ export function searchKey(parts: (string | null | undefined)[]): string {
     .toLowerCase();
 }
 
-// A hint for the board, never a rule: someone claiming to study at LUT or
-// LAB usually applies with a student address.
-export const STUDENT_DOMAINS = ['student.lut.fi', 'lut.fi', 'student.lab.fi', 'lab.fi'];
-
-export function eligibilityWarning(entry: { student_status: StudentStatus; email: string }): string | null {
-  if (entry.student_status !== 'LUT' && entry.student_status !== 'LAB') return null;
-  const domain = entry.email.split('@')[1]?.toLowerCase() ?? '';
-  if (STUDENT_DOMAINS.includes(domain)) return null;
-  return `Says ${entry.student_status} but the email isn't a student address`;
-}
-
 // Whether two Discord names are the same account name as people type
 // them: case, a leading @, and a legacy #1234 discriminator don't count.
 export function sameHandle(a: string | null | undefined, b: string | null | undefined): boolean {

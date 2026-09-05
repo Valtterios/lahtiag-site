@@ -188,7 +188,7 @@ export function hasAdminRole(roles: string[], adminRoleIds: string): boolean {
 export async function postWebhook(
   webhookUrl: string,
   content: string,
-  allowedMentions?: { parse: string[] },
+  allowedMentions?: { parse: string[]; users?: string[] },
 ): Promise<string | null> {
   try {
     const response = await fetch(`${webhookUrl}?wait=true`, {

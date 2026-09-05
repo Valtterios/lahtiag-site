@@ -15,6 +15,22 @@ import {
 } from '../../../lib/db';
 import { parseApplication, LIMITS, MEMBER_TYPES, type MemberType } from '../../../lib/register';
 import { applyRoles, loadRoleConfig, type RoleOutcome } from '../../../lib/roles';
+import { postWebhook } from '../../../lib/discord';
+
+// A new member is welcomed in a public channel when WELCOME_WEBHOOK_URL is
+// set: a mention if their Discord is linked, their handle if they gave one,
+// nothing otherwise (the register's names stay in the register).
+async function welcome(id: number): Promise<void> {
+  if (!env.WELCOME_WEBHOOK_URL) return;
+  const entry = await getRegisterEntry(env.DB, id);
+  if (!entry) return;
+  const who = entry.discord_id ? `<@${entry.discord_id}>` : entry.discord_name ? `@${entry.discord_name.replace(/^@/, '')}` : null;
+  if (!who) return;
+  await postWebhook(env.WELCOME_WEBHOOK_URL, `🎉 ${who} joined as a member! Welcome to LahtiAG.`, {
+    parse: [],
+    users: entry.discord_id ? [entry.discord_id] : [],
+  });
+}
 
 // Every board write on one register entry, dispatched on `action`:
 // approve | reject | update | former | member | erase | link_confirm |
@@ -47,9 +63,12 @@ export const POST: APIRoute = async ({ request, redirect, params }) => {
 
   try {
     switch (action) {
-      case 'approve':
+      case 'approve': {
         await decideApplication(env.DB, id, 'approve', board.email, now);
-        return done('/register?ok=approved', await sync());
+        const roles = await sync();
+        await welcome(id);
+        return done('/register?ok=approved', roles);
+      }
       case 'reject': {
         const before = await getRegisterEntry(env.DB, id);
         await decideApplication(env.DB, id, 'reject', board.email, now);
