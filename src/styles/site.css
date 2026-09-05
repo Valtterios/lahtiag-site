@@ -3062,3 +3062,38 @@ details.admin-panel[open] > summary {
   font-size: 2rem;
   line-height: 1;
 }
+
+/* ---------- footer: five short columns, the board link tucked at the bottom ---------- */
+.site-footer .inner {
+  grid-template-columns: 1.5fr repeat(4, minmax(0, 1fr));
+  gap: 1.6rem 2rem;
+}
+.site-footer .footer-about {
+  padding-right: 1rem;
+}
+.footer-board {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: #b9c6ff;
+}
+@media (max-width: 860px) {
+  .site-footer .inner {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .site-footer .footer-about {
+    grid-column: 1 / -1;
+    padding-right: 0;
+  }
+}
+@media (max-width: 480px) {
+  .site-footer .inner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .footer-note {
+    flex-wrap: wrap;
+  }
+  .footer-board {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+}

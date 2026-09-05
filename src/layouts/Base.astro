@@ -75,23 +75,33 @@ const pathname = Astro.url.pathname;
     </main>
     <footer class="site-footer">
       <div class="inner">
-        <div>
+        <div class="footer-about">
           <h2>Lahti Association of Gaming LAG ry</h2>
           <p>Mukkulankatu 19<br />15210 Lahti, Finland</p>
           <p class="footer-legal">Business ID / Y-tunnus 3485167-1</p>
         </div>
         <div>
-          <h2>Association</h2>
+          <h2>Members</h2>
           <ul>
-            <li><a href="/rules">Rules</a></li>
-            <li><a href="/privacy">Privacy</a></li>
             <li><a href="/members">Become a member</a></li>
             <li><a href="/membership">My membership</a></li>
+          </ul>
+        </div>
+        <div>
+          <h2>Tickets and shop</h2>
+          <ul>
+            <li><a href="/events">Events</a></li>
+            <li><a href="/shop">Shop</a></li>
             <li><a href="/tickets">My tickets</a></li>
             <li><a href="/purchases">My purchases</a></li>
-            <li><a href="/shop">Shop</a></li>
+          </ul>
+        </div>
+        <div>
+          <h2>Documents</h2>
+          <ul>
+            <li><a href="/rules">Rules</a></li>
+            <li><a href="/privacy">Privacy policy</a></li>
             <li><a href="/terms">Terms of sale</a></li>
-            <li><a href="/register">Member register (board)</a></li>
           </ul>
         </div>
         <div>
@@ -105,6 +115,7 @@ const pathname = Astro.url.pathname;
         <p class="footer-note">
           <img src="/brand/wordmark-white.png" alt="" width="514" height="160" />
           <span>© {new Date().getFullYear()} Lahti Association of Gaming LAG ry</span>
+          <a class="footer-board" href="/register">Board: member register</a>
         </p>
       </div>
     </footer>
