@@ -61,9 +61,19 @@ interface Interaction {
   member?: { roles?: string[]; nick?: string | null; user?: { id: string; username: string; global_name: string | null; avatar: string | null } };
 }
 
+// Link buttons (style 5) open a page; that is where signing in happens.
+function membershipButtons(entry: RegisterRow | null, origin: string): unknown[] {
+  const link = (label: string, url: string) => ({ type: 2, style: 5, label, url });
+  const row = (...components: unknown[]) => ({ type: 1, components });
+  if (!entry) {
+    return [row(link('Apply for membership', `${origin}/join`), link('Already a member? Link my account', `${origin}/login?next=/join`))];
+  }
+  return [row(link('My membership', `${origin}/membership`), link('Events', `${origin}/events`))];
+}
+
 function membershipStatus(entry: RegisterRow | null, origin: string): string {
   if (!entry) {
-    return `This Discord account isn't linked to a LahtiAG membership. Members from before link it, and new people apply, at ${origin}/join`;
+    return "This Discord account isn't linked to a LahtiAG membership yet. Membership is free for higher education students in Lahti. New here? Apply. Joined through the old form? Sign in on the site and link this account.";
   }
   if (entry.status === 'pending') {
     return `Your membership application from ${formatHelsinkiDate(entry.applied_at)} is waiting for the board.`;
@@ -129,12 +139,16 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
 
   const isAdmin = hasAdminRole(interaction.member?.roles ?? [], env.ADMIN_ROLE_ID);
 
-  // /membership: anyone in the server asks about themselves; one D1 read,
-  // answered directly and only to them.
-  if (interaction.type === 2 && interaction.data?.name === 'membership') {
+  // /membership and /join: anyone in the server asks about themselves;
+  // one D1 read, answered directly and only to them, with link buttons to
+  // the page that does the rest (a bot can't sign anyone in).
+  if (interaction.type === 2 && (interaction.data?.name === 'membership' || interaction.data?.name === 'join')) {
     const userId = interaction.member?.user?.id;
     const entry = userId ? await getRegisterByDiscord(env.DB, userId) : null;
-    return json({ type: 4, data: { content: membershipStatus(entry, url.origin), flags: 64 } });
+    return json({
+      type: 4,
+      data: { content: membershipStatus(entry, url.origin), flags: 64, components: membershipButtons(entry, url.origin) },
+    });
   }
 
   // /tournament renders the interactive control panel: no database work, so

@@ -92,6 +92,10 @@ const commands = [
     name: 'membership',
     description: 'Your LahtiAG membership status (only you see the answer)',
   },
+  {
+    name: 'join',
+    description: 'Become a LahtiAG member, or link your Discord to your membership',
+  },
 ];
 
 const tokenResponse = await fetch('https://discord.com/api/v10/oauth2/token', {
