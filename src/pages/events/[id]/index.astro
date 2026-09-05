@@ -173,6 +173,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
   ) : (
     <>
       <div class="event-layout">
+      <p class="back-link"><a href="/events">← All events</a></p>
       <header class="event-head">
         {cover && <img class="event-cover" src={`/events/${event.id}/cover?t=${cover.updated_at}`} alt="" width={cover.width} height={cover.height} />}
         <div class="event-head-body">

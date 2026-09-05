@@ -3131,3 +3131,30 @@ details.admin-panel[open] > summary {
 .news-card .entry-actions {
   margin: 0.4rem 0 0;
 }
+
+.back-link {
+  margin: 0 0 0.8rem;
+  font-size: 0.9rem;
+}
+.back-link a {
+  color: var(--muted);
+  text-decoration: none;
+}
+.back-link a:hover {
+  color: var(--blue);
+  text-decoration: underline;
+}
+@media (min-width: 900px) {
+  .event-layout {
+    grid-template-rows: auto auto auto 1fr auto;
+    grid-template-areas:
+      'back back'
+      'head side'
+      'view side'
+      'body side'
+      'admin admin';
+  }
+  .event-layout > .back-link {
+    grid-area: back;
+  }
+}
