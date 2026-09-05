@@ -125,7 +125,7 @@ const FLASH: Record<string, string> = {
   csrf: 'The form was stale. Try again.',
 };
 const okKey = Astro.url.searchParams.get('ok');
-let flash = FLASH[okKey ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
+let flash: string | null = FLASH[okKey ?? Astro.url.searchParams.get("err") ?? ""] ?? null;
 if (okKey === 'synced') {
   const p = Astro.url.searchParams;
   const planned = Number(p.get('planned'));
