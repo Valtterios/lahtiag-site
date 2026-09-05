@@ -18,7 +18,7 @@ LahtiAG's initiatives.
 - **Price perks on future events.** Members get better prices at upcoming events, so join to not miss out.
 - **A growing community.** Connect with others who share your interests on our Discord server.
 
-[Become a member](https://forms.gle/nwsqFmqDyzJtpntE9)
+[Become a member](/join)
 
 ## Become an active
 
@@ -26,11 +26,9 @@ As a LahtiAG active, you'll get the latest updates on events, ideas, and
 meetings through our Telegram channel. Be the first to hear about upcoming
 activities, share your ideas, and help us organize exciting events!
 
-Signing up doesn't commit you to anything. It simply shows that you're
-interested in staying informed and possibly getting involved. More
-information in the LahtiAG Telegram group.
-
-[Become an active](https://forms.gle/KmXDaaW5rwipXtCF9)
+Signing up doesn't commit you to anything. Tick **I want to be an active** on
+the [membership form](/join); already a member? Email
+[board@lahtiag.fi](mailto:board@lahtiag.fi) and we'll add you.
 
 ## Still unsure?
 

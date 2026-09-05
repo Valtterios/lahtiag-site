@@ -1,0 +1,164 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../../layouts/Base.astro';
+import BoardBox from '../../../components/BoardBox.astro';
+import BoardGate from '../../../components/BoardGate.astro';
+import { ensureCsrf } from '../../../lib/guard';
+import { requireBoard } from '../../../lib/board';
+import { getRegisterEntry } from '../../../lib/db';
+import {
+  GAMES,
+  STUDENT_STATUSES,
+  STUDENT_STATUS_LABELS,
+  UNIONS,
+  UNION_LABELS,
+  MEMBER_TYPES,
+  MEMBER_TYPE_LABELS,
+  LIMITS,
+} from '../../../lib/register';
+import { formatHelsinkiDate } from '../../../lib/time';
+
+// One register entry: everything the person supplied, editable by the
+// board, plus the status actions and erasure. Behind the Google step-up.
+
+const board = await requireBoard(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+const id = Number(Astro.params.id);
+const entry = board.ok && Number.isInteger(id) ? await getRegisterEntry(env.DB, id) : null;
+if (board.ok && !entry) Astro.response.status = 404;
+
+const gamesList = entry?.games ? entry.games.split(',').map((g) => g.trim()) : [];
+const knownGames = gamesList.filter((g) => (GAMES as readonly string[]).includes(g));
+const otherGames = gamesList.filter((g) => !(GAMES as readonly string[]).includes(g)).join(', ');
+
+const FLASH: Record<string, string> = {
+  saved: 'Entry saved.',
+  former: 'Marked as a former member.',
+  member: 'Membership reinstated.',
+  approved: 'Application approved.',
+  duplicate: 'Another entry already uses that email or Discord account.',
+  bad_input: "The entry couldn't be saved from those values. Check the required fields.",
+  missing: 'That action no longer applies to this entry.',
+  unauthenticated: 'Sign in with your Google account first.',
+  csrf: 'The form was stale. Try again.',
+};
+const flash =
+  FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
+---
+<Base title={entry ? entry.full_name : 'Register entry'} description="Board-only member register entry.">
+  {!board.ok ? (
+    <BoardGate check={board} />
+  ) : !entry ? (
+    <article class="prose">
+      <h1>No such entry</h1>
+      <p>Nothing lives at this id. Back to the <a href="/register">register</a>.</p>
+    </article>
+  ) : (
+    <>
+      <article class="prose">
+        <p class="hero-eyebrow"><a href="/register">Member register</a></p>
+        <h1>{entry.full_name}</h1>
+        <p>
+          <span class={`status-badge status-${entry.status}`}>{entry.status}</span>
+          {' '}{MEMBER_TYPE_LABELS[entry.member_type].toLowerCase()},
+          {' '}applied {formatHelsinkiDate(entry.applied_at)}
+          {entry.decided_at !== null && <>, decided {formatHelsinkiDate(entry.decided_at)}</>}
+          {entry.source === 'import' && <> (imported from the old sheet)</>}
+        </p>
+      </article>
+      <BoardBox email={board.email} csrf={csrf} />
+      {flash && <p class="flash">{flash}</p>}
+
+      {entry.status === 'pending' && (
+        <form method="post" action={`/register/${entry.id}/action`} class="signup-bar">
+          <input type="hidden" name="csrf" value={csrf} />
+          <button class="btn btn-primary" name="action" value="approve" type="submit">Approve membership</button>
+          <button class="btn btn-ghost" name="action" value="reject" type="submit">Reject and delete</button>
+        </form>
+      )}
+      {entry.status === 'member' && (
+        <form method="post" action={`/register/${entry.id}/action`} class="signup-bar">
+          <input type="hidden" name="csrf" value={csrf} />
+          <button class="btn btn-ghost" name="action" value="former" type="submit">Mark as former member</button>
+        </form>
+      )}
+      {entry.status === 'former' && (
+        <form method="post" action={`/register/${entry.id}/action`} class="signup-bar">
+          <input type="hidden" name="csrf" value={csrf} />
+          <button class="btn btn-primary" name="action" value="member" type="submit">Reinstate membership</button>
+        </form>
+      )}
+
+      <section class="admin-panel">
+        <h2>Details</h2>
+        <form method="post" action={`/register/${entry.id}/action`} class="app-form">
+          <input type="hidden" name="csrf" value={csrf} />
+          <input type="hidden" name="action" value="update" />
+          <div class="form-grid">
+            <label>Full name <input name="full_name" required maxlength={LIMITS.full_name} value={entry.full_name} /></label>
+            <label>Home municipality <input name="domicile" required maxlength={LIMITS.domicile} value={entry.domicile} /></label>
+            <label>Email <input name="email" type="email" required maxlength={LIMITS.email} value={entry.email} /></label>
+            <label>
+              Studies
+              <select name="student_status">
+                {STUDENT_STATUSES.map((s) => (
+                  <option value={s} selected={entry.student_status === s}>{STUDENT_STATUS_LABELS[s]}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Student union
+              <select name="union_member">
+                {UNIONS.map((u) => (
+                  <option value={u} selected={entry.union_member === u}>{UNION_LABELS[u]}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Membership type
+              <select name="member_type">
+                {MEMBER_TYPES.map((t) => (
+                  <option value={t} selected={entry.member_type === t}>{MEMBER_TYPE_LABELS[t]}</option>
+                ))}
+              </select>
+            </label>
+            <label>Discord username <input name="discord_name" maxlength={LIMITS.discord_name} value={entry.discord_name ?? ''} /></label>
+            <label>
+              Discord id (links the account)
+              <input name="discord_id" pattern="\d{5,25}" value={entry.discord_id ?? ''} placeholder="Developer Mode → Copy ID" />
+            </label>
+            <label>Telegram username <input name="telegram" maxlength={LIMITS.telegram} value={entry.telegram ?? ''} /></label>
+          </div>
+          <fieldset class="checkbox-grid">
+            <legend>Games</legend>
+            {GAMES.map((game) => (
+              <label class="check">
+                <input type="checkbox" name="games" value={game} checked={knownGames.includes(game)} /> {game}
+              </label>
+            ))}
+            <label class="check-other">Other <input name="games_other" maxlength={LIMITS.games_other} value={otherGames} /></label>
+          </fieldset>
+          <label class="check check-standalone">
+            <input type="checkbox" name="wants_active" checked={entry.wants_active} /> <span>Wants to be an active</span>
+          </label>
+          <label>Applicant's message <textarea name="message" rows="2" maxlength={LIMITS.message}>{entry.message ?? ''}</textarea></label>
+          <label>Board note (never shown to the member) <textarea name="board_note" rows="2" maxlength={LIMITS.board_note}>{entry.board_note ?? ''}</textarea></label>
+          <button class="btn btn-primary" type="submit">Save changes</button>
+        </form>
+
+        <details class="admin-edit">
+          <summary>Erase this entry</summary>
+          <p class="event-meta">
+            Deletes the entry for good: the person's own request to be erased, or cleanup. There is
+            no undo. To keep the record but end the membership, use "Mark as former member" above.
+            Event signups are separate; erase those from the Events page if asked.
+          </p>
+          <form method="post" action={`/register/${entry.id}/action`}>
+            <input type="hidden" name="csrf" value={csrf} />
+            <button class="btn btn-ghost" name="action" value="erase" type="submit">Erase permanently</button>
+          </form>
+        </details>
+      </section>
+    </>
+  )}
+</Base>

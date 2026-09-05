@@ -3,6 +3,8 @@
 // one copy of the validation. Routes and command handlers never contain SQL.
 
 import type { D1Database } from '@cloudflare/workers-types';
+import type { ApplicationInput, MemberType, RegisterStatus } from './register';
+import { deriveMemberType } from './register';
 
 export class RuleError extends Error {
   constructor(
@@ -15,7 +17,8 @@ export class RuleError extends Error {
       | 'team_full'
       | 'dup_name'
       | 'not_team_event'
-      | 'closed',
+      | 'closed'
+      | 'duplicate',
     message: string,
   ) {
     super(message);
@@ -60,6 +63,7 @@ export interface SignupRow {
   event_team_id: number | null;
   username: string;
   avatar_hash: string | null;
+  is_member: number; // 1 = linked to a current entry in the member register
 }
 
 export interface EventTeamRow {
@@ -650,7 +654,9 @@ export async function leaveEventTeam(db: D1Database, eventId: number, discordId:
 export async function listSignups(db: D1Database, eventId: number): Promise<SignupRow[]> {
   const { results } = await db
     .prepare(
-      `SELECT s.discord_id, s.status, s.created_at, s.event_team_id, m.username, m.avatar_hash
+      `SELECT s.discord_id, s.status, s.created_at, s.event_team_id, m.username, m.avatar_hash,
+         EXISTS (SELECT 1 FROM register r
+                 WHERE r.discord_id = s.discord_id AND r.status = 'member') AS is_member
        FROM signups s JOIN members m ON m.discord_id = s.discord_id
        WHERE s.event_id = ?1
        ORDER BY s.created_at ASC`,
@@ -1014,3 +1020,281 @@ export async function setAnnouncementMessageId(
     .bind(messageId, id)
     .run();
 }
+
+// --- member register -------------------------------------------------------
+// The association's legal member list (migration 0006). Separate from the
+// `members` Discord cache: `discord_id` here is an optional link between
+// the two. Validation of the fields themselves is in register.ts; these
+// functions enforce the rules that need the database (uniqueness, status
+// transitions).
+
+export interface RegisterRow extends ApplicationInput {
+  id: number;
+  member_type: MemberType;
+  discord_id: string | null;
+  board_note: string | null;
+  status: RegisterStatus;
+  source: 'web' | 'import';
+  applied_at: number;
+  consented_at: number;
+  decided_at: number | null;
+  decided_by: string | null;
+  updated_at: number;
+}
+
+interface RegisterDbRow extends Omit<RegisterRow, 'wants_active'> {
+  wants_active: number;
+}
+
+function fromDb(row: RegisterDbRow): RegisterRow {
+  return { ...row, wants_active: row.wants_active === 1 };
+}
+
+// A public application. One row per email and per linked Discord account:
+// a second application with either is refused rather than overwriting the
+// first, so nobody can rewrite someone else's entry by knowing their email.
+export async function applyForMembership(
+  db: D1Database,
+  input: ApplicationInput,
+  discordId: string | null,
+  now: number,
+): Promise<number> {
+  const clash = await db
+    .prepare(
+      `SELECT id FROM register
+       WHERE email = ?1 COLLATE NOCASE OR (?2 IS NOT NULL AND discord_id = ?2)
+       LIMIT 1`,
+    )
+    .bind(input.email, discordId)
+    .first();
+  if (clash) throw new RuleError('duplicate', 'This email or Discord account is already in the register.');
+  const result = await db
+    .prepare(
+      `INSERT INTO register (full_name, domicile, email, student_status, union_member,
+         member_type, telegram, discord_name, discord_id, games, wants_active, message,
+         status, source, applied_at, consented_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'pending', 'web', ?13, ?13, ?13)
+       RETURNING id`,
+    )
+    .bind(
+      input.full_name,
+      input.domicile,
+      input.email,
+      input.student_status,
+      input.union_member,
+      deriveMemberType(input.student_status),
+      input.telegram,
+      input.discord_name,
+      discordId,
+      input.games,
+      input.wants_active ? 1 : 0,
+      input.message,
+      now,
+    )
+    .first<{ id: number }>();
+  return result!.id;
+}
+
+export async function getRegisterEntry(db: D1Database, id: number): Promise<RegisterRow | null> {
+  const row = await db.prepare('SELECT * FROM register WHERE id = ?1').bind(id).first<RegisterDbRow>();
+  return row ? fromDb(row) : null;
+}
+
+// What a signed-in person sees about themselves on /join.
+export async function getRegisterByDiscord(
+  db: D1Database,
+  discordId: string,
+): Promise<RegisterRow | null> {
+  const row = await db
+    .prepare('SELECT * FROM register WHERE discord_id = ?1')
+    .bind(discordId)
+    .first<RegisterDbRow>();
+  return row ? fromDb(row) : null;
+}
+
+export interface RegisterFilter {
+  status?: RegisterStatus | 'all';
+  q?: string;
+  limit?: number;
+}
+
+// The board's list. `q` matches name, email, and the two handles. LIKE is
+// ASCII-case-insensitive only (ä/Ä differ); good enough for a search box.
+export async function listRegister(db: D1Database, filter: RegisterFilter = {}): Promise<RegisterRow[]> {
+  const clauses: string[] = [];
+  const binds: (string | number)[] = [];
+  const status = filter.status ?? 'all';
+  if (status !== 'all') {
+    binds.push(status);
+    clauses.push(`status = ?${binds.length}`);
+  }
+  const q = (filter.q ?? '').trim();
+  if (q) {
+    binds.push(`%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+    const n = binds.length;
+    clauses.push(
+      `(full_name LIKE ?${n} ESCAPE '\\' OR email LIKE ?${n} ESCAPE '\\'
+        OR discord_name LIKE ?${n} ESCAPE '\\' OR telegram LIKE ?${n} ESCAPE '\\')`,
+    );
+  }
+  binds.push(filter.limit ?? 1000);
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM register ${where}
+       ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'member' THEN 1 ELSE 2 END,
+                full_name COLLATE NOCASE ASC
+       LIMIT ?${binds.length}`,
+    )
+    .bind(...binds)
+    .all<RegisterDbRow>();
+  return results.map(fromDb);
+}
+
+export async function registerCounts(
+  db: D1Database,
+): Promise<Record<RegisterStatus, number>> {
+  const { results } = await db
+    .prepare('SELECT status, COUNT(*) AS n FROM register GROUP BY status')
+    .all<{ status: RegisterStatus; n: number }>();
+  const counts: Record<RegisterStatus, number> = { pending: 0, member: 0, former: 0 };
+  for (const row of results) counts[row.status] = row.n;
+  return counts;
+}
+
+// The board's decision on a pending application. Approve records who
+// (the deciding board member's Workspace email) and when; reject deletes
+// the row, since a refused applicant's data has no reason to stay.
+export async function decideApplication(
+  db: D1Database,
+  id: number,
+  decision: 'approve' | 'reject',
+  deciderId: string,
+  now: number,
+): Promise<void> {
+  const entry = await getRegisterEntry(db, id);
+  if (!entry || entry.status !== 'pending') {
+    throw new RuleError('missing', 'No pending application with that id.');
+  }
+  if (decision === 'reject') {
+    await db.prepare('DELETE FROM register WHERE id = ?1').bind(id).run();
+    return;
+  }
+  await db
+    .prepare(
+      `UPDATE register SET status = 'member', decided_at = ?2, decided_by = ?3, updated_at = ?2
+       WHERE id = ?1`,
+    )
+    .bind(id, now, deciderId)
+    .run();
+}
+
+// Board edit of every applicant-supplied field plus the Discord link and
+// the board's note. The same uniqueness rules as on application apply,
+// minus the row itself.
+export async function updateRegisterEntry(
+  db: D1Database,
+  id: number,
+  input: ApplicationInput,
+  extra: { discord_id: string | null; board_note: string | null; member_type: MemberType },
+  now: number,
+): Promise<void> {
+  const entry = await getRegisterEntry(db, id);
+  if (!entry) throw new RuleError('missing', 'No register entry with that id.');
+  const clash = await db
+    .prepare(
+      `SELECT id FROM register
+       WHERE id != ?1 AND (email = ?2 COLLATE NOCASE OR (?3 IS NOT NULL AND discord_id = ?3))
+       LIMIT 1`,
+    )
+    .bind(id, input.email, extra.discord_id)
+    .first();
+  if (clash) throw new RuleError('duplicate', 'Another entry already has that email or Discord account.');
+  await db
+    .prepare(
+      `UPDATE register SET full_name = ?2, domicile = ?3, email = ?4, student_status = ?5,
+         union_member = ?6, telegram = ?7, discord_name = ?8, discord_id = ?9, games = ?10,
+         wants_active = ?11, message = ?12, board_note = ?13, updated_at = ?14, member_type = ?15
+       WHERE id = ?1`,
+    )
+    .bind(
+      id,
+      input.full_name,
+      input.domicile,
+      input.email,
+      input.student_status,
+      input.union_member,
+      input.telegram,
+      input.discord_name,
+      extra.discord_id,
+      input.games,
+      input.wants_active ? 1 : 0,
+      input.message,
+      extra.board_note,
+      now,
+      extra.member_type,
+    )
+    .run();
+}
+
+// member <-> former. A pending application goes through decideApplication.
+export async function setRegisterStatus(
+  db: D1Database,
+  id: number,
+  status: 'member' | 'former',
+  now: number,
+): Promise<void> {
+  const entry = await getRegisterEntry(db, id);
+  if (!entry || entry.status === 'pending') {
+    throw new RuleError('missing', 'No decided register entry with that id.');
+  }
+  await db
+    .prepare('UPDATE register SET status = ?2, updated_at = ?3 WHERE id = ?1')
+    .bind(id, status, now)
+    .run();
+}
+
+// The GDPR erasure path for the register: the row is gone, nothing is
+// anonymized, because nothing references it.
+export async function eraseRegisterEntry(db: D1Database, id: number): Promise<boolean> {
+  const result = await db.prepare('DELETE FROM register WHERE id = ?1').bind(id).run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+// --- register access list ----------------------------------------------------
+// Google Workspace accounts allowed to open the register, on top of the
+// fixed ones in the REGISTER_ADMINS var. board.ts merges the two.
+
+export interface RegisterAdminRow {
+  email: string;
+  added_by: string;
+  added_at: number;
+}
+
+export async function listRegisterAdmins(db: D1Database): Promise<RegisterAdminRow[]> {
+  const { results } = await db
+    .prepare('SELECT email, added_by, added_at FROM register_admins ORDER BY added_at ASC')
+    .all<RegisterAdminRow>();
+  return results;
+}
+
+export async function addRegisterAdmin(
+  db: D1Database,
+  email: string,
+  addedBy: string,
+  now: number,
+): Promise<void> {
+  await db
+    .prepare('INSERT OR IGNORE INTO register_admins (email, added_by, added_at) VALUES (?1, ?2, ?3)')
+    .bind(email.trim().toLowerCase(), addedBy, now)
+    .run();
+}
+
+export async function removeRegisterAdmin(db: D1Database, email: string): Promise<boolean> {
+  const result = await db
+    .prepare('DELETE FROM register_admins WHERE email = ?1')
+    .bind(email.trim().toLowerCase())
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+

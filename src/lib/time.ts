@@ -101,3 +101,14 @@ export function formatHelsinki(unixSeconds: number): string {
     hour12: false,
   }).format(new Date(unixSeconds * 1000));
 }
+
+// unix seconds -> "12 Sep 2026" in Helsinki time, for the register where
+// the day matters and the hour never does.
+export function formatHelsinkiDate(unixSeconds: number): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: TZ,
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(unixSeconds * 1000));
+}

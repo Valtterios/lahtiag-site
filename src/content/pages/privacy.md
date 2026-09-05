@@ -11,7 +11,8 @@ Gaming LAG ry does.
 
 ## What this site stores
 
-Browsing the site stores nothing about you. If you **sign in with
+Browsing the site stores nothing about you. Applying for membership stores what
+the form asks (see the member register below). If you **sign in with
 Discord**, the site receives and stores:
 
 - your Discord id, display name, and a reference to your avatar image
@@ -19,10 +20,32 @@ Discord**, the site receives and stores:
 - the event signups, tournament teams, and bracket results you take part
   in, and any news posts you author
 
-That is the whole list. The site never sees your email address, your
-Discord password, or your messages. Signing in also confirms you are a
+That is the whole list. Signing in never gives the site your email
+address, your Discord password, or your messages. Signing in also confirms you are a
 member of the LahtiAG Discord server; people who are not members cannot
 sign in.
+
+## The member register
+
+Applying for membership on the [join page](/join) puts you in the
+association's member register, which the board keeps on this site. The
+Associations Act requires an association to record each member's **full
+name and home municipality**; the application also asks for your email,
+where you study, your student union, optionally your Discord and Telegram
+names, the games you're into, whether you want to be an active, and a free
+message, and which class of member you are (full, external, supporting or honorary, per the association's rules). Only the board
+sees the register: it opens to a short list of board members, each signed in
+with the association's Google Workspace account; it is used to run the association (member counts, meeting
+invitations, member pricing at events, planning events around what people
+play) and for nothing else.
+
+If you were signed in with Discord when you applied, your Discord account is
+linked to your entry: that lets board members see who at an event is a
+member. A pending application that the board does not approve is deleted.
+As a member you stay in the register until you resign or the board removes
+you; either way, email [board@lahtiag.fi](mailto:board@lahtiag.fi) to have
+your entry corrected or erased. Entries from the earlier Google Form were
+moved into this register when the form was retired.
 
 ## Cookies
 

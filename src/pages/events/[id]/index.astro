@@ -138,6 +138,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
               ? going.map((s) => (
                   <span class="member-chip">
                     {s.username}
+                    {s.is_member === 1 && <span class="member-mark" title="In the member register">member</span>}
                     <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
                       <input type="hidden" name="csrf" value={csrf} />
                       <input type="hidden" name="discord_id" value={s.discord_id} />
@@ -152,6 +153,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
               ? maybe.map((s) => (
                   <span class="member-chip">
                     {s.username}
+                    {s.is_member === 1 && <span class="member-mark" title="In the member register">member</span>}
                     <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
                       <input type="hidden" name="csrf" value={csrf} />
                       <input type="hidden" name="discord_id" value={s.discord_id} />
@@ -186,6 +188,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
                     ? members.map((m) => (
                         <span class="member-chip">
                           {m.username}
+                          {m.is_member === 1 && <span class="member-mark" title="In the member register">member</span>}
                           <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
                             <input type="hidden" name="csrf" value={csrf} />
                             <input type="hidden" name="discord_id" value={m.discord_id} />
@@ -219,6 +222,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
               ? freeAgents.map((s) => (
                   <span class="member-chip">
                     {s.username}
+                    {s.is_member === 1 && <span class="member-mark" title="In the member register">member</span>}
                     <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
                       <input type="hidden" name="csrf" value={csrf} />
                       <input type="hidden" name="discord_id" value={s.discord_id} />

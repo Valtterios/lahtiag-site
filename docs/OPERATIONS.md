@@ -27,7 +27,13 @@ to events, and form tournament teams. Holders of the Board member role (ids
 in `wrangler.toml` under `ADMIN_ROLE_ID`) additionally get the admin
 controls, on the site and in Discord. Access follows Discord: leaving the
 server or losing the role removes access by itself — there are no separate
-accounts to manage.
+accounts to manage. Anyone, signed in or not, can apply for membership at
+/join.
+
+The **member register** is the exception: it holds personal data, so it
+opens only to a short list of the association's Google Workspace accounts
+(chair, treasurer, and whoever they add), signed in with Google — see the
+next section.
 
 ## Hosting a tournament, start to finish
 
@@ -75,6 +81,82 @@ Winner clicks on the *website* re-verify your role against Discord each
 time; the Discord panel doesn't need to and is immune to rate limits — on
 tournament day, prefer the panel.
 
+## The member register
+
+The association's member list (the one the Associations Act requires) lives
+on the site at **/register**, replacing the Google Form + Sheet.
+
+**Who can open it.** Not the Discord role: the register needs a sign-in
+with a lahtiag.fi Google Workspace account that is on the access list. The
+sign-in lasts eight hours (a separate cookie from the Discord one; "End
+register sign-in" on the page ends it early, do that on a shared device).
+The access list has two parts: the fixed accounts in `wrangler.toml`
+(`REGISTER_ADMINS`, the recovery path — chair and treasurer) and the
+accounts added on the register page itself, under **Who can open the
+register**. Anyone with access can grant it to another lahtiag.fi address
+or remove one; nobody can remove themselves, and the fixed ones can only be
+changed in `wrangler.toml`. Removal takes effect on the person's next
+click, signed in or not. When a board changes: add the new chair/treasurer
+on the page, remove the old ones, and update `REGISTER_ADMINS` at leisure.
+
+Google side (one-time, done in the association's Google Cloud console under
+the Workspace): APIs & Services → OAuth consent screen, user type
+**Internal** (only lahtiag.fi accounts can even start the flow) → Credentials
+→ Create OAuth client ID, type *Web application*, authorised redirect URIs
+`https://lahtiag.fi/auth/google/callback` (and the preview Worker's
+`https://lahtiag-site-preview.<account>.workers.dev/auth/google/callback` if
+previews should reach the register). Put the client id and secret in with
+`npx wrangler secret put GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`. Until
+both exist the register answers "Register access isn't set up yet" to
+everyone, including the fixed accounts. Turn on 2-step verification for the
+Workspace accounts on the list; the register is only as safe as they are.
+
+- **Applying**: /join is the public form (linked from the Members page and
+  the front page). Full name, home municipality, email, school and student
+  union are required; Discord and Telegram names, games, "I want to be an
+  active", and a message are optional; the consent box is required. An
+  applicant who is signed in gets their Discord account linked
+  automatically. New applications are announced to the board's private
+  channel when the `BOARD_WEBHOOK_URL` secret is set.
+- **Deciding**: pending applications sit at the top of /register with
+  Approve / Reject. Approve makes them a member and records who decided;
+  Reject deletes the application (a refused applicant's data has no reason
+  to stay). Nothing is emailed either way: tell them on Discord or by mail
+  if you like. Someone who applied while signed in sees their status on
+  /join.
+- **Membership type** follows the rules (4 §): *full* (current LUT/LAB
+  students, set automatically from what they picked), *external* (everyone
+  else who applies; the old sheet called this "outside"), *supporting* and
+  *honorary* (board-set only, on the entry page). The sheet's "Membership
+  type" column is imported and mapped onto these.
+- **The list**: searchable by name, email, Discord or Telegram name, and
+  filterable by status. Click a name for the full entry: every field is
+  editable (including linking a Discord id by hand — Developer Mode →
+  Copy ID), plus a board-only note. **Mark as former member** ends a
+  membership but keeps the record; **Erase** deletes it for good, which is
+  the answer to a GDPR erasure request. Event signups are separate data:
+  "Remove a member everywhere" on /events handles those.
+- **At the door**: /register/lookup is the phone view. Type a name, see
+  MEMBER / PENDING / FORMER in big letters. On event pages, admins also see
+  a small *member* mark next to signups from linked Discord accounts.
+- **Export**: the Export CSV button on /register downloads the list (or the
+  filtered status) for the annual report or a backup. Treat the file as
+  personal data: keep it in the association's Drive, not on a laptop
+  desktop.
+- **Search caveat**: matching is ASCII case-insensitive only, so "äijö"
+  and "ÄIJÖ" differ. Search a lower-case fragment if in doubt.
+- **Spam**: the form has a hidden honeypot field and refuses duplicate
+  emails. If junk applications ever show up, add Cloudflare Turnstile
+  (needs a script-src CSP entry for challenges.cloudflare.com) — not done
+  because it hasn't been needed.
+
+Importing the old sheet (one-time, done from a laptop, never from the
+Worker): see the header of `scripts/import-register.mjs`. In short: export
+the responses sheet as CSV, `node scripts/import-register.mjs file.csv
+--dry-run` to check the column mapping, then generate the SQL and apply it
+with `npx wrangler d1 execute lahtiag --remote --file=…`. Both files are
+gitignored (`*.csv`, `*.import.sql`); shred them afterwards.
+
 ## Editing the site's pages
 
 Add or edit Markdown in `src/content/pages/`, push to `main`, done. A page
@@ -91,6 +173,8 @@ no subdirectories.
 | Worker + assets + routes + vars | `wrangler.toml` (root); preview env repeats EVERYTHING — named environments inherit nothing |
 | Database schema | `migrations/`, forward-only, applied **manually**: `npx wrangler d1 migrations apply lahtiag --remote` (and `lahtiag-preview --env preview`) — CI never touches the database |
 | All SQL | `src/lib/db.ts`, one function per operation; routes and bot handlers never contain SQL |
+| Member register | `migrations/0006_register.sql`; form choices + validation in `src/lib/register.ts`; pages under `src/pages/register/` and `src/pages/join.astro`; import script `scripts/import-register.mjs` |
+| Register sign-in (Google) | `src/lib/board.ts` (board cookie, allowlist, `requireBoard`), `src/lib/google.ts` (OAuth calls), routes `src/pages/auth/google*`; fixed allowlist `REGISTER_ADMINS` in `wrangler.toml`, the rest in the `register_admins` table |
 | Auth (cookies, CSRF) | `src/lib/auth.ts`, `src/lib/guard.ts` — stateless HMAC-signed session cookie, 24 h |
 | Discord API calls | `src/lib/discord.ts` (server side); `src/lib/discord-widget.ts` is the browser widget's and stays separate |
 | The bot | `src/pages/discord/interactions.ts` — HTTP Interactions, Ed25519-verified, no bot token exists anywhere |
@@ -101,7 +185,10 @@ no subdirectories.
 
 Secrets (set with `npx wrangler secret put NAME`, never committed):
 `SESSION_SECRET`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`,
-`DISCORD_PUBLIC_KEY`, `DISCORD_WEBHOOK_URL`. The Discord application lives
+`DISCORD_PUBLIC_KEY`, `DISCORD_WEBHOOK_URL`, `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET` (the register sign-in), and the optional
+`BOARD_WEBHOOK_URL` (a webhook into a board-only channel; membership
+applications are announced there by name and school). The Discord application lives
 in the [developer portal](https://discord.com/developers/applications) under
 the association's account; its custom emojis (`lag_*`, used by the panel
 buttons) live in the app's Emojis tab.

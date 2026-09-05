@@ -16,6 +16,14 @@ type WorkerEnv = {
   SESSION_SECRET?: string;
   DISCORD_PUBLIC_KEY?: string;
   DISCORD_WEBHOOK_URL?: string;
+  // Board-only channel: new membership applications are announced here.
+  BOARD_WEBHOOK_URL?: string;
+  // The Google step-up in front of the member register (src/lib/board.ts).
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  // Fixed allowlist of Workspace accounts for the register; more are
+  // added on the register page itself.
+  REGISTER_ADMINS: string;
 };
 
 // Astro v6+ with @astrojs/cloudflare 14: request env is imported from

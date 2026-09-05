@@ -1,0 +1,91 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../../layouts/Base.astro';
+import {
+  BOARD_COOKIE,
+  BOARD_STATE_COOKIE,
+  BOARD_TTL_SECONDS,
+  acceptGoogleUser,
+  boardAllowlist,
+  sealBoard,
+} from '../../../lib/board';
+import { exchangeGoogleCode, fetchGoogleUser } from '../../../lib/google';
+
+// The return leg of the register sign-in. Outcomes a person can act on get
+// their own words: a stale attempt (start over), an account that is not on
+// the list (ask the board), Google unreachable (wait).
+
+type Outcome = 'expired' | 'not_allowed' | 'google_down';
+let outcome: Outcome | null = null;
+
+sign: {
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.SESSION_SECRET) {
+    return Astro.redirect('/register');
+  }
+  const code = Astro.url.searchParams.get('code');
+  const state = Astro.url.searchParams.get('state');
+  const expected = Astro.cookies.get(BOARD_STATE_COOKIE)?.value ?? '';
+  Astro.cookies.delete(BOARD_STATE_COOKIE, { path: '/' });
+  if (!code || !state || !expected || state !== expected) {
+    outcome = 'expired';
+    break sign;
+  }
+
+  const accessToken = await exchangeGoogleCode(
+    env.GOOGLE_CLIENT_ID,
+    env.GOOGLE_CLIENT_SECRET,
+    code,
+    `${Astro.url.origin}/auth/google/callback`,
+  );
+  const user = accessToken ? await fetchGoogleUser(accessToken) : null;
+  if (!user) {
+    outcome = 'google_down';
+    break sign;
+  }
+
+  const verdict = acceptGoogleUser(user, await boardAllowlist(env));
+  if (!verdict.ok) {
+    outcome = 'not_allowed';
+    break sign;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const token = await sealBoard({ email: verdict.email, expiresAt: now + BOARD_TTL_SECONDS }, env.SESSION_SECRET);
+  Astro.cookies.set(BOARD_COOKIE, token, {
+    path: '/',
+    maxAge: BOARD_TTL_SECONDS,
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+  });
+  return Astro.redirect('/register');
+}
+---
+<Base title="Register sign-in">
+  <article class="prose">
+    {outcome === 'expired' && (
+      <>
+        <h1>That sign-in expired</h1>
+        <p>The attempt was stale or incomplete. Start over.</p>
+        <p><a class="btn btn-primary" href="/auth/google">Sign in with Google</a></p>
+      </>
+    )}
+    {outcome === 'not_allowed' && (
+      <>
+        <h1>That account can't open the register</h1>
+        <p>
+          The register opens only for the association's Google Workspace accounts that the
+          board has listed for it. If you should be on that list, ask the chair.
+        </p>
+        <p><a class="btn btn-ghost" href="/auth/google">Try another account</a></p>
+      </>
+    )}
+    {outcome === 'google_down' && (
+      <>
+        <h1>Google didn't answer</h1>
+        <p>Nothing wrong with your account. Wait a moment and try again.</p>
+        <p><a class="btn btn-primary" href="/auth/google">Try again</a></p>
+      </>
+    )}
+  </article>
+</Base>

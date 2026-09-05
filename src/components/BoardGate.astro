@@ -1,0 +1,34 @@
+---
+// What the register pages show instead of their content when the Google
+// step-up is missing. Renders no data whatsoever.
+import type { BoardCheck } from '../lib/board';
+
+interface Props {
+  check: Exclude<BoardCheck, { ok: true }>;
+}
+
+const { check } = Astro.props;
+Astro.response.status = check.reason === 'unconfigured' ? 503 : 401;
+---
+<article class="prose">
+  {check.reason === 'unauthenticated' && (
+    <>
+      <h1>Member register</h1>
+      <p>
+        The register holds members' personal data, so it opens only to the board members
+        listed for it, signed in with their lahtiag.fi Google account. The sign-in lasts
+        eight hours.
+      </p>
+      <p><a class="btn btn-primary" href="/auth/google">Sign in with Google</a></p>
+    </>
+  )}
+  {check.reason === 'unconfigured' && (
+    <>
+      <h1>Register access isn't set up yet</h1>
+      <p>
+        The Google sign-in or the list of allowed accounts is missing on this deployment.
+        See docs/OPERATIONS.md, "The member register".
+      </p>
+    </>
+  )}
+</article>

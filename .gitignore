@@ -6,3 +6,6 @@ dist/
 .env
 .env.*
 npm-debug.log*
+# member data never enters the repo: sheet exports and generated import SQL
+*.csv
+*.import.sql

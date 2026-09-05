@@ -1,0 +1,208 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import BoardBox from '../../components/BoardBox.astro';
+import BoardGate from '../../components/BoardGate.astro';
+import { ensureCsrf } from '../../lib/guard';
+import { requireBoard, allowedBoardEmails, WORKSPACE_DOMAIN } from '../../lib/board';
+import { listRegister, registerCounts, listRegisterAdmins } from '../../lib/db';
+import {
+  REGISTER_STATUSES,
+  STUDENT_STATUS_LABELS,
+  MEMBER_TYPE_LABELS,
+  type RegisterStatus,
+} from '../../lib/register';
+import { formatHelsinkiDate } from '../../lib/time';
+
+// The board's member register: the pending queue on top, then the whole
+// list, searchable, and at the bottom the list of accounts that may open
+// it. Behind the Google step-up (board.ts), not the Discord role: the page
+// is full of personal data.
+
+const board = await requireBoard(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+
+const statusParam = Astro.url.searchParams.get('status') ?? 'all';
+const status: RegisterStatus | 'all' = (REGISTER_STATUSES as readonly string[]).includes(statusParam)
+  ? (statusParam as RegisterStatus)
+  : 'all';
+const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 100);
+
+const [counts, rows, addedAdmins] = board.ok
+  ? await Promise.all([
+      registerCounts(env.DB),
+      listRegister(env.DB, { status, q }),
+      listRegisterAdmins(env.DB),
+    ])
+  : [null, [], []];
+const pending = rows.filter((r) => r.status === 'pending');
+const fixedAdmins = allowedBoardEmails(env.REGISTER_ADMINS);
+
+const FLASH: Record<string, string> = {
+  approved: 'Application approved. Welcome them!',
+  rejected: 'Application rejected and its data deleted.',
+  saved: 'Entry saved.',
+  former: 'Marked as a former member.',
+  member: 'Membership reinstated.',
+  erased: 'Entry erased from the register.',
+  missing: 'That entry no longer exists.',
+  duplicate: 'Another entry already uses that email or Discord account.',
+  bad_input: "The entry couldn't be saved from those values.",
+  access_added: 'Access granted. They can sign in with that Google account now.',
+  access_removed: 'Access removed.',
+  bad_email: `That must be a ${WORKSPACE_DOMAIN} Google Workspace address.`,
+  self: "You can't remove your own access. Ask another board member to.",
+  fixed: 'That account is fixed in the deployment configuration and cannot be removed here.',
+  unauthenticated: 'Sign in with your Google account first.',
+  unconfigured: 'Register access is not configured on this deployment.',
+  csrf: 'The form was stale. Try again.',
+};
+const flash =
+  FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
+
+const exportHref = `/register/export.csv${status !== 'all' ? `?status=${status}` : ''}`;
+---
+<Base title="Member register" description="Board-only member register of Lahti Association of Gaming LAG ry.">
+  {!board.ok ? (
+    <BoardGate check={board} />
+  ) : (
+    <>
+      <article class="prose">
+        <h1>Member register</h1>
+        <p class="event-meta">
+          {counts!.member} members, {counts!.pending} pending, {counts!.former} former.
+          Personal data: use it for the association's business only.
+          <a href="/register/lookup"> Venue lookup</a> is the phone-friendly view for the door.
+        </p>
+      </article>
+      <BoardBox email={board.email} csrf={csrf} />
+      {flash && <p class="flash">{flash}</p>}
+
+      {pending.length > 0 && status !== 'member' && status !== 'former' && (
+        <section class="pending-queue">
+          <h2 class="section-label">Waiting for a decision</h2>
+          {pending.map((r) => (
+            <div class="pending-card">
+              <div class="pending-body">
+                <p class="pending-name">
+                  <a href={`/register/${r.id}`}>{r.full_name}</a> <span class="event-meta">{r.domicile}</span>
+                </p>
+                <p class="event-meta">
+                  {STUDENT_STATUS_LABELS[r.student_status]}, {r.union_member === 'none' ? 'no union' : r.union_member}
+                  {' · '}{MEMBER_TYPE_LABELS[r.member_type].toLowerCase()} on approval
+                  {' · '}{r.email}
+                  {r.discord_name && <> · Discord {r.discord_name}{r.discord_id ? ' (linked)' : ''}</>}
+                  {r.telegram && <> · Telegram @{r.telegram}</>}
+                  {r.wants_active ? ' · wants to be an active' : ''}
+                  {' · '}applied {formatHelsinkiDate(r.applied_at)}
+                </p>
+                {r.games && <p class="event-meta">Plays: {r.games}</p>}
+                {r.message && <p class="pending-message">“{r.message}”</p>}
+              </div>
+              <form method="post" action={`/register/${r.id}/action`} class="pending-actions">
+                <input type="hidden" name="csrf" value={csrf} />
+                <button class="btn btn-primary btn-sm" name="action" value="approve" type="submit">Approve</button>
+                <button class="btn btn-ghost btn-sm" name="action" value="reject" type="submit">Reject</button>
+              </form>
+            </div>
+          ))}
+        </section>
+      )}
+
+      <form method="get" action="/register" class="register-filter">
+        <input type="search" name="q" value={q} placeholder="Search name, email, Discord, Telegram" aria-label="Search the register" />
+        <select name="status" aria-label="Status">
+          <option value="all" selected={status === 'all'}>All statuses</option>
+          <option value="member" selected={status === 'member'}>Members</option>
+          <option value="pending" selected={status === 'pending'}>Pending</option>
+          <option value="former" selected={status === 'former'}>Former</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" type="submit">Filter</button>
+        <a class="btn btn-ghost btn-sm" href={exportHref}>Export CSV</a>
+      </form>
+
+      {rows.length === 0 ? (
+        <p class="app-empty">Nothing matches.</p>
+      ) : (
+        <div class="table-scroll">
+          <table class="register-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Domicile</th>
+                <th>Email</th>
+                <th>Type</th>
+                <th>Studies</th>
+                <th>Union</th>
+                <th>Discord</th>
+                <th>Telegram</th>
+                <th>Active</th>
+                <th>Since</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr>
+                  <td><a href={`/register/${r.id}`}>{r.full_name}</a></td>
+                  <td>{r.domicile}</td>
+                  <td>{r.email}</td>
+                  <td>{r.member_type}</td>
+                  <td>{r.student_status}</td>
+                  <td>{r.union_member === 'none' ? '' : r.union_member}</td>
+                  <td>{r.discord_name ?? ''}{r.discord_id ? ' ✓' : ''}</td>
+                  <td>{r.telegram ?? ''}</td>
+                  <td>{r.wants_active ? 'yes' : ''}</td>
+                  <td>{formatHelsinkiDate(r.status === 'pending' ? r.applied_at : (r.decided_at ?? r.applied_at))}</td>
+                  <td><span class={`status-badge status-${r.status}`}>{r.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p class="event-meta">
+        ✓ after a Discord name means the account is linked, which shows the member mark on event
+        signups. The list shows at most 1000 entries.
+      </p>
+
+      <section class="admin-panel">
+        <h2>Who can open the register</h2>
+        <p class="event-meta">
+          Sign-in is with a {WORKSPACE_DOMAIN} Google Workspace account, and only these addresses
+          get in. Anyone listed here can add or remove others; nobody can remove themselves.
+        </p>
+        <ul class="access-list">
+          {fixedAdmins.map((email) => (
+            <li><span class="access-email">{email}</span> <span class="event-meta">fixed in the deployment configuration</span></li>
+          ))}
+          {addedAdmins
+            .filter((a) => !fixedAdmins.includes(a.email))
+            .map((a) => (
+              <li>
+                <span class="access-email">{a.email}</span>
+                <span class="event-meta">added by {a.added_by}, {formatHelsinkiDate(a.added_at)}</span>
+                {a.email !== board.email && (
+                  <form method="post" action="/register/access" class="inline-form">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="remove" />
+                    <input type="hidden" name="email" value={a.email} />
+                    <button class="btn-link" type="submit">Remove</button>
+                  </form>
+                )}
+              </li>
+            ))}
+        </ul>
+        <form method="post" action="/register/access" class="app-form app-form-row">
+          <input type="hidden" name="csrf" value={csrf} />
+          <input type="hidden" name="action" value="add" />
+          <label>
+            Google Workspace address
+            <input name="email" type="email" required placeholder={`name@${WORKSPACE_DOMAIN}`} maxlength="120" />
+          </label>
+          <button class="btn btn-ghost" type="submit">Grant access</button>
+        </form>
+      </section>
+    </>
+  )}
+</Base>

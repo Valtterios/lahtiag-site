@@ -1136,3 +1136,372 @@ html.display-mode,
     gap: 1.6rem;
   }
 }
+
+/* ---------- membership application (/join) ---------- */
+
+/* the honeypot field: off-screen, never display:none (bots skip those) */
+.hp {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.join-form {
+  max-width: 44rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+@media (max-width: 600px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.checkbox-grid {
+  border: 1px solid var(--line);
+  padding: 0.8rem 1rem 1rem;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.35rem 1rem;
+}
+
+.checkbox-grid legend {
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 0 0.3rem;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+
+.check input {
+  margin: 0.25rem 0 0;
+  accent-color: var(--blue);
+  flex-shrink: 0;
+}
+
+.check-other {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-top: 0.4rem;
+}
+
+.check-standalone {
+  max-width: 44rem;
+}
+
+.field-error input,
+.field-error select,
+.field-error textarea {
+  border-color: #e14141;
+  outline: 2px solid #e14141;
+  outline-offset: 0;
+}
+
+.field-error {
+  color: #b32626;
+}
+
+.flash-list {
+  margin: 0 0 1.2rem;
+  padding-left: 2rem;
+}
+
+.flash-list li {
+  margin: 0.15rem 0;
+}
+
+/* ---------- member register (board) ---------- */
+
+.section-label {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--blue);
+  margin: 0 0 0.8rem;
+}
+
+.pending-queue {
+  margin: 0 0 2rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.pending-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--yellow);
+  clip-path: var(--cut);
+  padding: 0.9rem 1.2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.pending-body {
+  flex: 1 1 24rem;
+  min-width: 0;
+}
+
+.pending-body p {
+  margin: 0 0 0.25rem;
+}
+
+.pending-name {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 1.05rem;
+}
+
+.pending-name a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.pending-name a:hover {
+  color: var(--blue);
+}
+
+.pending-message {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.92rem;
+}
+
+.pending-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.register-filter {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0 0 1rem;
+}
+
+.register-filter input,
+.register-filter select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 0.45rem 0.7rem;
+}
+
+.register-filter input[type='search'] {
+  flex: 1 1 16rem;
+}
+
+.register-filter input:focus,
+.register-filter select:focus {
+  outline: 2px solid var(--blue);
+  outline-offset: 0;
+  border-color: var(--blue);
+}
+
+.table-scroll {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  margin: 0 0 1rem;
+}
+
+.register-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.86rem;
+  min-width: 60rem;
+}
+
+.register-table th,
+.register-table td {
+  text-align: left;
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.register-table th {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+}
+
+.register-table tbody tr:hover {
+  background: var(--bg);
+}
+
+.status-badge {
+  display: inline-block;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid currentColor;
+}
+
+.status-member {
+  color: #1f7a3f;
+}
+
+.status-pending {
+  color: #9a6b00;
+  background: var(--yellow-soft);
+}
+
+.status-former {
+  color: var(--muted);
+}
+
+/* the mark an admin sees next to a signup from a registered member */
+.member-mark {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #1f7a3f;
+  border: 1px solid #1f7a3f;
+  padding: 0 0.3rem;
+  margin-left: 0.3rem;
+  line-height: 1.5;
+}
+
+/* ---------- venue lookup (phone at the door) ---------- */
+
+.lookup-form {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0 0 1.5rem;
+}
+
+.lookup-form input {
+  flex: 1 1 16rem;
+  font: inherit;
+  font-size: 1.25rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 2px solid var(--line);
+  padding: 0.7rem 0.9rem;
+}
+
+.lookup-form input:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.lookup-none {
+  font-size: 1.2rem;
+  padding: 1rem 1.2rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 6px solid #e14141;
+  max-width: var(--prose-measure);
+}
+
+.lookup-results {
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  display: grid;
+  gap: 0.8rem;
+  max-width: var(--prose-measure);
+}
+
+.lookup-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--muted);
+  clip-path: var(--cut);
+  padding: 0.9rem 1.2rem;
+}
+
+.lookup-card p {
+  margin: 0 0 0.2rem;
+}
+
+.lookup-member {
+  border-left-color: #1f7a3f;
+}
+
+.lookup-pending {
+  border-left-color: var(--yellow);
+}
+
+.lookup-name {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 1.4rem;
+  line-height: 1.15;
+}
+
+.lookup-status {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.lookup-member .lookup-status {
+  color: #1f7a3f;
+}
+
+.lookup-pending .lookup-status {
+  color: #9a6b00;
+}
+
+/* register access list */
+.access-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.access-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.access-email {
+  font-weight: 600;
+}
+

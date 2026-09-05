@@ -1,0 +1,274 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../layouts/Base.astro';
+import { currentSession, ensureCsrf, checkCsrf } from '../lib/guard';
+import { applyForMembership, getRegisterByDiscord, RuleError } from '../lib/db';
+import {
+  parseApplication,
+  GAMES,
+  STUDENT_STATUSES,
+  STUDENT_STATUS_LABELS,
+  UNIONS,
+  UNION_LABELS,
+  LIMITS,
+  type FieldError,
+} from '../lib/register';
+import { postWebhook, applicationNotice, NO_MENTIONS } from '../lib/discord';
+import { formatHelsinkiDate } from '../lib/time';
+
+// The membership application, replacing the Google Form. Public: applicants
+// need not be on Discord. Unlike the admin routes this page handles its own
+// POST so a rejected submission re-renders with what was typed instead of
+// bouncing to an empty form. Success redirects (post/redirect/get).
+//
+// A signed-in applicant gets their Discord account linked to the entry,
+// which is what later shows the member mark on event signups.
+
+const session = await currentSession(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+const existing = session ? await getRegisterByDiscord(env.DB, session.discordId) : null;
+
+let errors: FieldError[] = [];
+let problem: 'csrf' | null = null;
+const values: Record<string, string> = {};
+let pickedGames: string[] = [];
+let wantsActive = false;
+
+if (Astro.request.method === 'POST' && !existing) {
+  const form = await Astro.request.formData();
+  for (const name of [
+    'full_name',
+    'domicile',
+    'email',
+    'student_status',
+    'union_member',
+    'telegram',
+    'discord_name',
+    'games_other',
+    'message',
+  ]) {
+    values[name] = String(form.get(name) ?? '');
+  }
+  pickedGames = form.getAll('games').map(String);
+  wantsActive = form.get('wants_active') === 'on';
+
+  if (!(await checkCsrf(Astro.request, form))) {
+    problem = 'csrf';
+  } else if (String(form.get('website') ?? '') !== '') {
+    // Honeypot: no human sees that field. Pretend it worked.
+    return Astro.redirect('/join?ok=1', 303);
+  } else {
+    const parsed = parseApplication(form, true);
+    if (!parsed.ok) {
+      errors = parsed.errors;
+    } else {
+      const now = Math.floor(Date.now() / 1000);
+      // A signed-in applicant's Discord identity comes from the session,
+      // never from the form.
+      const input = session ? { ...parsed.value, discord_name: session.username } : parsed.value;
+      try {
+        await applyForMembership(env.DB, input, session?.discordId ?? null, now);
+      } catch (error) {
+        // A duplicate email gets the same "thanks" as a new application:
+        // telling the sender would let anyone test whether an address is
+        // in the register. The earlier entry stands; nothing is announced.
+        if (error instanceof RuleError && error.code === 'duplicate') {
+          return Astro.redirect('/join?ok=1', 303);
+        }
+        throw error;
+      }
+      // After the response, not before it (security review): awaiting the
+      // Discord round trip only on the new-application path made response
+      // time reveal whether an email was already in the register.
+      if (env.BOARD_WEBHOOK_URL) {
+        Astro.locals.cfContext.waitUntil(
+          postWebhook(
+            env.BOARD_WEBHOOK_URL,
+            applicationNotice({
+              name: input.full_name,
+              studentStatus: STUDENT_STATUS_LABELS[input.student_status],
+              url: `${Astro.url.origin}/register`,
+            }),
+            NO_MENTIONS,
+          ),
+        );
+      }
+      return Astro.redirect('/join?ok=1', 303);
+    }
+  }
+  Astro.response.status = 422;
+}
+
+const submitted = Astro.url.searchParams.get('ok') === '1';
+const bad = (field: FieldError) => (errors.includes(field) ? 'field-error' : undefined);
+const FIELD_MESSAGES: Record<FieldError, string> = {
+  full_name: 'Your full name, 2 to 100 characters.',
+  domicile: 'Your home municipality is required (the Associations Act asks for it).',
+  email: 'That email address does not look right.',
+  student_status: 'Pick where you study.',
+  union_member: 'Pick your student union, or Neither.',
+  telegram: 'That Telegram handle is too long.',
+  discord_name: 'That Discord name is too long.',
+  games: 'The "other games" text is too long.',
+  message: 'The message is too long (500 characters).',
+  consent: 'The application needs your permission to store the information.',
+};
+---
+<Base
+  title="Become a member"
+  description="Join Lahti Association of Gaming LAG ry. Membership is free and open to higher education students in Lahti."
+>
+  <article class="prose">
+    <h1>Become a member</h1>
+    {submitted ? (
+      <>
+        <p class="flash">
+          Thanks! Your application is in. The board reviews applications and you'll be counted in
+          once it's approved. No email is sent; if you signed in with Discord, this page will show
+          your status. If you had already applied with the same email, your earlier application
+          stands and nothing changed.
+        </p>
+        <p><a class="btn btn-primary" href="/events">See what's coming up</a></p>
+      </>
+    ) : existing ? (
+      <>
+        <p class="flash">
+          {existing.status === 'member' && (
+            <>You're a member of LahtiAG since {formatHelsinkiDate(existing.decided_at ?? existing.applied_at)}. Welcome!</>
+          )}
+          {existing.status === 'pending' && (
+            <>Your application from {formatHelsinkiDate(existing.applied_at)} is waiting for the board's decision.</>
+          )}
+          {existing.status === 'former' && (
+            <>You're listed as a former member. Email the board if you'd like to rejoin.</>
+          )}
+        </p>
+        <p>
+          Registered as <strong>{existing.full_name}</strong> ({existing.email}). To update your
+          details or to resign, email <a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a>.
+        </p>
+      </>
+    ) : (
+      <>
+        <p>
+          Membership is <strong>free</strong>. Higher education students in Lahti are eligible to
+          join Lahti Association of Gaming LAG ry; alumni and friends of the association are welcome
+          to apply too. The board approves applications.
+        </p>
+        <p class="event-meta">
+          Full name and home municipality are what Finnish law requires an association to keep about
+          its members; the rest helps us plan events. See <a href="/privacy">what we store and why</a>.
+        </p>
+        {session ? (
+          <p class="event-meta">
+            Signed in as <strong>{session.username}</strong>: this Discord account will be linked to
+            your membership.
+          </p>
+        ) : (
+          <p class="event-meta">
+            Already on the LahtiAG Discord? <a href="/login">Sign in</a> first and your account gets
+            linked to your membership. Not required.
+          </p>
+        )}
+      </>
+    )}
+  </article>
+
+  {!submitted && !existing && (
+    <>
+      {problem === 'csrf' && <p class="flash">The form was stale. Please send it again.</p>}
+      {errors.length > 0 && (
+        <ul class="flash flash-list">
+          {errors.map((field) => <li>{FIELD_MESSAGES[field]}</li>)}
+        </ul>
+      )}
+      <form method="post" action="/join" class="app-form join-form" novalidate>
+        <input type="hidden" name="csrf" value={csrf} />
+        <div class="hp" aria-hidden="true">
+          <label>Website <input name="website" tabindex="-1" autocomplete="off" /></label>
+        </div>
+
+        <div class="form-grid">
+          <label class={bad('full_name')}>
+            Full name *
+            <input name="full_name" required maxlength={LIMITS.full_name} autocomplete="name" value={values.full_name ?? ''} />
+          </label>
+          <label class={bad('domicile')}>
+            Home municipality (kotikunta) *
+            <input name="domicile" required maxlength={LIMITS.domicile} placeholder="Lahti" value={values.domicile ?? ''} />
+          </label>
+          <label class={bad('email')}>
+            Email *
+            <input name="email" type="email" required maxlength={LIMITS.email} autocomplete="email" value={values.email ?? ''} />
+          </label>
+          <label class={bad('student_status')}>
+            I study at *
+            <select name="student_status" required>
+              <option value="" selected={!values.student_status}>Choose…</option>
+              {STUDENT_STATUSES.map((s) => (
+                <option value={s} selected={values.student_status === s}>{STUDENT_STATUS_LABELS[s]}</option>
+              ))}
+            </select>
+          </label>
+          <label class={bad('union_member')}>
+            Student union *
+            <select name="union_member" required>
+              <option value="" selected={!values.union_member}>Choose…</option>
+              {UNIONS.map((u) => (
+                <option value={u} selected={values.union_member === u}>{UNION_LABELS[u]}</option>
+              ))}
+            </select>
+          </label>
+          <label class={bad('discord_name')}>
+            Discord username
+            {session ? (
+              <input name="discord_name" value={session.username} readonly />
+            ) : (
+              <input name="discord_name" maxlength={LIMITS.discord_name} placeholder="optional" value={values.discord_name ?? ''} />
+            )}
+          </label>
+          <label class={bad('telegram')}>
+            Telegram username
+            <input name="telegram" maxlength={LIMITS.telegram} placeholder="optional, @handle" value={values.telegram ?? ''} />
+          </label>
+        </div>
+
+        <fieldset class="checkbox-grid">
+          <legend>I'm interested in</legend>
+          {GAMES.map((game) => (
+            <label class="check">
+              <input type="checkbox" name="games" value={game} checked={pickedGames.includes(game)} /> {game}
+            </label>
+          ))}
+          <label class={`check-other ${bad('games') ?? ''}`}>
+            Other
+            <input name="games_other" maxlength={LIMITS.games_other} placeholder="anything else" value={values.games_other ?? ''} />
+          </label>
+        </fieldset>
+
+        <label class="check check-standalone">
+          <input type="checkbox" name="wants_active" checked={wantsActive} />
+          <span>
+            <strong>I want to be an active.</strong> Actives hear about event ideas, planning and
+            meetings first, through the LahtiAG Telegram group. It commits you to nothing.
+          </span>
+        </label>
+
+        <label class={bad('message')}>
+          Questions or a message to the board
+          <textarea name="message" rows="3" maxlength={LIMITS.message}>{values.message ?? ''}</textarea>
+        </label>
+
+        <label class={`check check-standalone ${bad('consent') ?? ''}`}>
+          <input type="checkbox" name="consent" required />
+          <span>
+            I allow an authorized member of the board of Lahti Association of Gaming LAG ry to
+            handle my information according to the <a href="/privacy">privacy policy</a>. *
+          </span>
+        </label>
+
+        <button class="btn btn-cta" type="submit">Send application</button>
+      </form>
+    </>
+  )}
+</Base>

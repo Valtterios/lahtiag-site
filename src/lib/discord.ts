@@ -22,6 +22,22 @@ export function eventAnnouncement(input: {
   return `📅 **${input.title.trim()}**\n${formatHelsinkiRange(input.startsAt, input.endsAt)}${byLine}${teamsLine}\nSign up: ${input.url}`;
 }
 
+// Heads-up to the board's private channel when someone applies for
+// membership. Name and school only: the register page has the rest, and a
+// Discord channel is not where personal data should pile up. The name is
+// the first unauthenticated text to reach a webhook, so it goes inside an
+// inline code span (no markdown, no masked links) with backticks and line
+// breaks removed; the caller also sends allowed_mentions so "@everyone" in
+// a name pings nobody.
+export function applicationNotice(input: { name: string; studentStatus: string; url: string }): string {
+  const name = input.name.replace(/[`\r\n]/g, '').trim() || '(no name)';
+  return `📝 **New membership application**: \`${name}\` (${input.studentStatus})\nReview: ${input.url}`;
+}
+
+// For messages carrying user-supplied text: Discord resolves no mentions
+// at all, whatever the content says.
+export const NO_MENTIONS = { parse: [] as string[] };
+
 export const OAUTH_SCOPES = 'identify guilds.members.read';
 
 export function authorizeUrl(
@@ -153,12 +169,18 @@ export function hasAdminRole(roles: string[], adminRoleIds: string): boolean {
 // Post to the announcements channel webhook. `?wait=true` makes Discord
 // return the created message, whose id is stored so a later edit can target
 // it instead of posting again (spec, discord_message_id).
-export async function postWebhook(webhookUrl: string, content: string): Promise<string | null> {
+export async function postWebhook(
+  webhookUrl: string,
+  content: string,
+  allowedMentions?: { parse: string[] },
+): Promise<string | null> {
   try {
     const response = await fetch(`${webhookUrl}?wait=true`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(
+        allowedMentions ? { content, allowed_mentions: allowedMentions } : { content },
+      ),
     });
     if (!response.ok) return null;
     const message = (await response.json()) as { id?: string };

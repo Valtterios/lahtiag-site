@@ -6,7 +6,7 @@ import { pagePath, APP_PAGES } from '../lib/nav';
 
 export const GET: APIRoute = async ({ url }) => {
   const pages = await getCollection('pages');
-  const paths = new Set<string>(['/', '/history']);
+  const paths = new Set<string>(['/', '/history', '/join']);
   for (const page of pages) paths.add(pagePath(page.id));
   for (const app of APP_PAGES) paths.add(pagePath(app.id));
   try {
