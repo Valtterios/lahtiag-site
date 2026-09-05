@@ -3,7 +3,9 @@ import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
 import { ensureCsrf, requireAdmin } from '../../lib/guard';
 import { requireBoard } from '../../lib/board';
-import { listUndeliveredItems, listDeliveredItems } from '../../lib/purchases';
+import { listUndeliveredItems, listDeliveredItems, listProducts } from '../../lib/purchases';
+import { listUnattachedDoorPayments } from '../../lib/db';
+import { stripeConfigured } from '../../lib/stripe';
 import { formatHelsinki } from '../../lib/time';
 import { dailyMark } from '../../lib/stamp';
 
@@ -15,11 +17,18 @@ const admin = board.ok ? null : await requireAdmin(Astro.request, env);
 const allowed = board.ok || admin?.ok === true;
 Astro.response.status = allowed ? 200 : 401;
 const csrf = ensureCsrf(Astro.cookies);
-const [waiting, done] = allowed ? await Promise.all([listUndeliveredItems(env.DB), listDeliveredItems(env.DB)]) : [[], []];
+const nowSeconds = Math.floor(Date.now() / 1000);
+const [waiting, done, products, payments] = allowed
+  ? await Promise.all([listUndeliveredItems(env.DB), listDeliveredItems(env.DB), listProducts(env.DB, nowSeconds), listUnattachedDoorPayments(env.DB, nowSeconds - 12 * 3600)])
+  : [[], [], [], []];
+const paymentsOn = stripeConfigured(env);
 const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
 const mark = allowed && env.SESSION_SECRET ? await dailyMark(env.SESSION_SECRET, Math.floor(Date.now() / 1000)) : null;
 const FLASH: Record<string, string> = {
   delivered: 'Marked as handed over.',
+  attached_item: 'Payment attached; item sold and handed over.',
+  sold_out: 'Not that many left in stock.',
+  bad_input: "That didn't parse.",
   undone: 'Undone.',
   missing: 'No such item.',
   csrf: 'The form was stale. Try again.',
@@ -49,6 +58,40 @@ Astro.response.headers.set('cache-control', 'no-store');
           <span class="daily-mark-icon" aria-hidden="true">{mark.icon}</span>
           <span>Today's mark is <strong>{mark.name}</strong>. When a buyer presses "Mark as collected" in front of you, their page shows this mark; a screenshot from another day shows a different one.</span>
         </p>
+      )}
+      {paymentsOn && products.length > 0 && (
+        <section class="door-tap">
+          <h2 class="section-label">Selling on the spot</h2>
+          <p class="queue-intro">
+            Card on the phone: in the <strong>Stripe Dashboard</strong> app tap <strong>+</strong>, <strong>Charge card or send invoice</strong>, the amount and the buyer's name as the description, then <strong>Tap to Pay</strong>. The payment appears below within seconds; pick the item and it is sold and handed over in one go.
+            Prices: {products.map((p) => `${p.name} ${(p.price_cents / 100).toFixed(2)} €${p.member_price_cents !== null ? ` (members ${(p.member_price_cents / 100).toFixed(2)} €)` : ''}`).join(' · ')}. <a href="/shop/orders">Refresh</a>
+          </p>
+        </section>
+      )}
+      {payments.length > 0 && products.length > 0 && (
+        <section class="queue">
+          <h2 class="section-label">Tap payments to attach</h2>
+          {payments.map((p) => (
+            <div class="queue-card">
+              <div class="queue-body">
+                <p class="queue-name">{(p.amount_cents / 100).toFixed(2)} €{p.note ? ` · ${p.note}` : ''}</p>
+                <p class="queue-meta">{formatHelsinki(p.created_at)} · {p.stripe_payment_intent}</p>
+              </div>
+              <form method="post" action="/shop/attach" class="queue-actions door-attach">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="payment_intent" value={p.stripe_payment_intent} />
+                <input name="holder_name" placeholder="Name" required maxlength="60" aria-label="Name" value={p.note ?? ''} />
+                <select name="product_id" aria-label="Item">
+                  {products.map((pr) => (
+                    <option value={pr.id} selected={pr.price_cents === p.amount_cents || pr.member_price_cents === p.amount_cents}>{pr.name} · {(pr.price_cents / 100).toFixed(2)} €</option>
+                  ))}
+                </select>
+                <input name="quantity" type="number" min="1" max="10" value="1" aria-label="Quantity" class="door-qty" />
+                <button class="btn btn-primary btn-sm" type="submit">Attach</button>
+              </form>
+            </div>
+          ))}
+        </section>
       )}
       {waiting.length === 0 ? (
         <p class="app-empty">Nothing waiting.</p>

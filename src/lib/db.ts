@@ -2578,12 +2578,13 @@ export interface DoorPaymentRow {
   amount_cents: number;
   created_at: number;
   ticket_id: number | null;
+  purchase_id: string | null; // set when the payment bought a shop item instead
   note: string | null; // the description typed in the Stripe app
 }
 
 export async function listUnattachedDoorPayments(db: D1Database, since: number): Promise<DoorPaymentRow[]> {
   const { results } = await db
-    .prepare('SELECT * FROM door_payments WHERE ticket_id IS NULL AND created_at >= ?1 ORDER BY created_at DESC')
+    .prepare('SELECT * FROM door_payments WHERE ticket_id IS NULL AND purchase_id IS NULL AND created_at >= ?1 ORDER BY created_at DESC')
     .bind(since)
     .all<DoorPaymentRow>();
   return results;
@@ -2599,7 +2600,7 @@ export async function attachDoorPayment(
   now: number,
 ): Promise<TicketRow> {
   const payment = await db
-    .prepare('SELECT * FROM door_payments WHERE stripe_payment_intent = ?1 AND ticket_id IS NULL')
+    .prepare('SELECT * FROM door_payments WHERE stripe_payment_intent = ?1 AND ticket_id IS NULL AND purchase_id IS NULL')
     .bind(paymentIntent)
     .first<DoorPaymentRow>();
   if (!payment) throw new RuleError('missing', 'No unattached payment with that id.');

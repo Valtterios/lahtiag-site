@@ -17,6 +17,7 @@ revision: September 2026.
   - [Take a card payment](#take-a-card-payment)
   - [Link the payment to a person](#link-the-payment-to-a-person)
   - [Buyers with their own phone](#buyers-with-their-own-phone)
+  - [Shop items on the spot](#shop-items-on-the-spot)
 - [Editing the site's pages](#editing-the-sites-pages)
 - [The moving parts](#the-moving-parts)
 - [Local development](#local-development)
@@ -439,6 +440,19 @@ buyer scans it, lands on the checkout on their own phone, types their name
 and pays with Apple Pay, MobilePay or a card. They appear in the door
 list as soon as Stripe confirms, and their ticket link is on Stripe's page
 and the receipt. Nothing to attach.
+
+### Shop items on the spot
+
+The same two ways work for patches and other shop items. With their own
+phone, the buyer scans the **Shop** QR on the door page, buys on the shop
+page and presses **Mark as collected** on their purchase page in front of
+you (the mark of the day shows it is live). Without one, take the card in
+the Stripe app as above; the payment appears under "Tap payments to
+attach" on the door page **and** on the hand-over list (`/shop/orders`),
+so a stand without an event works too. Pick the item and the quantity,
+press Attach, and it is sold and marked handed over in one go, with the
+amount that was tapped. Stock goes down; the buyer gets no link, they
+have the item.
 
 ## Editing the site's pages
 

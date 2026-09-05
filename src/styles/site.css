@@ -3331,3 +3331,7 @@ details.admin-panel[open] > summary {
     margin-left: 0.4rem;
   }
 }
+
+.door-qty {
+  width: 4.5rem;
+}

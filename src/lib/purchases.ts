@@ -459,6 +459,49 @@ export async function pendingPurchaseFor(db: D1Database, discordId: string, now:
     .first<PurchaseRow>();
 }
 
+// A Tap to Pay payment taken for a shop item at a stand or the door: a
+// paid purchase for the named buyer with the item already handed over.
+// The amount is whatever was tapped; stock is checked, prices are not.
+export async function attachDoorPaymentToItem(
+  db: D1Database,
+  paymentIntent: string,
+  productId: number,
+  quantity: number,
+  buyerName: string,
+  by: string,
+  now: number,
+): Promise<PurchaseRow> {
+  const payment = await db
+    .prepare('SELECT * FROM door_payments WHERE stripe_payment_intent = ?1 AND ticket_id IS NULL AND purchase_id IS NULL')
+    .bind(paymentIntent)
+    .first<{ amount_cents: number }>();
+  if (!payment) throw new RuleError('missing', 'No unattached payment with that id.');
+  const product = await getProduct(db, productId, now);
+  if (!product) throw new RuleError('missing', 'No such product.');
+  if (!Number.isInteger(quantity) || quantity < 1) throw new RuleError('bad_input', 'Quantity is at least 1.');
+  const offer = await productOffer(db, product, null);
+  if (!offer.ok) throw new RuleError(offer.reason, 'Not on sale.');
+  if (quantity > offer.max) throw new RuleError('sold_out', 'Not that many left.');
+  const name = buyerName.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Door sale';
+  const id = newTicketCode();
+  await db
+    .prepare(
+      `INSERT INTO purchases (id, discord_id, buyer_name, status, total_cents, stripe_payment_intent, created_at, paid_at)
+       VALUES (?1, NULL, ?2, 'paid', ?3, ?4, ?5, ?5)`,
+    )
+    .bind(id, name, payment.amount_cents, paymentIntent, now)
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO purchase_items (purchase_id, product_id, name, quantity, unit_cents, delivered_at, delivered_by)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+    )
+    .bind(id, product.id, product.name, quantity, Math.round(payment.amount_cents / quantity), now, by)
+    .run();
+  await db.prepare('UPDATE door_payments SET purchase_id = ?2 WHERE stripe_payment_intent = ?1').bind(paymentIntent, id).run();
+  return (await getPurchase(db, id))!;
+}
+
 // --- shop items after payment --------------------------------------------------------
 
 export interface ItemWithBuyer extends PurchaseItemRow {

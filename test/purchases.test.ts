@@ -15,6 +15,8 @@ import {
   adminRemoveSignup,
   repairTicketSignups,
   signupAccess,
+  recordDoorPayment,
+  listUnattachedDoorPayments,
   setEventCover,
   getEventCover,
   coverVersion,
@@ -43,6 +45,7 @@ import {
   listUndeliveredItems,
   markItemDelivered,
   listMyItems,
+  attachDoorPaymentToItem,
   MAX_PER_PURCHASE,
   setProductImage,
   getProductImage,
@@ -62,7 +65,7 @@ const NOW = 1_760_000_000;
 const db = () => env.DB;
 
 async function wipe(): Promise<void> {
-  for (const table of ['product_images', 'event_covers', 'purchase_items', 'purchases', 'products', 'signup_answers', 'event_questions', 'door_payments', 'tickets', 'ticket_types', 'signups', 'event_teams', 'events', 'register', 'members']) {
+  for (const table of ['door_payments', 'product_images', 'event_covers', 'purchase_items', 'purchases', 'products', 'signup_answers', 'event_questions', 'door_payments', 'tickets', 'ticket_types', 'signups', 'event_teams', 'events', 'register', 'members']) {
     await db().prepare(`DELETE FROM ${table}`).run();
   }
 }
@@ -369,5 +372,23 @@ describe('the mark of the day', () => {
     const other = [];
     for (let d = 0; d < 10; d++) other.push((await dailyMark('secret-b', day + d * 86400)).name === (await dailyMark('secret-a', day + d * 86400)).name);
     expect(other.every(Boolean)).toBe(false);
+  });
+});
+
+describe('a tapped payment for a shop item', () => {
+  it('becomes a paid purchase, handed over, and leaves the payment list', async () => {
+    const id = await createProduct(db(), { name: 'Patch', description: '', price_cents: 500, member_price_cents: null, stock: 2, active: true }, NOW);
+    await recordDoorPayment(db(), 'pi_patch', 1000, NOW, 'Walk In');
+    await expect(attachDoorPaymentToItem(db(), 'pi_patch', id, 3, 'Walk In', 'board@x', NOW)).rejects.toMatchObject({ code: 'sold_out' });
+    await expect(attachDoorPaymentToItem(db(), 'pi_nope', id, 1, 'Walk In', 'board@x', NOW)).rejects.toMatchObject({ code: 'missing' });
+    const purchase = await attachDoorPaymentToItem(db(), 'pi_patch', id, 2, ' Walk  In ', 'board@x', NOW);
+    expect(purchase).toMatchObject({ status: 'paid', total_cents: 1000, buyer_name: 'Walk In', stripe_payment_intent: 'pi_patch', discord_id: null });
+    const items = await purchaseItems(db(), purchase.id);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ quantity: 2, unit_cents: 500, delivered_by: 'board@x' });
+    expect(items[0].delivered_at).toBe(NOW);
+    expect((await getProduct(db(), id, NOW))!.sold).toBe(2);
+    expect(await listUnattachedDoorPayments(db(), NOW - 3600)).toEqual([]);
+    await expect(attachDoorPaymentToItem(db(), 'pi_patch', id, 1, 'Again', 'board@x', NOW)).rejects.toMatchObject({ code: 'missing' });
   });
 });

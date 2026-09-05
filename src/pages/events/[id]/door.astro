@@ -5,6 +5,7 @@ import { currentSession, ensureCsrf, requireAdmin } from '../../../lib/guard';
 import { requireBoard } from '../../../lib/board';
 import { getEvent, listEventTickets, listTicketTypes, listUnattachedDoorPayments, salesSummary, listEventQuestions, listAllAnswers } from '../../../lib/db';
 import { qrSvg } from '../../../lib/qr';
+import { listProducts } from '../../../lib/purchases';
 import { stripeConfigured } from '../../../lib/stripe';
 import { formatHelsinkiRange, formatHelsinki } from '../../../lib/time';
 import { dailyMark } from '../../../lib/stamp';
@@ -43,11 +44,14 @@ const q = (Astro.url.searchParams.get('q') ?? '').trim().toLowerCase();
 const live = tickets.filter((t) => t.status === 'paid');
 const shown = q ? live.filter((t) => t.holder_name.toLowerCase().includes(q) || t.code.toLowerCase().includes(q)) : live;
 const paymentsOn = stripeConfigured(env);
+const products = allowed ? await listProducts(env.DB, Math.floor(Date.now() / 1000)) : [];
 
 const FLASH: Record<string, string> = {
   in: 'Checked in.',
   undone: 'Check-in undone.',
   attached: 'Payment attached; ticket issued.',
+  attached_item: 'Payment attached; item sold and handed over.',
+  sold_out: 'Not that many left in stock.',
   missing: 'No ticket with that code.',
   not_paid: "That ticket isn't paid.",
   used: 'That ticket was already used.',
@@ -80,7 +84,7 @@ Astro.response.headers.set('cache-control', 'no-store');
         <p class="queue-meta">{formatHelsinkiRange(event.starts_at, event.ends_at)} · {sales!.checked_in} of {sales!.tickets} tickets in · {(sales!.revenue_cents / 100).toFixed(2)} € sold</p>
         {mark && <p class="queue-meta">Today's mark is {mark.icon} <strong>{mark.name}</strong>. A ticket marked used by its holder in front of you shows this mark; another mark means another day. <a href="/shop/orders">Items to hand over</a></p>}
       </article>
-      {flash && <p class={`flash${okKey === 'in' ? ' flash-good' : ''}`}>{flash}{flashName && <> <strong>{flashName}</strong></>}</p>}
+      {flash && <p class={`flash${okKey === 'in' || okKey === 'attached' || okKey === 'attached_item' ? ' flash-good' : ''}`}>{flash}{flashName && <> <strong>{flashName}</strong></>}</p>}
 
       <section class="door-scan">
         <h2 class="section-label">Scan a ticket</h2>
@@ -108,6 +112,12 @@ Astro.response.headers.set('cache-control', 'no-store');
                 <p><strong>{t.name}</strong> · {(t.price_cents / 100).toFixed(2)} €{t.member_price_cents !== null ? ` (members ${(t.member_price_cents / 100).toFixed(2)} €)` : ''}</p>
               </div>
             ))}
+            {products.length > 0 && (
+              <div class="door-qr">
+                <div set:html={qrSvg(`${Astro.url.origin}/shop`, 180)} />
+                <p><strong>Shop</strong> · {products.map((p) => `${p.name} ${(p.price_cents / 100).toFixed(2)} €`).join(', ')}</p>
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -131,7 +141,7 @@ Astro.response.headers.set('cache-control', 'no-store');
       {payments.length > 0 && (
         <section class="queue">
           <h2 class="section-label">Tap payments to attach</h2>
-          <p class="queue-intro">Taken with the Stripe app. Say who paid and which ticket, and they get a ticket that's checked in. The ticket type is pre-picked when the amount matches a price.</p>
+          <p class="queue-intro">Taken with the Stripe app. Say who paid and what for: a ticket type gives them a checked-in ticket; a shop item is sold and marked handed over. The pick is pre-set when the amount matches a price.</p>
           {payments.map((p) => (
             <div class="queue-card">
               <div class="queue-body">
@@ -142,15 +152,27 @@ Astro.response.headers.set('cache-control', 'no-store');
                 <input type="hidden" name="csrf" value={csrf} />
                 <input type="hidden" name="payment_intent" value={p.stripe_payment_intent} />
                 <input name="holder_name" placeholder="Name" required maxlength="60" aria-label="Name" value={p.note ?? ''} />
-                <select name="ticket_type_id" aria-label="Ticket type">
-                  {types
-                    .filter((t) => t.active === 1)
-                    .map((t) => (
-                      <option value={t.id} selected={t.price_cents === p.amount_cents || t.member_price_cents === p.amount_cents}>
-                        {t.name} · {(t.price_cents / 100).toFixed(2)} €
-                      </option>
-                    ))}
+                <select name="what" aria-label="What was paid for">
+                  <optgroup label="Tickets">
+                    {types
+                      .filter((t) => t.active === 1)
+                      .map((t) => (
+                        <option value={`ticket:${t.id}`} selected={t.price_cents === p.amount_cents || t.member_price_cents === p.amount_cents}>
+                          {t.name} · {(t.price_cents / 100).toFixed(2)} €
+                        </option>
+                      ))}
+                  </optgroup>
+                  {products.length > 0 && (
+                    <optgroup label="Shop">
+                      {products.map((pr) => (
+                        <option value={`item:${pr.id}`} selected={!types.some((t) => t.active === 1 && (t.price_cents === p.amount_cents || t.member_price_cents === p.amount_cents)) && (pr.price_cents === p.amount_cents || pr.member_price_cents === p.amount_cents)}>
+                          {pr.name} · {(pr.price_cents / 100).toFixed(2)} €
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
+                {products.length > 0 && <input name="quantity" type="number" min="1" max="10" value="1" aria-label="Quantity, for shop items" class="door-qty" />}
                 <button class="btn btn-primary btn-sm" type="submit">Attach</button>
               </form>
             </div>
