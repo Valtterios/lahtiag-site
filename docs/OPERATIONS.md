@@ -84,7 +84,9 @@ tournament day, prefer the panel.
 ## The member register
 
 The association's member list (the one the Associations Act requires) lives
-on the site at **/register**, replacing the Google Form + Sheet.
+on the site at **/register**, replacing the Google Form + Sheet. The way in
+is the footer link **Member register (board)** on every page; anyone else
+who clicks it only sees "Board members only".
 
 **Who can open it.** Not the Discord role: the register needs a sign-in
 with a lahtiag.fi Google Workspace account that is on the access list. The
@@ -92,8 +94,7 @@ sign-in lasts eight hours (a separate cookie from the Discord one; "End
 register sign-in" on the page ends it early, do that on a shared device).
 The access list has two parts: the fixed accounts in `wrangler.toml`
 (`REGISTER_ADMINS`, the recovery path — chair and treasurer) and the
-accounts added on the register page itself, under **Who can open the
-register**. Anyone with access can grant it to another lahtiag.fi address
+accounts added on the register's **Access** page. Anyone with access can grant it to another lahtiag.fi address
 or remove one; nobody can remove themselves, and the fixed ones can only be
 changed in `wrangler.toml`. Removal takes effect on the person's next
 click, signed in or not. When a board changes: add the new chair/treasurer
@@ -129,13 +130,27 @@ Workspace accounts on the list; the register is only as safe as they are.
   else who applies; the old sheet called this "outside"), *supporting* and
   *honorary* (board-set only, on the entry page). The sheet's "Membership
   type" column is imported and mapped onto these.
-- **The list**: searchable by name, email, Discord or Telegram name, and
-  filterable by status. Click a name for the full entry: every field is
-  editable (including linking a Discord id by hand — Developer Mode →
-  Copy ID), plus a board-only note. **Mark as former member** ends a
-  membership but keeps the record; **Erase** deletes it for good, which is
-  the answer to a GDPR erasure request. Event signups are separate data:
-  "Remove a member everywhere" on /events handles those.
+- **The list**: searchable by name, email, Discord or Telegram name
+  (accents don't matter: "aijo" finds Äijö), filterable by status and
+  actives. Click a name for the full entry: every field is editable
+  (including linking a Discord id by hand — Developer Mode → Copy ID), plus
+  a board-only note. **Mark as former member** ends a membership but keeps
+  the record; **Erase** deletes it for good, which is the answer to a GDPR
+  erasure request. Event signups are separate data: "Remove a member
+  everywhere" on /events handles those.
+- **Add entry** (toolbar) is for people who don't come through the form:
+  honorary members invited by the general meeting, supporting members,
+  applications on paper. The entry records who added it.
+- **Hints on applications**: a red note when someone says LUT/LAB but
+  applies from a non-student address, a yellow one when a similar name or
+  email is already in the register. Hints only; the board decides.
+- **Housekeeping** appears on the register when there are applications
+  older than 60 days nobody decided, or former members two years on. It
+  suggests; nothing is deleted on its own.
+- **Numbers for the annual report** sit at the bottom of the register:
+  current members by class, by school, and joined per year.
+- **Access** (toolbar) is the list of Google accounts that can open the
+  register; see "Who can open it" above.
 - **Discord link requests**: a member from the old form who signs in with
   Discord can ask, on /join, to have that account linked to their entry by
   giving the email they registered with. The request shows at the top of

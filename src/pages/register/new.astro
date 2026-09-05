@@ -1,0 +1,189 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import RegisterToolbar from '../../components/RegisterToolbar.astro';
+import BoardGate from '../../components/BoardGate.astro';
+import { ensureCsrf, checkCsrf } from '../../lib/guard';
+import { requireBoard, boardStatus } from '../../lib/board';
+import { createBoardEntry, RuleError } from '../../lib/db';
+import {
+  parseApplication,
+  GAMES,
+  STUDENT_STATUSES,
+  STUDENT_STATUS_LABELS,
+  UNIONS,
+  UNION_LABELS,
+  MEMBER_TYPES,
+  MEMBER_TYPE_LABELS,
+  LIMITS,
+  type FieldError,
+  type MemberType,
+} from '../../lib/register';
+
+// An entry the board creates by hand: honorary members invited by the
+// general meeting, supporting members that are companies, applications on
+// paper. Handles its own POST so a refused form comes back filled in.
+
+const board = await requireBoard(Astro.request, env);
+Astro.response.status = boardStatus(board);
+const csrf = ensureCsrf(Astro.cookies);
+
+const values: Record<string, string> = {};
+let pickedGames: string[] = [];
+let wantsActive = false;
+let errors: FieldError[] = [];
+let problem: 'csrf' | 'duplicate' | 'bad_extra' | null = null;
+
+if (Astro.request.method === 'POST' && board.ok) {
+  const form = await Astro.request.formData();
+  for (const name of [
+    'full_name',
+    'domicile',
+    'email',
+    'student_status',
+    'union_member',
+    'member_type',
+    'status',
+    'telegram',
+    'discord_name',
+    'discord_id',
+    'games_other',
+    'message',
+    'board_note',
+  ]) {
+    values[name] = String(form.get(name) ?? '');
+  }
+  pickedGames = form.getAll('games').map(String);
+  wantsActive = form.get('wants_active') === 'on';
+
+  if (!(await checkCsrf(Astro.request, form))) {
+    problem = 'csrf';
+  } else {
+    const parsed = parseApplication(form, false);
+    const memberType = MEMBER_TYPES.find((t): t is MemberType => t === values.member_type);
+    const status = values.status === 'pending' ? 'pending' : values.status === 'member' ? 'member' : null;
+    const discordId = values.discord_id.trim();
+    if (!parsed.ok) errors = parsed.errors;
+    else if (!memberType || !status || (discordId && !/^\d{5,25}$/.test(discordId))) problem = 'bad_extra';
+    else {
+      try {
+        const id = await createBoardEntry(
+          env.DB,
+          parsed.value,
+          {
+            member_type: memberType,
+            status,
+            discord_id: discordId || null,
+            board_note: values.board_note.trim().slice(0, LIMITS.board_note) || null,
+          },
+          board.email,
+          Math.floor(Date.now() / 1000),
+        );
+        return Astro.redirect(`/register/${id}?ok=created`, 303);
+      } catch (error) {
+        if (!(error instanceof RuleError)) throw error;
+        problem = 'duplicate';
+      }
+    }
+  }
+  Astro.response.status = 422;
+}
+
+const bad = (field: FieldError) => (errors.includes(field) ? 'field-error' : undefined);
+const MESSAGES: Record<FieldError, string> = {
+  full_name: 'Full name: 2 to 100 characters.',
+  domicile: 'Home municipality is required.',
+  email: 'The email address does not look right.',
+  student_status: 'Pick a school.',
+  union_member: 'Pick a student union, or Neither.',
+  telegram: 'Telegram handle too long.',
+  discord_name: 'Discord name too long.',
+  games: 'The "other games" text is too long.',
+  message: 'Message too long.',
+  consent: '',
+};
+---
+<Base title="Add a register entry" description="Board-only member register.">
+  {!board.ok ? (
+    <BoardGate check={board} />
+  ) : (
+    <>
+      <RegisterToolbar email={board.email} csrf={csrf} current="new" />
+      <article class="prose">
+        <h1>Add an entry</h1>
+        <p class="queue-intro">
+          For people who don't come through the join form: honorary members invited by the general
+          meeting, supporting members, applications handed in on paper. You are recorded as the one
+          who added them.
+        </p>
+      </article>
+
+      {problem === 'csrf' && <p class="flash">The form was stale. Try again.</p>}
+      {problem === 'duplicate' && <p class="flash">Another entry already uses that email or Discord account.</p>}
+      {problem === 'bad_extra' && <p class="flash">Check the membership type, status, and the Discord id (digits only).</p>}
+      {errors.length > 0 && (
+        <ul class="flash flash-list">
+          {errors.filter((e) => e !== 'consent').map((field) => <li>{MESSAGES[field]}</li>)}
+        </ul>
+      )}
+
+      <form method="post" action="/register/new" class="app-form entry-form" novalidate>
+        <input type="hidden" name="csrf" value={csrf} />
+        <div class="form-grid">
+          <label class={bad('full_name')}>Full name *<input name="full_name" required maxlength={LIMITS.full_name} value={values.full_name ?? ''} /></label>
+          <label class={bad('domicile')}>Home municipality *<input name="domicile" required maxlength={LIMITS.domicile} value={values.domicile ?? ''} /></label>
+          <label class={bad('email')}>Email *<input name="email" type="email" required maxlength={LIMITS.email} value={values.email ?? ''} /></label>
+          <label class={bad('student_status')}>
+            School *
+            <select name="student_status" required>
+              <option value="" selected={!values.student_status}>Choose…</option>
+              {STUDENT_STATUSES.map((s) => (
+                <option value={s} selected={values.student_status === s}>{STUDENT_STATUS_LABELS[s]}</option>
+              ))}
+            </select>
+          </label>
+          <label class={bad('union_member')}>
+            Student union *
+            <select name="union_member" required>
+              <option value="" selected={!values.union_member}>Choose…</option>
+              {UNIONS.map((u) => (
+                <option value={u} selected={values.union_member === u}>{UNION_LABELS[u]}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Membership type *
+            <select name="member_type" required>
+              {MEMBER_TYPES.map((t) => (
+                <option value={t} selected={(values.member_type || 'full') === t}>{MEMBER_TYPE_LABELS[t]}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Status *
+            <select name="status" required>
+              <option value="member" selected={(values.status || 'member') === 'member'}>Member (approved now)</option>
+              <option value="pending" selected={values.status === 'pending'}>Pending (decide later)</option>
+            </select>
+          </label>
+          <label class={bad('discord_name')}>Discord username<input name="discord_name" maxlength={LIMITS.discord_name} value={values.discord_name ?? ''} /></label>
+          <label>Discord id (links the account)<input name="discord_id" pattern="\d{5,25}" placeholder="Developer Mode → Copy ID" value={values.discord_id ?? ''} /></label>
+          <label class={bad('telegram')}>Telegram username<input name="telegram" maxlength={LIMITS.telegram} value={values.telegram ?? ''} /></label>
+        </div>
+        <fieldset class="checkbox-grid">
+          <legend>Games</legend>
+          {GAMES.map((game) => (
+            <label class="check"><input type="checkbox" name="games" value={game} checked={pickedGames.includes(game)} /> {game}</label>
+          ))}
+          <label class="check-other">Other<input name="games_other" maxlength={LIMITS.games_other} value={values.games_other ?? ''} /></label>
+        </fieldset>
+        <label class="check check-standalone">
+          <input type="checkbox" name="wants_active" checked={wantsActive} /> <span>Wants to be an active</span>
+        </label>
+        <label class={bad('message')}>Message from the person<textarea name="message" rows="2" maxlength={LIMITS.message}>{values.message ?? ''}</textarea></label>
+        <label>Board note (never shown to the member)<textarea name="board_note" rows="2" maxlength={LIMITS.board_note}>{values.board_note ?? ''}</textarea></label>
+        <button class="btn btn-primary" type="submit">Add to the register</button>
+      </form>
+    </>
+  )}
+</Base>

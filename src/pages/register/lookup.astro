@@ -1,18 +1,20 @@
 ---
 import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
+import RegisterToolbar from '../../components/RegisterToolbar.astro';
 import BoardGate from '../../components/BoardGate.astro';
+import { ensureCsrf } from '../../lib/guard';
 import { requireBoard, boardStatus } from '../../lib/board';
 import { listRegister } from '../../lib/db';
 import { STUDENT_STATUS_LABELS, MEMBER_TYPE_LABELS } from '../../lib/register';
 import { formatHelsinkiDate } from '../../lib/time';
 
 // At the door, on a phone: is this person a member? One big search box,
-// a short list of matches, the status in large type. Behind the Google
-// step-up like the rest of the register.
+// a short list of matches, the status in large type.
 
 const board = await requireBoard(Astro.request, env);
 Astro.response.status = boardStatus(board);
+const csrf = ensureCsrf(Astro.cookies);
 const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 100);
 const rows = board.ok && q ? await listRegister(env.DB, { q, limit: 20 }) : [];
 ---
@@ -21,9 +23,8 @@ const rows = board.ok && q ? await listRegister(env.DB, { q, limit: 20 }) : [];
     <BoardGate check={board} />
   ) : (
     <>
-      <article class="prose">
-        <h1>Is this person a member?</h1>
-      </article>
+      <RegisterToolbar email={board.email} csrf={csrf} current="lookup" />
+      <article class="prose"><h1>Is this person a member?</h1></article>
       <form method="get" action="/register/lookup" class="lookup-form">
         <input type="search" name="q" value={q} placeholder="Name, Discord or email" aria-label="Search" autofocus autocomplete="off" />
         <button class="btn btn-primary" type="submit">Look up</button>
@@ -33,22 +34,23 @@ const rows = board.ok && q ? await listRegister(env.DB, { q, limit: 20 }) : [];
         <ul class="lookup-results">
           {rows.map((r) => (
             <li class={`lookup-card lookup-${r.status}`}>
-              <p class="lookup-name">{r.full_name}</p>
-              <p class="lookup-status">
-                {r.status === 'member' && <>{MEMBER_TYPE_LABELS[r.member_type]} since {formatHelsinkiDate(r.decided_at ?? r.applied_at)}</>}
-                {r.status === 'pending' && <>Application pending, not a member yet</>}
-                {r.status === 'former' && <>Former member</>}
-              </p>
-              <p class="event-meta">
-                {STUDENT_STATUS_LABELS[r.student_status]}
-                {r.discord_name && <> · Discord {r.discord_name}</>}
-                {' · '}<a href={`/register/${r.id}`}>open entry</a>
-              </p>
+              <div>
+                <p class="lookup-name">{r.full_name}</p>
+                <p class="lookup-status">
+                  {r.status === 'member' && <>{MEMBER_TYPE_LABELS[r.member_type]} since {formatHelsinkiDate(r.decided_at ?? r.applied_at)}</>}
+                  {r.status === 'pending' && <>Application pending, not a member yet</>}
+                  {r.status === 'former' && <>Former member</>}
+                </p>
+                <p class="queue-meta">
+                  {STUDENT_STATUS_LABELS[r.student_status]}
+                  {r.discord_name && <> · Discord {r.discord_name}</>}
+                </p>
+              </div>
+              <a class="btn btn-ghost btn-sm" href={`/register/${r.id}`}>Open entry</a>
             </li>
           ))}
         </ul>
       )}
-      <p class="event-meta"><a href="/register">Full register</a></p>
     </>
   )}
 </Base>

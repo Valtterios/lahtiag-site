@@ -1,0 +1,31 @@
+---
+// The strip on top of every register page: where you can go, who is
+// signed in for the register, and the way out. Real buttons, one row.
+
+interface Props {
+  email: string;
+  csrf: string;
+  current: 'register' | 'new' | 'lookup' | 'access';
+}
+
+const { email, csrf, current } = Astro.props;
+const links = [
+  { key: 'register', href: '/register', label: 'Register' },
+  { key: 'new', href: '/register/new', label: 'Add entry' },
+  { key: 'lookup', href: '/register/lookup', label: 'Venue lookup' },
+  { key: 'access', href: '/register/access', label: 'Access' },
+] as const;
+---
+<div class="reg-toolbar">
+  <nav class="reg-nav" aria-label="Register">
+    {links.map((link) => (
+      <a href={link.href} aria-current={current === link.key ? 'page' : undefined}>{link.label}</a>
+    ))}
+    <a href="/register/export.csv">Export CSV</a>
+  </nav>
+  <form method="post" action="/auth/google/logout" class="reg-account">
+    <input type="hidden" name="csrf" value={csrf} />
+    <span>{email}</span>
+    <button type="submit">Sign out</button>
+  </form>
+</div>

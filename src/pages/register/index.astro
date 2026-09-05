@@ -1,63 +1,85 @@
 ---
 import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
-import BoardBox from '../../components/BoardBox.astro';
+import RegisterToolbar from '../../components/RegisterToolbar.astro';
 import BoardGate from '../../components/BoardGate.astro';
 import { ensureCsrf } from '../../lib/guard';
-import { requireBoard, boardStatus, allowedBoardEmails, WORKSPACE_DOMAIN } from '../../lib/board';
-import { listRegister, registerCounts, listRegisterAdmins, listLinkRequests } from '../../lib/db';
+import { requireBoard, boardStatus } from '../../lib/board';
 import {
-  REGISTER_STATUSES,
+  listRegister,
+  registerCounts,
+  registerStats,
+  listLinkRequests,
+  listHousekeeping,
+  findSimilarEntries,
+  HOUSEKEEPING,
+  type RegisterRow,
+} from '../../lib/db';
+import {
+  STUDENT_STATUSES,
   STUDENT_STATUS_LABELS,
+  MEMBER_TYPES,
   MEMBER_TYPE_LABELS,
+  eligibilityWarning,
   type RegisterStatus,
 } from '../../lib/register';
 import { formatHelsinkiDate } from '../../lib/time';
 
-// The board's member register: the pending queue on top, then the whole
-// list, searchable, and at the bottom the list of accounts that may open
-// it. Behind the Google step-up (board.ts), not the Discord role: the page
-// is full of personal data.
+// The board's member register. Top to bottom: what needs a decision
+// (applications, link requests, housekeeping), then the list with search
+// and a status filter, then the numbers for the annual report. Behind the
+// Google step-up (board.ts): the page is full of personal data.
 
 const board = await requireBoard(Astro.request, env);
 Astro.response.status = boardStatus(board);
 const csrf = ensureCsrf(Astro.cookies);
+const now = Math.floor(Date.now() / 1000);
 
-const statusParam = Astro.url.searchParams.get('status') ?? 'all';
-const status: RegisterStatus | 'all' = (REGISTER_STATUSES as readonly string[]).includes(statusParam)
-  ? (statusParam as RegisterStatus)
-  : 'all';
+type View = 'all' | RegisterStatus | 'actives';
+const VIEWS: { key: View; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'member', label: 'Members' },
+  { key: 'pending', label: 'Pending' },
+  { key: 'former', label: 'Former' },
+  { key: 'actives', label: 'Actives' },
+];
+const viewParam = Astro.url.searchParams.get('view') ?? 'all';
+const view: View = VIEWS.some((v) => v.key === viewParam) ? (viewParam as View) : 'all';
 const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 100);
-const activesOnly = Astro.url.searchParams.get('active') === '1';
+const filter = view === 'actives' ? { status: 'member' as const, activesOnly: true } : { status: view };
 
-const [counts, rows, addedAdmins, linkRequests] = board.ok
+const [counts, stats, rows, linkRequests, housekeeping] = board.ok
   ? await Promise.all([
       registerCounts(env.DB),
-      listRegister(env.DB, { status, q, activesOnly }),
-      listRegisterAdmins(env.DB),
-      listLinkRequests(env.DB),
+      registerStats(env.DB),
+      listRegister(env.DB, { ...filter, q }),
+      view === 'all' ? listLinkRequests(env.DB) : Promise.resolve([] as RegisterRow[]),
+      view === 'all' && !q ? listHousekeeping(env.DB, now) : Promise.resolve([] as RegisterRow[]),
     ])
-  : [null, [], [], []];
-const pending = rows.filter((r) => r.status === 'pending');
-const fixedAdmins = allowedBoardEmails(env.REGISTER_ADMINS);
+  : [null, null, [], [], []];
+
+const pending = view === 'all' || view === 'pending' ? rows.filter((r) => r.status === 'pending') : [];
+const hints = new Map<number, { warning: string | null; similar: RegisterRow[] }>();
+if (board.ok) {
+  for (const r of pending.slice(0, 20)) {
+    hints.set(r.id, { warning: eligibilityWarning(r), similar: await findSimilarEntries(env.DB, r) });
+  }
+}
+const stale = new Set(housekeeping.map((r) => r.id));
 
 const FLASH: Record<string, string> = {
   approved: 'Application approved. Welcome them!',
   rejected: 'Application rejected and its data deleted.',
   saved: 'Entry saved.',
+  created: 'Entry added.',
   former: 'Marked as a former member.',
   member: 'Membership reinstated.',
   erased: 'Entry erased from the register.',
+  linked: 'Discord account linked. They can manage their actives status on the join page now.',
+  link_dismissed: 'Link request dismissed.',
   missing: 'That entry no longer exists.',
   duplicate: 'Another entry already uses that email or Discord account.',
   bad_input: "The entry couldn't be saved from those values.",
-  linked: 'Discord account linked. They can manage their actives status on the join page now.',
-  link_dismissed: 'Link request dismissed.',
-  access_added: 'Access granted. They can sign in with that Google account now.',
-  access_removed: 'Access removed.',
-  bad_email: `That must be a ${WORKSPACE_DOMAIN} Google Workspace address.`,
-  self: "You can't remove your own access. Ask another board member to.",
-  fixed: 'That account is fixed in the deployment configuration and cannot be removed here.',
   unauthenticated: 'Sign in with your Google account first.',
   unconfigured: 'Register access is not configured on this deployment.',
   csrf: 'The form was stale. Try again.',
@@ -65,178 +87,203 @@ const FLASH: Record<string, string> = {
 const flash =
   FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
 
-const exportHref = `/register/export.csv${status !== 'all' ? `?status=${status}` : ''}`;
+const viewHref = (key: View) => `/register?view=${key}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
+const since = (r: RegisterRow) =>
+  formatHelsinkiDate(r.status === 'pending' ? r.applied_at : (r.decided_at ?? r.applied_at));
+const days = (t: number) => Math.floor((now - t) / 86400);
 ---
 <Base title="Member register" description="Board-only member register of Lahti Association of Gaming LAG ry.">
   {!board.ok ? (
     <BoardGate check={board} />
   ) : (
     <>
-      <article class="prose">
-        <h1>Member register</h1>
-        <p class="event-meta">
-          {counts!.member} members, {counts!.pending} pending, {counts!.former} former.
-          Personal data: use it for the association's business only.
-          <a href="/register/lookup"> Venue lookup</a> is the phone-friendly view for the door.
-        </p>
-      </article>
-      <BoardBox email={board.email} csrf={csrf} />
+      <RegisterToolbar email={board.email} csrf={csrf} current="register" />
+      <article class="prose"><h1>Member register</h1></article>
       {flash && <p class="flash">{flash}</p>}
 
-      {pending.length > 0 && status !== 'member' && status !== 'former' && (
-        <section class="pending-queue">
+      <ul class="stat-tiles">
+        <li><a href={viewHref('member')}><strong>{counts!.member}</strong><span>Members</span></a></li>
+        <li class={counts!.pending > 0 ? 'stat-attention' : ''}><a href={viewHref('pending')}><strong>{counts!.pending}</strong><span>Pending</span></a></li>
+        <li><a href={viewHref('actives')}><strong>{stats!.actives}</strong><span>Actives</span></a></li>
+        <li><a href={viewHref('former')}><strong>{counts!.former}</strong><span>Former</span></a></li>
+      </ul>
+
+      {pending.length > 0 && (
+        <section class="queue">
           <h2 class="section-label">Waiting for a decision</h2>
-          {pending.map((r) => (
-            <div class="pending-card">
-              <div class="pending-body">
-                <p class="pending-name">
-                  <a href={`/register/${r.id}`}>{r.full_name}</a> <span class="event-meta">{r.domicile}</span>
-                </p>
-                <p class="event-meta">
-                  {STUDENT_STATUS_LABELS[r.student_status]}, {r.union_member === 'none' ? 'no union' : r.union_member}
-                  {' · '}{MEMBER_TYPE_LABELS[r.member_type].toLowerCase()} on approval
-                  {' · '}{r.email}
-                  {r.discord_name && <> · Discord {r.discord_name}{r.discord_id ? ' (linked)' : ''}</>}
-                  {r.telegram && <> · Telegram @{r.telegram}</>}
-                  {r.wants_active ? ' · wants to be an active' : ''}
-                  {' · '}applied {formatHelsinkiDate(r.applied_at)}
-                </p>
-                {r.games && <p class="event-meta">Plays: {r.games}</p>}
-                {r.message && <p class="pending-message">“{r.message}”</p>}
+          {pending.map((r) => {
+            const hint = hints.get(r.id);
+            return (
+              <div class="queue-card">
+                <div class="queue-body">
+                  <p class="queue-name"><a href={`/register/${r.id}`}>{r.full_name}</a></p>
+                  <p class="queue-meta">
+                    {r.domicile} · {STUDENT_STATUS_LABELS[r.student_status]}
+                    {r.union_member !== 'none' && <>, {r.union_member}</>}
+                    {' · '}{MEMBER_TYPE_LABELS[r.member_type].toLowerCase()} on approval
+                    {' · '}applied {formatHelsinkiDate(r.applied_at)}
+                  </p>
+                  <p class="queue-meta">
+                    {r.email}
+                    {r.discord_name && <> · Discord {r.discord_name}{r.discord_id ? ' (linked)' : ''}</>}
+                    {r.telegram && <> · Telegram @{r.telegram}</>}
+                    {r.wants_active ? ' · wants to be an active' : ''}
+                  </p>
+                  {r.games && <p class="queue-meta">Plays: {r.games}</p>}
+                  {r.message && <p class="queue-message">“{r.message}”</p>}
+                  {hint?.warning && <p class="warn-tag">{hint.warning}</p>}
+                  {hint && hint.similar.length > 0 && (
+                    <p class="warn-tag warn-soft">
+                      Might already be in the register:{' '}
+                      {hint.similar.map((s, i) => (
+                        <>{i > 0 && ', '}<a href={`/register/${s.id}`}>{s.full_name}</a> ({s.status})</>
+                      ))}
+                    </p>
+                  )}
+                </div>
+                <form method="post" action={`/register/${r.id}/action`} class="queue-actions">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <button class="btn btn-primary" name="action" value="approve" type="submit">Approve</button>
+                  <button class="btn btn-ghost" name="action" value="reject" type="submit">Reject</button>
+                </form>
               </div>
-              <form method="post" action={`/register/${r.id}/action`} class="pending-actions">
-                <input type="hidden" name="csrf" value={csrf} />
-                <button class="btn btn-primary btn-sm" name="action" value="approve" type="submit">Approve</button>
-                <button class="btn btn-ghost btn-sm" name="action" value="reject" type="submit">Reject</button>
-              </form>
-            </div>
-          ))}
+            );
+          })}
         </section>
       )}
 
       {linkRequests.length > 0 && (
-        <section class="pending-queue">
+        <section class="queue">
           <h2 class="section-label">Discord link requests</h2>
-          <p class="event-meta">
-            A signed-in Discord user gave the email of this entry and asks to be linked to it.
-            Confirm when the Discord name on the entry (or the person) matches; dismiss otherwise.
-          </p>
           {linkRequests.map((r) => (
-            <div class="pending-card">
-              <div class="pending-body">
-                <p class="pending-name"><a href={`/register/${r.id}`}>{r.full_name}</a> <span class="event-meta">{r.email}</span></p>
-                <p class="event-meta">
-                  Discord on the entry: <strong>{r.discord_name ?? 'none given'}</strong>
-                  {' · '}requesting account: <strong>{r.link_discord_name}</strong>
-                  {' · '}asked {formatHelsinkiDate(r.link_requested_at ?? r.updated_at)}
+            <div class="queue-card">
+              <div class="queue-body">
+                <p class="queue-name"><a href={`/register/${r.id}`}>{r.full_name}</a></p>
+                <p class="queue-meta">
+                  Discord user <strong>{r.link_discord_name}</strong> says this entry is theirs.
+                  The entry says: <strong>{r.discord_name ?? 'no Discord name'}</strong>.
+                  {' '}Asked {formatHelsinkiDate(r.link_requested_at ?? r.updated_at)}.
                 </p>
               </div>
-              <form method="post" action={`/register/${r.id}/action`} class="pending-actions">
+              <form method="post" action={`/register/${r.id}/action`} class="queue-actions">
                 <input type="hidden" name="csrf" value={csrf} />
-                <button class="btn btn-primary btn-sm" name="action" value="link_confirm" type="submit">Confirm link</button>
-                <button class="btn btn-ghost btn-sm" name="action" value="link_dismiss" type="submit">Dismiss</button>
+                <button class="btn btn-primary" name="action" value="link_confirm" type="submit">Confirm link</button>
+                <button class="btn btn-ghost" name="action" value="link_dismiss" type="submit">Dismiss</button>
               </form>
             </div>
           ))}
         </section>
       )}
 
-      <form method="get" action="/register" class="register-filter">
-        <input type="search" name="q" value={q} placeholder="Search name, email, Discord, Telegram" aria-label="Search the register" />
-        <select name="status" aria-label="Status">
-          <option value="all" selected={status === 'all'}>All statuses</option>
-          <option value="member" selected={status === 'member'}>Members</option>
-          <option value="pending" selected={status === 'pending'}>Pending</option>
-          <option value="former" selected={status === 'former'}>Former</option>
-        </select>
-        <label class="check filter-check">
-          <input type="checkbox" name="active" value="1" checked={activesOnly} /> Actives only
-        </label>
-        <button class="btn btn-ghost btn-sm" type="submit">Filter</button>
-        <a class="btn btn-ghost btn-sm" href={exportHref}>Export CSV</a>
-      </form>
+      {housekeeping.length > 0 && (
+        <section class="queue">
+          <h2 class="section-label">Housekeeping</h2>
+          <p class="queue-intro">
+            Applications older than {HOUSEKEEPING.pendingAfterDays} days and former members after
+            {' '}{Math.round(HOUSEKEEPING.formerAfterDays / 365)} years. Nothing is deleted on its own.
+          </p>
+          {housekeeping.map((r) => (
+            <div class="queue-card queue-quiet">
+              <div class="queue-body">
+                <p class="queue-name"><a href={`/register/${r.id}`}>{r.full_name}</a></p>
+                <p class="queue-meta">
+                  {r.status === 'pending'
+                    ? `Application from ${days(r.applied_at)} days ago, never decided.`
+                    : `Former member since ${formatHelsinkiDate(r.updated_at)}.`}
+                </p>
+              </div>
+              <form method="post" action={`/register/${r.id}/action`} class="queue-actions">
+                <input type="hidden" name="csrf" value={csrf} />
+                {r.status === 'pending' && (
+                  <button class="btn btn-ghost" name="action" value="approve" type="submit">Approve</button>
+                )}
+                <button class="btn btn-danger" name="action" value={r.status === 'pending' ? 'reject' : 'erase'} type="submit">
+                  {r.status === 'pending' ? 'Reject' : 'Erase'}
+                </button>
+              </form>
+            </div>
+          ))}
+        </section>
+      )}
 
-      {rows.length === 0 ? (
-        <p class="app-empty">Nothing matches.</p>
-      ) : (
-        <div class="table-scroll">
-          <table class="register-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Domicile</th>
-                <th>Email</th>
-                <th>Type</th>
-                <th>Studies</th>
-                <th>Union</th>
-                <th>Discord</th>
-                <th>Telegram</th>
-                <th>Active</th>
-                <th>Since</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
+      <section class="list">
+        <form method="get" action="/register" class="register-search">
+          <input type="hidden" name="view" value={view} />
+          <input type="search" name="q" value={q} placeholder="Search by name, email, Discord or Telegram" aria-label="Search the register" />
+          <button class="btn btn-primary" type="submit">Search</button>
+        </form>
+        <nav class="segmented" aria-label="Filter">
+          {VIEWS.map((v) => (
+            <a href={viewHref(v.key)} aria-current={view === v.key ? 'page' : undefined}>{v.label}</a>
+          ))}
+        </nav>
+
+        {rows.length === 0 ? (
+          <p class="app-empty">Nothing matches.</p>
+        ) : (
+          <div class="table-scroll">
+            <table class="register-table">
+              <thead>
                 <tr>
-                  <td><a href={`/register/${r.id}`}>{r.full_name}</a></td>
-                  <td>{r.domicile}</td>
-                  <td>{r.email}</td>
-                  <td>{r.member_type}</td>
-                  <td>{r.student_status}</td>
-                  <td>{r.union_member === 'none' ? '' : r.union_member}</td>
-                  <td>{r.discord_name ?? ''}{r.discord_id ? ' ✓' : ''}</td>
-                  <td>{r.telegram ?? ''}</td>
-                  <td>{r.wants_active ? 'yes' : ''}</td>
-                  <td>{formatHelsinkiDate(r.status === 'pending' ? r.applied_at : (r.decided_at ?? r.applied_at))}</td>
-                  <td><span class={`status-badge status-${r.status}`}>{r.status}</span></td>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Class</th>
+                  <th>Studies</th>
+                  <th>Discord</th>
+                  <th>Active</th>
+                  <th>Since</th>
+                  <th>Status</th>
                 </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr class={stale.has(r.id) ? 'row-stale' : undefined}>
+                    <td><a href={`/register/${r.id}`}>{r.full_name}</a></td>
+                    <td>{r.email}</td>
+                    <td>{r.member_type}</td>
+                    <td>{r.student_status}</td>
+                    <td>{r.discord_name ?? ''}{r.discord_id && <span class="linked-mark" title="Discord account linked">linked</span>}</td>
+                    <td>{r.wants_active ? 'yes' : ''}</td>
+                    <td>{since(r)}</td>
+                    <td><span class={`status-badge status-${r.status}`}>{r.status}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section class="numbers">
+        <h2 class="section-label">Numbers for the annual report</h2>
+        <p class="queue-intro">Current members only.</p>
+        <div class="numbers-grid">
+          <table>
+            <caption>By class</caption>
+            <tbody>
+              {MEMBER_TYPES.map((k) => (
+                <tr><th>{MEMBER_TYPE_LABELS[k]}</th><td>{stats!.membersByType[k]}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <table>
+            <caption>By school</caption>
+            <tbody>
+              {STUDENT_STATUSES.map((k) => (
+                <tr><th>{STUDENT_STATUS_LABELS[k]}</th><td>{stats!.membersBySchool[k]}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <table>
+            <caption>Joined per year</caption>
+            <tbody>
+              {stats!.joinedByYear.length === 0 && <tr><th>None yet</th><td></td></tr>}
+              {stats!.joinedByYear.map((row) => (
+                <tr><th>{row.year}</th><td>{row.n}</td></tr>
               ))}
             </tbody>
           </table>
         </div>
-      )}
-      <p class="event-meta">
-        ✓ after a Discord name means the account is linked, which shows the member mark on event
-        signups. The list shows at most 1000 entries.
-      </p>
-
-      <section class="admin-panel">
-        <h2>Who can open the register</h2>
-        <p class="event-meta">
-          Sign-in is with a {WORKSPACE_DOMAIN} Google Workspace account, and only these addresses
-          get in. Anyone listed here can add or remove others; nobody can remove themselves.
-        </p>
-        <ul class="access-list">
-          {fixedAdmins.map((email) => (
-            <li><span class="access-email">{email}</span> <span class="event-meta">fixed in the deployment configuration</span></li>
-          ))}
-          {addedAdmins
-            .filter((a) => !fixedAdmins.includes(a.email))
-            .map((a) => (
-              <li>
-                <span class="access-email">{a.email}</span>
-                <span class="event-meta">added by {a.added_by}, {formatHelsinkiDate(a.added_at)}</span>
-                {a.email !== board.email && (
-                  <form method="post" action="/register/access" class="inline-form">
-                    <input type="hidden" name="csrf" value={csrf} />
-                    <input type="hidden" name="action" value="remove" />
-                    <input type="hidden" name="email" value={a.email} />
-                    <button class="btn-link" type="submit">Remove</button>
-                  </form>
-                )}
-              </li>
-            ))}
-        </ul>
-        <form method="post" action="/register/access" class="app-form app-form-row">
-          <input type="hidden" name="csrf" value={csrf} />
-          <input type="hidden" name="action" value="add" />
-          <label>
-            Google Workspace address
-            <input name="email" type="email" required placeholder={`name@${WORKSPACE_DOMAIN}`} maxlength="120" />
-          </label>
-          <button class="btn btn-ghost" type="submit">Grant access</button>
-        </form>
       </section>
     </>
   )}

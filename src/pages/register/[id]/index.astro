@@ -1,11 +1,11 @@
 ---
 import { env } from 'cloudflare:workers';
 import Base from '../../../layouts/Base.astro';
-import BoardBox from '../../../components/BoardBox.astro';
+import RegisterToolbar from '../../../components/RegisterToolbar.astro';
 import BoardGate from '../../../components/BoardGate.astro';
 import { ensureCsrf } from '../../../lib/guard';
 import { requireBoard, boardStatus } from '../../../lib/board';
-import { getRegisterEntry } from '../../../lib/db';
+import { getRegisterEntry, findSimilarEntries } from '../../../lib/db';
 import {
   GAMES,
   STUDENT_STATUSES,
@@ -15,11 +15,12 @@ import {
   MEMBER_TYPES,
   MEMBER_TYPE_LABELS,
   LIMITS,
+  eligibilityWarning,
 } from '../../../lib/register';
 import { formatHelsinkiDate } from '../../../lib/time';
 
-// One register entry: everything the person supplied, editable by the
-// board, plus the status actions and erasure. Behind the Google step-up.
+// One register entry: the decision buttons on top, everything the person
+// supplied below, editable by the board, and erasure at the very end.
 
 const board = await requireBoard(Astro.request, env);
 Astro.response.status = boardStatus(board);
@@ -28,12 +29,16 @@ const id = Number(Astro.params.id);
 const entry = board.ok && Number.isInteger(id) ? await getRegisterEntry(env.DB, id) : null;
 if (board.ok && !entry) Astro.response.status = 404;
 
+const similar = entry && entry.status === 'pending' ? await findSimilarEntries(env.DB, entry) : [];
+const warning = entry && entry.status === 'pending' ? eligibilityWarning(entry) : null;
+
 const gamesList = entry?.games ? entry.games.split(',').map((g) => g.trim()) : [];
 const knownGames = gamesList.filter((g) => (GAMES as readonly string[]).includes(g));
 const otherGames = gamesList.filter((g) => !(GAMES as readonly string[]).includes(g)).join(', ');
 
 const FLASH: Record<string, string> = {
   saved: 'Entry saved.',
+  created: 'Entry added.',
   linked: 'Discord account linked.',
   link_dismissed: 'Link request dismissed.',
   former: 'Marked as a former member.',
@@ -47,73 +52,97 @@ const FLASH: Record<string, string> = {
 };
 const flash =
   FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
+const SOURCE: Record<string, string> = {
+  web: 'applied on the site',
+  import: 'from the old sheet',
+  board: 'added by the board',
+};
 ---
 <Base title={entry ? entry.full_name : 'Register entry'} description="Board-only member register entry.">
   {!board.ok ? (
     <BoardGate check={board} />
   ) : !entry ? (
-    <article class="prose">
-      <h1>No such entry</h1>
-      <p>Nothing lives at this id. Back to the <a href="/register">register</a>.</p>
-    </article>
+    <>
+      <RegisterToolbar email={board.email} csrf={csrf} current="register" />
+      <article class="prose">
+        <h1>No such entry</h1>
+        <p>Nothing lives at this id.</p>
+        <p><a class="btn btn-primary" href="/register">Back to the register</a></p>
+      </article>
+    </>
   ) : (
     <>
-      <article class="prose">
-        <p class="hero-eyebrow"><a href="/register">Member register</a></p>
+      <RegisterToolbar email={board.email} csrf={csrf} current="register" />
+      <article class="prose entry-head">
         <h1>{entry.full_name}</h1>
-        <p>
+        <p class="entry-badges">
           <span class={`status-badge status-${entry.status}`}>{entry.status}</span>
-          {' '}{MEMBER_TYPE_LABELS[entry.member_type].toLowerCase()},
-          {' '}applied {formatHelsinkiDate(entry.applied_at)}
-          {entry.decided_at !== null && <>, decided {formatHelsinkiDate(entry.decided_at)}</>}
-          {entry.source === 'import' && <> (imported from the old sheet)</>}
+          <span class="status-badge">{MEMBER_TYPE_LABELS[entry.member_type]}</span>
+          {entry.discord_id && <span class="status-badge status-member">Discord linked</span>}
+          {entry.wants_active && <span class="status-badge">active</span>}
+        </p>
+        <p class="queue-meta">
+          {SOURCE[entry.source]} {formatHelsinkiDate(entry.applied_at)}
+          {entry.decided_at !== null && (
+            <>, decided {formatHelsinkiDate(entry.decided_at)}{entry.decided_by ? ` by ${entry.decided_by}` : ''}</>
+          )}
         </p>
       </article>
-      <BoardBox email={board.email} csrf={csrf} />
       {flash && <p class="flash">{flash}</p>}
+      {warning && <p class="warn-tag">{warning}</p>}
+      {similar.length > 0 && (
+        <p class="warn-tag warn-soft">
+          Might already be in the register:{' '}
+          {similar.map((s, i) => (
+            <>{i > 0 && ', '}<a href={`/register/${s.id}`}>{s.full_name}</a> ({s.status})</>
+          ))}
+        </p>
+      )}
 
       {entry.link_discord_id !== null && (
-        <form method="post" action={`/register/${entry.id}/action`} class="signup-bar">
-          <input type="hidden" name="csrf" value={csrf} />
-          <span class="event-meta">
-            Discord user <strong>{entry.link_discord_name}</strong> asks to be linked to this entry
-            (entry says: {entry.discord_name ?? 'no Discord name'}).
-          </span>
-          <button class="btn btn-primary" name="action" value="link_confirm" type="submit">Confirm link</button>
-          <button class="btn btn-ghost" name="action" value="link_dismiss" type="submit">Dismiss</button>
-        </form>
-      )}
-      {entry.status === 'pending' && (
-        <form method="post" action={`/register/${entry.id}/action`} class="signup-bar">
-          <input type="hidden" name="csrf" value={csrf} />
-          <button class="btn btn-primary" name="action" value="approve" type="submit">Approve membership</button>
-          <button class="btn btn-ghost" name="action" value="reject" type="submit">Reject and delete</button>
-        </form>
-      )}
-      {entry.status === 'member' && (
-        <form method="post" action={`/register/${entry.id}/action`} class="signup-bar">
-          <input type="hidden" name="csrf" value={csrf} />
-          <button class="btn btn-ghost" name="action" value="former" type="submit">Mark as former member</button>
-        </form>
-      )}
-      {entry.status === 'former' && (
-        <form method="post" action={`/register/${entry.id}/action`} class="signup-bar">
-          <input type="hidden" name="csrf" value={csrf} />
-          <button class="btn btn-primary" name="action" value="member" type="submit">Reinstate membership</button>
-        </form>
+        <div class="queue-card">
+          <div class="queue-body">
+            <p class="queue-name">Discord link request</p>
+            <p class="queue-meta">
+              Discord user <strong>{entry.link_discord_name}</strong> says this entry is theirs. The
+              entry says: <strong>{entry.discord_name ?? 'no Discord name'}</strong>.
+            </p>
+          </div>
+          <form method="post" action={`/register/${entry.id}/action`} class="queue-actions">
+            <input type="hidden" name="csrf" value={csrf} />
+            <button class="btn btn-primary" name="action" value="link_confirm" type="submit">Confirm link</button>
+            <button class="btn btn-ghost" name="action" value="link_dismiss" type="submit">Dismiss</button>
+          </form>
+        </div>
       )}
 
-      <section class="admin-panel">
-        <h2>Details</h2>
-        <form method="post" action={`/register/${entry.id}/action`} class="app-form">
+      <form method="post" action={`/register/${entry.id}/action`} class="entry-actions">
+        <input type="hidden" name="csrf" value={csrf} />
+        {entry.status === 'pending' && (
+          <>
+            <button class="btn btn-primary" name="action" value="approve" type="submit">Approve membership</button>
+            <button class="btn btn-ghost" name="action" value="reject" type="submit">Reject and delete</button>
+          </>
+        )}
+        {entry.status === 'member' && (
+          <button class="btn btn-ghost" name="action" value="former" type="submit">Mark as former member</button>
+        )}
+        {entry.status === 'former' && (
+          <button class="btn btn-primary" name="action" value="member" type="submit">Reinstate membership</button>
+        )}
+      </form>
+
+      <section class="entry-details">
+        <h2 class="section-label">Details</h2>
+        <form method="post" action={`/register/${entry.id}/action`} class="app-form entry-form">
           <input type="hidden" name="csrf" value={csrf} />
           <input type="hidden" name="action" value="update" />
           <div class="form-grid">
-            <label>Full name <input name="full_name" required maxlength={LIMITS.full_name} value={entry.full_name} /></label>
-            <label>Home municipality <input name="domicile" required maxlength={LIMITS.domicile} value={entry.domicile} /></label>
-            <label>Email <input name="email" type="email" required maxlength={LIMITS.email} value={entry.email} /></label>
+            <label>Full name<input name="full_name" required maxlength={LIMITS.full_name} value={entry.full_name} /></label>
+            <label>Home municipality<input name="domicile" required maxlength={LIMITS.domicile} value={entry.domicile} /></label>
+            <label>Email<input name="email" type="email" required maxlength={LIMITS.email} value={entry.email} /></label>
             <label>
-              Studies
+              School
               <select name="student_status">
                 {STUDENT_STATUSES.map((s) => (
                   <option value={s} selected={entry.student_status === s}>{STUDENT_STATUS_LABELS[s]}</option>
@@ -136,42 +165,40 @@ const flash =
                 ))}
               </select>
             </label>
-            <label>Discord username <input name="discord_name" maxlength={LIMITS.discord_name} value={entry.discord_name ?? ''} /></label>
+            <label>Discord username<input name="discord_name" maxlength={LIMITS.discord_name} value={entry.discord_name ?? ''} /></label>
             <label>
               Discord id (links the account)
               <input name="discord_id" pattern="\d{5,25}" value={entry.discord_id ?? ''} placeholder="Developer Mode → Copy ID" />
             </label>
-            <label>Telegram username <input name="telegram" maxlength={LIMITS.telegram} value={entry.telegram ?? ''} /></label>
+            <label>Telegram username<input name="telegram" maxlength={LIMITS.telegram} value={entry.telegram ?? ''} /></label>
           </div>
           <fieldset class="checkbox-grid">
             <legend>Games</legend>
             {GAMES.map((game) => (
-              <label class="check">
-                <input type="checkbox" name="games" value={game} checked={knownGames.includes(game)} /> {game}
-              </label>
+              <label class="check"><input type="checkbox" name="games" value={game} checked={knownGames.includes(game)} /> {game}</label>
             ))}
-            <label class="check-other">Other <input name="games_other" maxlength={LIMITS.games_other} value={otherGames} /></label>
+            <label class="check-other">Other<input name="games_other" maxlength={LIMITS.games_other} value={otherGames} /></label>
           </fieldset>
           <label class="check check-standalone">
             <input type="checkbox" name="wants_active" checked={entry.wants_active} /> <span>Wants to be an active</span>
           </label>
-          <label>Applicant's message <textarea name="message" rows="2" maxlength={LIMITS.message}>{entry.message ?? ''}</textarea></label>
-          <label>Board note (never shown to the member) <textarea name="board_note" rows="2" maxlength={LIMITS.board_note}>{entry.board_note ?? ''}</textarea></label>
+          <label>Message from the person<textarea name="message" rows="2" maxlength={LIMITS.message}>{entry.message ?? ''}</textarea></label>
+          <label>Board note (never shown to the member)<textarea name="board_note" rows="2" maxlength={LIMITS.board_note}>{entry.board_note ?? ''}</textarea></label>
           <button class="btn btn-primary" type="submit">Save changes</button>
         </form>
+      </section>
 
-        <details class="admin-edit">
-          <summary>Erase this entry</summary>
-          <p class="event-meta">
-            Deletes the entry for good: the person's own request to be erased, or cleanup. There is
-            no undo. To keep the record but end the membership, use "Mark as former member" above.
-            Event signups are separate; erase those from the Events page if asked.
-          </p>
-          <form method="post" action={`/register/${entry.id}/action`}>
-            <input type="hidden" name="csrf" value={csrf} />
-            <button class="btn btn-ghost" name="action" value="erase" type="submit">Erase permanently</button>
-          </form>
-        </details>
+      <section class="entry-erase">
+        <h2 class="section-label">Erase</h2>
+        <p class="queue-intro">
+          Deletes the entry for good: the person's own request to be erased, or cleanup. No undo. To
+          keep the record but end the membership, use "Mark as former member" above. Event signups
+          are separate; erase those from the Events page if asked.
+        </p>
+        <form method="post" action={`/register/${entry.id}/action`}>
+          <input type="hidden" name="csrf" value={csrf} />
+          <button class="btn btn-danger" name="action" value="erase" type="submit">Erase this entry permanently</button>
+        </form>
       </section>
     </>
   )}

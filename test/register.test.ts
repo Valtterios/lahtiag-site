@@ -19,9 +19,21 @@ import {
   listLinkRequests,
   resolveLinkRequest,
   setOwnActive,
+  createBoardEntry,
+  findSimilarEntries,
+  registerStats,
+  listHousekeeping,
+  HOUSEKEEPING,
   RuleError,
 } from '../src/lib/db';
-import { parseApplication, csvCell, deriveMemberType, type ApplicationInput } from '../src/lib/register';
+import {
+  parseApplication,
+  csvCell,
+  deriveMemberType,
+  searchKey,
+  eligibilityWarning,
+  type ApplicationInput,
+} from '../src/lib/register';
 import { applicationNotice } from '../src/lib/discord';
 
 // The member register against the real schema (migration 0006): the
@@ -342,6 +354,99 @@ describe('self-service actives flag', () => {
     expect((await listRegister(db(), { activesOnly: true })).map((r) => r.id)).toEqual([id]);
     await setOwnActive(db(), '77', false, null, NOW + 10);
     expect(await listRegister(db(), { activesOnly: true })).toEqual([]);
+  });
+});
+
+describe('accent-insensitive search', () => {
+  it('normalizes keys and finds Finnish names typed without umlauts', async () => {
+    expect(searchKey(['Äijö', null, 'Östberg'])).toBe('aijo ostberg');
+    const id = await applyForMembership(db(), application({ full_name: 'Väinö Äijö' }), null, NOW);
+    expect((await listRegister(db(), { q: 'aijo' })).map((r) => r.id)).toEqual([id]);
+    expect((await listRegister(db(), { q: 'ÄIJÖ' })).map((r) => r.id)).toEqual([id]);
+    await updateRegisterEntry(db(), id, application({ full_name: 'Väinö Öhman' }), EXTRA_NONE, NOW);
+    expect(await listRegister(db(), { q: 'aijo' })).toEqual([]);
+    expect((await listRegister(db(), { q: 'ohman' })).map((r) => r.id)).toEqual([id]);
+  });
+});
+
+describe('board-created entries', () => {
+  it('records the board as the source and decider, and enforces uniqueness', async () => {
+    const id = await createBoardEntry(
+      db(),
+      application({ full_name: 'Honor Person', email: 'h@example.com', student_status: 'other' }),
+      { member_type: 'honorary', status: 'member', discord_id: null, board_note: 'Invited 2026' },
+      'chair@lahtiag.fi',
+      NOW,
+    );
+    expect(await getRegisterEntry(db(), id)).toMatchObject({
+      source: 'board',
+      status: 'member',
+      member_type: 'honorary',
+      decided_by: 'chair@lahtiag.fi',
+      decided_at: NOW,
+      consented_at: NOW,
+      board_note: 'Invited 2026',
+    });
+    const pending = await createBoardEntry(
+      db(),
+      application({ email: 'p@example.com' }),
+      { member_type: 'full', status: 'pending', discord_id: null, board_note: null },
+      'chair@lahtiag.fi',
+      NOW,
+    );
+    expect(await getRegisterEntry(db(), pending)).toMatchObject({ status: 'pending', decided_at: null, decided_by: null });
+    await expect(
+      createBoardEntry(db(), application({ email: 'H@example.com' }), { member_type: 'full', status: 'member', discord_id: null, board_note: null }, 'x', NOW),
+    ).rejects.toMatchObject({ code: 'duplicate' });
+  });
+});
+
+describe('hints for the board', () => {
+  it('warns when a LUT/LAB claim comes without a student address', () => {
+    expect(eligibilityWarning({ student_status: 'LUT', email: 'a@student.lut.fi' })).toBeNull();
+    expect(eligibilityWarning({ student_status: 'LAB', email: 'a@LAB.fi' })).toBeNull();
+    expect(eligibilityWarning({ student_status: 'LUT', email: 'a@gmail.com' })).toMatch(/LUT/);
+    expect(eligibilityWarning({ student_status: 'alumni', email: 'a@gmail.com' })).toBeNull();
+  });
+
+  it('finds entries with the same surname or email local part', async () => {
+    const a = await applyForMembership(db(), application({ full_name: 'Aino Virtanen', email: 'aino.v@example.com' }), null, NOW);
+    const b = await applyForMembership(db(), application({ full_name: 'Aino Virtanen', email: 'aino.v@other.example' }), null, NOW);
+    const c = await applyForMembership(db(), application({ full_name: 'Bo Virtanen', email: 'bo@example.com' }), null, NOW);
+    await applyForMembership(db(), application({ full_name: 'Cara Nieminen', email: 'cara@example.com' }), null, NOW);
+    const similar = await findSimilarEntries(db(), { id: b, full_name: 'Aino Virtanen', email: 'aino.v@other.example' });
+    expect(similar.map((r) => r.id).sort()).toEqual([a, c].sort());
+    expect(await findSimilarEntries(db(), { id: 999, full_name: 'X', email: 'x@y.z' })).toEqual([]);
+  });
+});
+
+describe('numbers and housekeeping', () => {
+  it('counts current members by class, school and year, plus actives', async () => {
+    const a = await applyForMembership(db(), application({ wants_active: true }), null, NOW);
+    const b = await applyForMembership(db(), application({ email: 'b@example.com', student_status: 'alumni' }), null, NOW);
+    await applyForMembership(db(), application({ email: 'c@example.com', wants_active: true }), null, NOW);
+    await decideApplication(db(), a, 'approve', 'x', NOW);
+    await decideApplication(db(), b, 'approve', 'x', NOW + 366 * 86400);
+    const stats = await registerStats(db());
+    expect(stats.actives).toBe(1);
+    expect(stats.membersByType).toEqual({ full: 1, external: 1, supporting: 0, honorary: 0 });
+    expect(stats.membersBySchool).toEqual({ LUT: 1, LAB: 0, alumni: 1, other: 0 });
+    expect(stats.joinedByYear).toEqual([
+      { year: '2025', n: 1 },
+      { year: '2026', n: 1 },
+    ]);
+  });
+
+  it('lists stale pending applications and long-former members', async () => {
+    const stale = await applyForMembership(db(), application(), null, NOW - (HOUSEKEEPING.pendingAfterDays + 1) * 86400);
+    await applyForMembership(db(), application({ email: 'fresh@example.com' }), null, NOW);
+    const old = await applyForMembership(db(), application({ email: 'old@example.com' }), null, NOW - 800 * 86400);
+    await decideApplication(db(), old, 'approve', 'x', NOW - 800 * 86400);
+    await setRegisterStatus(db(), old, 'former', NOW - (HOUSEKEEPING.formerAfterDays + 1) * 86400);
+    const recent = await applyForMembership(db(), application({ email: 'recent@example.com' }), null, NOW);
+    await decideApplication(db(), recent, 'approve', 'x', NOW);
+    await setRegisterStatus(db(), recent, 'former', NOW);
+    expect((await listHousekeeping(db(), NOW)).map((r) => r.id).sort()).toEqual([stale, old].sort());
   });
 });
 

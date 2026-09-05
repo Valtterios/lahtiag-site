@@ -212,3 +212,26 @@ export function csvCell(value: string | number | null): string {
   if (/[",\r\n]/.test(s)) s = `"${s.replace(/"/g, '""')}"`;
   return s;
 }
+
+// Accent-insensitive, lower-cased text for searching and duplicate hints:
+// "Äijö" -> "aijo". Stored in register.search_key on every write.
+export function searchKey(parts: (string | null | undefined)[]): string {
+  return parts
+    .filter((p): p is string => typeof p === 'string' && p !== '')
+    .join(' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+// A hint for the board, never a rule: someone claiming to study at LUT or
+// LAB usually applies with a student address.
+export const STUDENT_DOMAINS = ['student.lut.fi', 'lut.fi', 'student.lab.fi', 'lab.fi'];
+
+export function eligibilityWarning(entry: { student_status: StudentStatus; email: string }): string | null {
+  if (entry.student_status !== 'LUT' && entry.student_status !== 'LAB') return null;
+  const domain = entry.email.split('@')[1]?.toLowerCase() ?? '';
+  if (STUDENT_DOMAINS.includes(domain)) return null;
+  return `Says ${entry.student_status} but the email isn't a student address`;
+}
+

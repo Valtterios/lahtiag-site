@@ -4,7 +4,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import type { ApplicationInput, MemberType, RegisterStatus } from './register';
-import { deriveMemberType } from './register';
+import { deriveMemberType, searchKey } from './register';
 
 export class RuleError extends Error {
   constructor(
@@ -1037,7 +1037,7 @@ export interface RegisterRow extends ApplicationInput {
   link_requested_at: number | null;
   board_note: string | null;
   status: RegisterStatus;
-  source: 'web' | 'import';
+  source: 'web' | 'import' | 'board';
   applied_at: number;
   consented_at: number;
   decided_at: number | null;
@@ -1075,8 +1075,8 @@ export async function applyForMembership(
     .prepare(
       `INSERT INTO register (full_name, domicile, email, student_status, union_member,
          member_type, telegram, discord_name, discord_id, games, wants_active, message,
-         status, source, applied_at, consented_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'pending', 'web', ?13, ?13, ?13)
+         status, source, applied_at, consented_at, updated_at, search_key)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'pending', 'web', ?13, ?13, ?13, ?14)
        RETURNING id`,
     )
     .bind(
@@ -1093,6 +1093,7 @@ export async function applyForMembership(
       input.wants_active ? 1 : 0,
       input.message,
       now,
+      searchKey([input.full_name, input.email, input.discord_name, input.telegram]),
     )
     .first<{ id: number }>();
   return result!.id;
@@ -1133,14 +1134,10 @@ export async function listRegister(db: D1Database, filter: RegisterFilter = {}):
     clauses.push(`status = ?${binds.length}`);
   }
   if (filter.activesOnly) clauses.push('wants_active = 1');
-  const q = (filter.q ?? '').trim();
+  const q = searchKey([filter.q ?? '']).trim();
   if (q) {
     binds.push(`%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
-    const n = binds.length;
-    clauses.push(
-      `(full_name LIKE ?${n} ESCAPE '\\' OR email LIKE ?${n} ESCAPE '\\'
-        OR discord_name LIKE ?${n} ESCAPE '\\' OR telegram LIKE ?${n} ESCAPE '\\')`,
-    );
+    clauses.push(`search_key LIKE ?${binds.length} ESCAPE '\\'`);
   }
   binds.push(filter.limit ?? 1000);
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
@@ -1219,7 +1216,8 @@ export async function updateRegisterEntry(
     .prepare(
       `UPDATE register SET full_name = ?2, domicile = ?3, email = ?4, student_status = ?5,
          union_member = ?6, telegram = ?7, discord_name = ?8, discord_id = ?9, games = ?10,
-         wants_active = ?11, message = ?12, board_note = ?13, updated_at = ?14, member_type = ?15
+         wants_active = ?11, message = ?12, board_note = ?13, updated_at = ?14, member_type = ?15,
+         search_key = ?16
        WHERE id = ?1`,
     )
     .bind(
@@ -1238,8 +1236,144 @@ export async function updateRegisterEntry(
       extra.board_note,
       now,
       extra.member_type,
+      searchKey([input.full_name, input.email, input.discord_name, input.telegram]),
     )
     .run();
+}
+
+// An entry the board creates by hand: an honorary member invited by the
+// general meeting, a supporting member that is a company, an application
+// handed over on paper. Consent is the board's own act, recorded as such.
+export async function createBoardEntry(
+  db: D1Database,
+  input: ApplicationInput,
+  extra: {
+    member_type: MemberType;
+    status: 'member' | 'pending';
+    discord_id: string | null;
+    board_note: string | null;
+  },
+  createdBy: string,
+  now: number,
+): Promise<number> {
+  const clash = await db
+    .prepare(
+      `SELECT id FROM register
+       WHERE email = ?1 COLLATE NOCASE OR (?2 IS NOT NULL AND discord_id = ?2)
+       LIMIT 1`,
+    )
+    .bind(input.email, extra.discord_id)
+    .first();
+  if (clash) throw new RuleError('duplicate', 'This email or Discord account is already in the register.');
+  const decided = extra.status === 'member';
+  const result = await db
+    .prepare(
+      `INSERT INTO register (full_name, domicile, email, student_status, union_member,
+         member_type, telegram, discord_name, discord_id, games, wants_active, message, board_note,
+         status, source, applied_at, consented_at, decided_at, decided_by, updated_at, search_key)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 'board', ?15, ?15, ?16, ?17, ?15, ?18)
+       RETURNING id`,
+    )
+    .bind(
+      input.full_name,
+      input.domicile,
+      input.email,
+      input.student_status,
+      input.union_member,
+      extra.member_type,
+      input.telegram,
+      input.discord_name,
+      extra.discord_id,
+      input.games,
+      input.wants_active ? 1 : 0,
+      input.message,
+      extra.board_note,
+      extra.status,
+      now,
+      decided ? now : null,
+      decided ? createdBy : null,
+      searchKey([input.full_name, input.email, input.discord_name, input.telegram]),
+    )
+    .first<{ id: number }>();
+  return result!.id;
+}
+
+// Entries that look like the same person: same surname or same email
+// local part, accent-insensitively. A hint on pending applications, not a
+// rule; the board decides.
+export async function findSimilarEntries(
+  db: D1Database,
+  entry: { id: number; full_name: string; email: string },
+): Promise<RegisterRow[]> {
+  const escape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+  const nameTokens = searchKey([entry.full_name]).split(' ').filter((t) => t.length >= 3);
+  const surname = nameTokens.length > 1 ? nameTokens[nameTokens.length - 1] : null;
+  const local = searchKey([entry.email.split('@')[0] ?? '']);
+  const patterns: string[] = [];
+  if (surname) patterns.push(`%${escape(surname)}%`);
+  if (local.length >= 4) patterns.push(`%${escape(local)}%`);
+  if (patterns.length === 0) return [];
+  const clauses = patterns.map((_, i) => `search_key LIKE ?${i + 2} ESCAPE '\\'`).join(' OR ');
+  const { results } = await db
+    .prepare(`SELECT * FROM register WHERE id != ?1 AND (${clauses}) ORDER BY full_name COLLATE NOCASE LIMIT 5`)
+    .bind(entry.id, ...patterns)
+    .all<RegisterDbRow>();
+  return results.map(fromDb);
+}
+
+export interface RegisterStats {
+  actives: number;
+  membersByType: Record<MemberType, number>;
+  membersBySchool: Record<ApplicationInput['student_status'], number>;
+  joinedByYear: { year: string; n: number }[];
+}
+
+// Numbers for the annual report, current members only. Years are UTC:
+// a membership decided in the last two hours of New Year's Eve lands in
+// the wrong year, which nobody will mind.
+export async function registerStats(db: D1Database): Promise<RegisterStats> {
+  const [actives, byType, bySchool, byYear] = await Promise.all([
+    db
+      .prepare("SELECT COUNT(*) AS n FROM register WHERE status = 'member' AND wants_active = 1")
+      .first<{ n: number }>(),
+    db
+      .prepare("SELECT member_type AS k, COUNT(*) AS n FROM register WHERE status = 'member' GROUP BY 1")
+      .all<{ k: MemberType; n: number }>(),
+    db
+      .prepare("SELECT student_status AS k, COUNT(*) AS n FROM register WHERE status = 'member' GROUP BY 1")
+      .all<{ k: ApplicationInput['student_status']; n: number }>(),
+    db
+      .prepare(
+        `SELECT strftime('%Y', coalesce(decided_at, applied_at), 'unixepoch') AS year, COUNT(*) AS n
+         FROM register WHERE status = 'member' GROUP BY 1 ORDER BY 1`,
+      )
+      .all<{ year: string; n: number }>(),
+  ]);
+  const membersByType: Record<MemberType, number> = { full: 0, external: 0, supporting: 0, honorary: 0 };
+  for (const row of byType.results) membersByType[row.k] = row.n;
+  const membersBySchool: RegisterStats['membersBySchool'] = { LUT: 0, LAB: 0, alumni: 0, other: 0 };
+  for (const row of bySchool.results) membersBySchool[row.k] = row.n;
+  return { actives: actives?.n ?? 0, membersByType, membersBySchool, joinedByYear: byYear.results };
+}
+
+export const HOUSEKEEPING = {
+  pendingAfterDays: 60,
+  formerAfterDays: 730,
+};
+
+// What the register should probably not still hold: applications nobody
+// decided in two months, former members two years on. Listed for the
+// board with an erase button; nothing is deleted on its own.
+export async function listHousekeeping(db: D1Database, now: number): Promise<RegisterRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM register
+       WHERE (status = 'pending' AND applied_at < ?1) OR (status = 'former' AND updated_at < ?2)
+       ORDER BY status, applied_at`,
+    )
+    .bind(now - HOUSEKEEPING.pendingAfterDays * 86400, now - HOUSEKEEPING.formerAfterDays * 86400)
+    .all<RegisterDbRow>();
+  return results.map(fromDb);
 }
 
 // member <-> former. A pending application goes through decideApplication.
@@ -1338,10 +1472,11 @@ export async function resolveLinkRequest(
     await db
       .prepare(
         `UPDATE register SET discord_id = link_discord_id, discord_name = link_discord_name,
-           link_discord_id = NULL, link_discord_name = NULL, link_requested_at = NULL, updated_at = ?2
+           link_discord_id = NULL, link_discord_name = NULL, link_requested_at = NULL, updated_at = ?2,
+           search_key = ?3
          WHERE id = ?1`,
       )
-      .bind(id, now)
+      .bind(id, now, searchKey([entry.full_name, entry.email, entry.link_discord_name, entry.telegram]))
       .run();
     return;
   }
@@ -1370,8 +1505,8 @@ export async function setOwnActive(
   const entry = await getRegisterByDiscord(db, discordId);
   if (!entry) return null;
   await db
-    .prepare('UPDATE register SET wants_active = ?2, telegram = ?3, updated_at = ?4 WHERE id = ?1')
-    .bind(entry.id, wantsActive ? 1 : 0, telegram, now)
+    .prepare('UPDATE register SET wants_active = ?2, telegram = ?3, updated_at = ?4, search_key = ?5 WHERE id = ?1')
+    .bind(entry.id, wantsActive ? 1 : 0, telegram, now, searchKey([entry.full_name, entry.email, entry.discord_name, telegram]))
     .run();
   return { ...entry, wants_active: wantsActive, telegram, updated_at: now };
 }

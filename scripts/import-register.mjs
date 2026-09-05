@@ -184,6 +184,16 @@ function games(raw) {
   return items.length === 0 ? null : items.join(', ');
 }
 
+// Mirrors searchKey() in src/lib/register.ts.
+function searchKey(parts) {
+  return parts
+    .filter((p) => typeof p === 'string' && p !== '')
+    .join(' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
 function sql(value) {
   if (value === null || value === undefined) return 'NULL';
   if (typeof value === 'number') return String(value);
@@ -259,7 +269,7 @@ const lines = [
 ];
 for (const e of byEmail.values()) {
   lines.push(
-    `INSERT OR IGNORE INTO register (full_name, domicile, email, student_status, union_member, member_type, telegram, discord_name, games, wants_active, message, status, source, applied_at, consented_at, decided_at, updated_at) VALUES (` +
+    `INSERT OR IGNORE INTO register (full_name, domicile, email, student_status, union_member, member_type, telegram, discord_name, games, wants_active, message, status, source, applied_at, consented_at, decided_at, updated_at, search_key) VALUES (` +
       [
         e.full_name,
         e.domicile,
@@ -278,6 +288,7 @@ for (const e of byEmail.values()) {
         e.applied_at,
         e.applied_at,
         now,
+        searchKey([e.full_name, e.email, e.discord_name, e.telegram]),
       ]
         .map(sql)
         .join(', ') +

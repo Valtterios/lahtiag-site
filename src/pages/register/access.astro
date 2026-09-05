@@ -1,0 +1,82 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import RegisterToolbar from '../../components/RegisterToolbar.astro';
+import BoardGate from '../../components/BoardGate.astro';
+import { ensureCsrf } from '../../lib/guard';
+import { requireBoard, boardStatus, allowedBoardEmails, WORKSPACE_DOMAIN } from '../../lib/board';
+import { listRegisterAdmins } from '../../lib/db';
+import { formatHelsinkiDate } from '../../lib/time';
+
+// Who can open the register, maintained by the people who can. The fixed
+// accounts come from wrangler.toml (the recovery path); the rest live in
+// the register_admins table and are managed here.
+
+const board = await requireBoard(Astro.request, env);
+Astro.response.status = boardStatus(board);
+const csrf = ensureCsrf(Astro.cookies);
+const fixed = allowedBoardEmails(env.REGISTER_ADMINS);
+const added = board.ok ? (await listRegisterAdmins(env.DB)).filter((a) => !fixed.includes(a.email)) : [];
+
+const FLASH: Record<string, string> = {
+  access_added: 'Access granted. They can sign in with that Google account now.',
+  access_removed: 'Access removed.',
+  bad_email: `That must be a ${WORKSPACE_DOMAIN} Google Workspace address.`,
+  self: "You can't remove your own access. Ask another board member to.",
+  fixed: 'That account is fixed in the deployment configuration and cannot be removed here.',
+  csrf: 'The form was stale. Try again.',
+};
+const flash =
+  FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
+---
+<Base title="Register access" description="Board-only member register.">
+  {!board.ok ? (
+    <BoardGate check={board} />
+  ) : (
+    <>
+      <RegisterToolbar email={board.email} csrf={csrf} current="access" />
+      <article class="prose">
+        <h1>Who can open the register</h1>
+        <p class="queue-intro">
+          Sign-in is with a {WORKSPACE_DOMAIN} Google Workspace account, and only these addresses
+          get in. Anyone listed can add or remove others; nobody can remove themselves. Removal takes
+          effect on the person's next click.
+        </p>
+      </article>
+      {flash && <p class="flash">{flash}</p>}
+
+      <ul class="access-list">
+        {fixed.map((email) => (
+          <li class="access-row">
+            <span class="access-email">{email}</span>
+            <span class="queue-meta">always, set in the deployment configuration</span>
+          </li>
+        ))}
+        {added.map((a) => (
+          <li class="access-row">
+            <span class="access-email">{a.email}</span>
+            <span class="queue-meta">added by {a.added_by}, {formatHelsinkiDate(a.added_at)}</span>
+            {a.email !== board.email && (
+              <form method="post" action="/register/access/update">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="action" value="remove" />
+                <input type="hidden" name="email" value={a.email} />
+                <button class="btn btn-ghost btn-sm" type="submit">Remove</button>
+              </form>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <form method="post" action="/register/access/update" class="app-form app-form-row">
+        <input type="hidden" name="csrf" value={csrf} />
+        <input type="hidden" name="action" value="add" />
+        <label>
+          Google Workspace address
+          <input name="email" type="email" required placeholder={`name@${WORKSPACE_DOMAIN}`} maxlength="120" />
+        </label>
+        <button class="btn btn-primary" type="submit">Grant access</button>
+      </form>
+    </>
+  )}
+</Base>

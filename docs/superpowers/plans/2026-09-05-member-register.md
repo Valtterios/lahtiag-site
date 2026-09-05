@@ -97,6 +97,23 @@ explicit allowlist, not the domain.
   (`resolveLinkRequest`), "Actives only" filter.
 - Not yet: editing the other fields (name, domicile, email, games).
 
+## Phase 2, second slice (shipped 2026-09-05): board tooling + cleaner UI
+
+- `migrations/0008_register_v2.sql` rebuilds `register`: `source` gains
+  'board', `search_key` (accent-stripped, lower-cased name/email/handles)
+  backfilled and maintained on every write; search runs on it.
+- Board-created entries at /register/new (`createBoardEntry`, source
+  'board', consent = the board's act).
+- Hints on pending applications: `eligibilityWarning` (LUT/LAB claim
+  without a student address) and `findSimilarEntries` (same surname or
+  email local part).
+- `registerStats` (members by class, school, year; actives) at the bottom
+  of /register; `listHousekeeping` (pending > 60 d, former > 2 y) with
+  approve/reject/erase buttons, nothing automatic.
+- UI: `RegisterToolbar` (Register / Add entry / Venue lookup / Access /
+  Export CSV / Sign out) replaces the small links; stat tiles; segmented
+  status filter; leaner table; access management moved to /register/access.
+
 ## Phase 2 (next): members manage their own entry
 
 Agreed with the user 2026-09-05, not built yet. Members should be able to
