@@ -155,7 +155,7 @@ const flash =
         <form method="post" action="/members/purge" class="app-form">
           <input type="hidden" name="csrf" value={csrf} />
           <label>Discord id <input name="discord_id" required pattern="\d{5,25}" /></label>
-          <button class="btn btn-ghost" type="submit">Remove everywhere</button>
+          <button class="btn btn-danger" type="submit" data-confirm="Remove this member from every event, signup and team? This cannot be undone.">Remove everywhere</button>
         </form>
       </details>
     </section>

@@ -5,6 +5,8 @@ import {
   ensureMember,
   createEvent,
   cancelEvent,
+  uncancelEvent,
+  setCancelMessageId,
   getEvent,
   setSignup,
   removeSignup,
@@ -155,5 +157,18 @@ describe('createEvent validation', () => {
     const eventId = await seedEvent(5);
     const event = await getEvent(db(), eventId);
     expect(event).toMatchObject({ title: 'Test night', capacity: 5, yes_count: 0, maybe_count: 0 });
+  });
+});
+
+describe('reinstating a cancelled event', () => {
+  it('clears the cancellation and remembers the Discord line only while cancelled', async () => {
+    const eventId = await seedEvent(null);
+    await expect(uncancelEvent(db(), eventId)).rejects.toMatchObject({ code: 'bad_input' });
+    await cancelEvent(db(), eventId, NOW);
+    await setCancelMessageId(db(), eventId, 'msg1');
+    const before = await uncancelEvent(db(), eventId);
+    expect(before.cancel_message_id).toBe('msg1');
+    await setCancelMessageId(db(), eventId, null);
+    expect(await getEvent(db(), eventId)).toMatchObject({ cancelled_at: null, cancel_message_id: null });
   });
 });

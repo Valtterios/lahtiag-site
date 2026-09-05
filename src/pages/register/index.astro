@@ -214,7 +214,7 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                               <input type="hidden" name="csrf" value={csrf} />
                               <input type="hidden" name="action" value="merge" />
                               <input type="hidden" name="target" value={s.id} />
-                              <button class="btn btn-ghost btn-sm" type="submit">Merge into this entry</button>
+                              <button class="btn btn-ghost btn-sm" type="submit" data-confirm="Merge the application into this entry and delete the application?">Merge into this entry</button>
                             </form>
                           </li>
                         ))}
@@ -226,7 +226,7 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                 <form method="post" action={`/register/${r.id}/action`} class="queue-actions">
                   <input type="hidden" name="csrf" value={csrf} />
                   <button class="btn btn-primary" name="action" value="approve" type="submit">Approve</button>
-                  <button class="btn btn-ghost" name="action" value="reject" type="submit">Reject</button>
+                  <button class="btn btn-ghost" name="action" value="reject" type="submit" data-confirm="Reject this application? Its data is deleted.">Reject</button>
                 </form>
               </div>
             );
@@ -257,7 +257,7 @@ const days = (t: number) => Math.floor((now - t) / 86400);
               <form method="post" action={`/register/${r.id}/action`} class="queue-actions">
                 <input type="hidden" name="csrf" value={csrf} />
                 <button class="btn btn-primary" name="action" value="link_confirm" type="submit">Confirm link</button>
-                <button class="btn btn-ghost" name="action" value="link_dismiss" type="submit">Dismiss</button>
+                <button class="btn btn-ghost" name="action" value="link_dismiss" type="submit" data-confirm="Dismiss this link request?">Dismiss</button>
               </form>
             </div>
           ))}
@@ -285,7 +285,7 @@ const days = (t: number) => Math.floor((now - t) / 86400);
               <form method="post" action={`/register/${r.id}/action`} class="queue-actions">
                 <input type="hidden" name="csrf" value={csrf} />
                 <button class="btn btn-primary" name="action" value="active_approve" type="submit">Approve as active</button>
-                <button class="btn btn-ghost" name="action" value="active_revoke" type="submit">Decline</button>
+                <button class="btn btn-ghost" name="action" value="active_revoke" type="submit" data-confirm="Decline this actives request?">Decline</button>
               </form>
             </div>
           ))}
@@ -339,7 +339,7 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                 {r.status === 'pending' && (
                   <button class="btn btn-ghost" name="action" value="approve" type="submit">Approve</button>
                 )}
-                <button class="btn btn-danger" name="action" value={r.status === 'pending' ? 'reject' : 'erase'} type="submit">
+                <button class="btn btn-danger" name="action" value={r.status === 'pending' ? 'reject' : 'erase'} type="submit" data-confirm={r.status === 'pending' ? 'Reject this application? Its data is deleted.' : 'Erase this entry for good?'}>
                   {r.status === 'pending' ? 'Reject' : 'Erase'}
                 </button>
               </form>

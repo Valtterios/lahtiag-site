@@ -113,6 +113,7 @@ const FLASH: Record<string, string> = {
   needs_ticket: 'This event needs a ticket first. Buy one above, then form or join a team.',
 };
 const OK: Record<string, string> = {
+  reinstated: 'The event is back on. The Discord cancellation line was removed.',
   type_saved: 'Ticket type saved.',
   type_deleted: 'Ticket type removed (or retired, if tickets were sold on it).',
   question_saved: 'Questions saved.',
@@ -509,6 +510,13 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
       {session?.isAdmin && (
         <section class="admin-panel">
           <h2>Admin</h2>
+          {event.cancelled_at !== null && (
+            <form method="post" action={`/events/${event.id}/cancel`} class="signup-bar">
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="action" value="uncancel" />
+              <button class="btn btn-primary" type="submit">Reinstate this event</button>
+            </form>
+          )}
           {event.cancelled_at === null && (
           <div class="signup-bar">
             <form method="post" action={`/events/${event.id}/close`}>
@@ -521,13 +529,13 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
             <form method="post" action={`/events/${event.id}/bracket-action`}>
               <input type="hidden" name="csrf" value={csrf} />
               <input type="hidden" name="action" value="generate" />
-              <button class="btn btn-ghost" type="submit">
+              <button class="btn btn-ghost" type="submit" data-confirm={hasBracket ? 'Regenerate the bracket from scratch? Recorded results are lost.' : undefined}>
                 {hasBracket ? 'Regenerate bracket' : 'Generate bracket'}
               </button>
             </form>
             <form method="post" action={`/events/${event.id}/cancel`}>
               <input type="hidden" name="csrf" value={csrf} />
-              <button class="btn btn-ghost" type="submit">Cancel this event</button>
+              <button class="btn btn-ghost" type="submit" data-confirm="Cancel this event? It stays listed as cancelled and can be reinstated.">Cancel this event</button>
             </form>
           </div>
           )}
@@ -597,7 +605,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                 <label class="check"><input type="checkbox" name="active" checked={t.active === 1} /> on sale</label>
                 <span class="event-meta">{t.sold} sold · {euro(t.revenue_cents)}</span>
                 <button class="btn btn-ghost btn-sm" type="submit">Save</button>
-                <button class="btn btn-ghost btn-sm" type="submit" name="action" value="delete">Remove</button>
+                <button class="btn btn-ghost btn-sm" type="submit" name="action" value="delete" data-confirm="Remove this ticket type? If tickets were sold on it, it is retired instead.">Remove</button>
               </form>
             ))}
             <form method="post" action={`/events/${event.id}/ticket-types`} class="type-row type-new">
@@ -634,7 +642,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                 <label>Options (one per line) <textarea name="options" rows="2">{q.options ?? ''}</textarea></label>
                 <label class="check"><input type="checkbox" name="required" checked={q.required === 1} /> required</label>
                 <button class="btn btn-ghost btn-sm" type="submit">Save</button>
-                <button class="btn btn-ghost btn-sm" type="submit" name="action" value="delete">Remove</button>
+                <button class="btn btn-ghost btn-sm" type="submit" name="action" value="delete" data-confirm="Remove this question and everyone's answers to it?">Remove</button>
               </form>
             ))}
             <form method="post" action={`/events/${event.id}/questions`} class="type-row type-new">
@@ -714,7 +722,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
             </p>
             <form method="post" action={`/events/${event.id}/delete`}>
               <input type="hidden" name="csrf" value={csrf} />
-              <button class="btn btn-ghost" type="submit">Delete this event permanently</button>
+              <button class="btn btn-danger" type="submit" data-confirm="Delete this event for good, with its signups, teams, bracket and tickets? This cannot be undone.">Delete this event permanently</button>
             </form>
           </details>
         </section>

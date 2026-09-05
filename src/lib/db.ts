@@ -55,6 +55,7 @@ export interface EventRow {
   organizers: string | null; // comma-separated free-text names
   link_url: string | null; // optional stream/info link
   display_note: string | null; // live message for the venue display
+  cancel_message_id: string | null; // the Discord "cancelled" post, removed on reinstate
   members_only: number; // 1 = signups and tickets need a linked, current member
   member_slots: number | null; // seats within capacity only members may take
   created_by: string;
@@ -316,6 +317,20 @@ export async function cancelEvent(db: D1Database, id: number, now: number): Prom
   if (!event) throw new RuleError('missing', `No event with id ${id}.`);
   if (event.cancelled_at !== null) throw new RuleError('cancelled', 'Already cancelled.');
   await db.prepare('UPDATE events SET cancelled_at = ?1 WHERE id = ?2').bind(now, id).run();
+  return event;
+}
+
+export async function setCancelMessageId(db: D1Database, id: number, messageId: string | null): Promise<void> {
+  await db.prepare('UPDATE events SET cancel_message_id = ?2 WHERE id = ?1').bind(id, messageId).run();
+}
+
+// The undo of cancelEvent: signups, teams, tickets and bracket were never
+// touched by cancelling, so putting the event back is one column.
+export async function uncancelEvent(db: D1Database, id: number): Promise<EventRow> {
+  const event = await getEvent(db, id);
+  if (!event) throw new RuleError('missing', `No event with id ${id}.`);
+  if (event.cancelled_at === null) throw new RuleError('bad_input', 'This event is not cancelled.');
+  await db.prepare('UPDATE events SET cancelled_at = NULL WHERE id = ?1').bind(id).run();
   return event;
 }
 

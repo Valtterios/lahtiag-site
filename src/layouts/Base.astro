@@ -99,5 +99,16 @@ const pathname = Astro.url.pathname;
         </p>
       </div>
     </footer>
+    <script>
+      // Buttons and forms marked data-confirm ask before they act. Native
+      // confirm(), no library; the CSP allows this file because Astro
+      // bundles it. Without JavaScript the action simply proceeds.
+      document.addEventListener('submit', (event) => {
+        const form = event.target as HTMLFormElement | null;
+        const button = event.submitter as HTMLElement | null;
+        const message = button?.dataset.confirm ?? form?.dataset.confirm;
+        if (message && !window.confirm(message)) event.preventDefault();
+      });
+    </script>
   </body>
 </html>

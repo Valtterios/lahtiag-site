@@ -69,6 +69,10 @@ Editing event details (times, capacity, organizers, stream link,
 description) and permanently deleting an event are done on the website —
 event page → Admin. Delete (in the Danger zone) erases signups, teams, and
 bracket, and removes the Discord announcement; cancel keeps the history.
+A cancelled event has a **Reinstate this event** button: it takes the
+"Cancelled" line off Discord and posts that it's back on. Destructive
+buttons on the site (cancel, delete, reject, erase, remove access, merge,
+regenerate bracket) ask "are you sure" first.
 
 The Admin panel's **Manage participants** section edits the roster directly,
 skipping the normal signup rules (closed signups, capacity): change anyone's

@@ -62,7 +62,7 @@ const flash =
                 <input type="hidden" name="csrf" value={csrf} />
                 <input type="hidden" name="action" value="remove" />
                 <input type="hidden" name="email" value={a.email} />
-                <button class="btn btn-ghost btn-sm" type="submit">Remove</button>
+                <button class="btn btn-ghost btn-sm" type="submit" data-confirm={`Remove register access from ${a.email}?`}>Remove</button>
               </form>
             )}
           </li>

@@ -111,7 +111,7 @@ const SOURCE: Record<string, string> = {
                   <input type="hidden" name="csrf" value={csrf} />
                   <input type="hidden" name="action" value="merge" />
                   <input type="hidden" name="target" value={s.id} />
-                  <button class="btn btn-ghost btn-sm" type="submit">Merge into this entry</button>
+                  <button class="btn btn-ghost btn-sm" type="submit" data-confirm="Merge this application into the chosen entry and delete this application?">Merge into this entry</button>
                 </form>
               </li>
             ))}
@@ -147,7 +147,7 @@ const SOURCE: Record<string, string> = {
         {entry.status === 'pending' && (
           <>
             <button class="btn btn-primary" name="action" value="approve" type="submit">Approve membership</button>
-            <button class="btn btn-ghost" name="action" value="reject" type="submit">Reject and delete</button>
+            <button class="btn btn-ghost" name="action" value="reject" type="submit" data-confirm="Reject this application? Its data is deleted.">Reject and delete</button>
           </>
         )}
         {entry.status === 'member' && !entry.is_active && (
@@ -156,10 +156,10 @@ const SOURCE: Record<string, string> = {
           </button>
         )}
         {entry.status === 'member' && entry.is_active && (
-          <button class="btn btn-ghost" name="action" value="active_revoke" type="submit">Remove from actives</button>
+          <button class="btn btn-ghost" name="action" value="active_revoke" type="submit" data-confirm="Remove from the actives and take the Discord role away?">Remove from actives</button>
         )}
         {entry.status === 'member' && (
-          <button class="btn btn-ghost" name="action" value="former" type="submit">Mark as former member</button>
+          <button class="btn btn-ghost" name="action" value="former" type="submit" data-confirm="End this membership? The entry stays and can be reinstated.">Mark as former member</button>
         )}
         {entry.status === 'former' && (
           <button class="btn btn-primary" name="action" value="member" type="submit">Reinstate membership</button>
@@ -231,7 +231,7 @@ const SOURCE: Record<string, string> = {
         </p>
         <form method="post" action={`/register/${entry.id}/action`}>
           <input type="hidden" name="csrf" value={csrf} />
-          <button class="btn btn-danger" name="action" value="erase" type="submit">Erase this entry permanently</button>
+          <button class="btn btn-danger" name="action" value="erase" type="submit" data-confirm="Erase this entry for good? There is no undo.">Erase this entry permanently</button>
         </form>
       </section>
     </>
