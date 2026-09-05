@@ -6,12 +6,26 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { DISCORD_GUILD_ID } from './config';
 import { setGuildMemberRole, listGuildMemberRoles, type RoleResult } from './discord';
-import { listLinkedEntries, type RegisterRow } from './db';
+import { listLinkedEntries, getSettings, type RegisterRow } from './db';
 
 export interface RoleConfig {
   DISCORD_BOT_TOKEN?: string;
   MEMBER_ROLE_ID?: string;
   ACTIVES_ROLE_ID?: string;
+}
+
+// The role ids are chosen on the register page and stored in `settings`;
+// the wrangler.toml vars remain as a fallback. The token is a secret.
+export async function loadRoleConfig(
+  env: { DISCORD_BOT_TOKEN?: string; MEMBER_ROLE_ID?: string; ACTIVES_ROLE_ID?: string },
+  db: D1Database,
+): Promise<RoleConfig> {
+  const settings = await getSettings(db);
+  return {
+    DISCORD_BOT_TOKEN: env.DISCORD_BOT_TOKEN,
+    MEMBER_ROLE_ID: settings.member_role_id ?? env.MEMBER_ROLE_ID ?? '',
+    ACTIVES_ROLE_ID: settings.actives_role_id ?? env.ACTIVES_ROLE_ID ?? '',
+  };
 }
 
 export function rolesConfigured(env: RoleConfig): boolean {

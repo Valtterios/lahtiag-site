@@ -28,7 +28,7 @@ import {
   activeNotice,
   NO_MENTIONS,
 } from '../lib/discord';
-import { applyRoles } from '../lib/roles';
+import { applyRoles, loadRoleConfig } from '../lib/roles';
 import { formatHelsinkiDate } from '../lib/time';
 
 // The membership page, replacing the Google Form. Two ways in, shown as
@@ -81,7 +81,9 @@ if (Astro.request.method === 'POST') {
       );
     }
     // Leaving the actives takes the Discord role away at once.
-    if (updated && existing.is_active && !updated.is_active) await applyRoles(env, updated);
+    if (updated && existing.is_active && !updated.is_active) {
+      await applyRoles(await loadRoleConfig(env, env.DB), updated);
+    }
     return Astro.redirect('/join?ok=saved', 303);
   } else if (intent === 'claim' && session && !existing) {
     const email = String(form.get('claim_email') ?? '')

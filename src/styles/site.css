@@ -2079,3 +2079,27 @@ html.display-mode,
   font-size: 0.88rem;
 }
 
+.role-picker {
+  display: flex;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-top: 0.6rem;
+}
+
+.role-picker label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.role-picker select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 0.45rem 0.7rem;
+  min-width: 12rem;
+}
+

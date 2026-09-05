@@ -16,7 +16,9 @@ import {
   HOUSEKEEPING,
   type RegisterRow,
 } from '../../lib/db';
-import { rolesConfigured } from '../../lib/roles';
+import { rolesConfigured, loadRoleConfig } from '../../lib/roles';
+import { listGuildRoles, type GuildRole } from '../../lib/discord';
+import { DISCORD_GUILD_ID } from '../../lib/config';
 import {
   STUDENT_STATUSES,
   STUDENT_STATUS_LABELS,
@@ -61,7 +63,12 @@ const [counts, stats, rows, linkRequests, activeRequests, housekeeping] = board.
       view === 'all' && !q ? listHousekeeping(env.DB, now) : Promise.resolve([] as RegisterRow[]),
     ])
   : [null, null, [], [], [], []];
-const rolesOn = rolesConfigured(env);
+const roleCfg = board.ok ? await loadRoleConfig(env, env.DB) : {};
+const rolesOn = rolesConfigured(roleCfg);
+// The server's roles for the picker: only fetched for people who can see
+// the page, and only when a token exists to fetch them with.
+const guildRoles: GuildRole[] | null =
+  board.ok && env.DISCORD_BOT_TOKEN ? await listGuildRoles(env.DISCORD_BOT_TOKEN, DISCORD_GUILD_ID) : null;
 
 const pending = view === 'all' || view === 'pending' ? rows.filter((r) => r.status === 'pending') : [];
 const hints = new Map<number, { warning: string | null; similar: RegisterRow[] }>();
@@ -85,6 +92,8 @@ const FLASH: Record<string, string> = {
   active_approve: 'Approved as an active.',
   active_revoke: 'No longer an active.',
   synced: 'Discord roles synced.',
+  roles_saved: 'Role choice saved. Click Sync Discord roles to apply it to everyone.',
+  bad_role: 'Pick roles from the list.',
   roles_unconfigured: 'Discord roles are not configured on this deployment (bot token and role ids).',
   roles_discord: "Discord didn't answer, or the bot lacks the Server Members intent. Try again.",
   missing: 'That entry no longer exists.',
@@ -310,24 +319,56 @@ const days = (t: number) => Math.floor((now - t) / 86400);
 
       <section class="roles" id="roles">
         <h2 class="section-label">Discord roles</h2>
-        {rolesOn ? (
+        {!env.DISCORD_BOT_TOKEN && (
+          <p class="queue-intro">
+            The bot token is not set on this deployment, so no roles are given. See
+            docs/register-access-setup.md, step 9.
+          </p>
+        )}
+        {env.DISCORD_BOT_TOKEN && guildRoles === null && (
+          <p class="warn-tag">
+            The bot can't read the server's roles. Check that it was invited to the LahtiAG server
+            with Manage Roles (setup guide, step 9.2) and that the token is current.
+          </p>
+        )}
+        {guildRoles && (
           <div class="queue-card queue-quiet">
             <div class="queue-body">
               <p class="queue-meta">
-                Linked members carry the Member role, approved actives the Actives role, set as
-                decisions are made here. Sync puts everyone right if something drifted.
+                Bot connected. Linked members get the Member role, approved actives the Actives role,
+                as decisions are made here. The bot's own role must sit above both in Server Settings
+                → Roles. Sync puts everyone right if something drifted.
               </p>
+              <form method="post" action="/register/roles-config" class="role-picker">
+                <input type="hidden" name="csrf" value={csrf} />
+                <label>
+                  Member role
+                  <select name="member_role_id">
+                    <option value="" selected={!roleCfg.MEMBER_ROLE_ID}>not used</option>
+                    {guildRoles.filter((r) => !r.managed).map((r) => (
+                      <option value={r.id} selected={roleCfg.MEMBER_ROLE_ID === r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Actives role
+                  <select name="actives_role_id">
+                    <option value="" selected={!roleCfg.ACTIVES_ROLE_ID}>not used</option>
+                    {guildRoles.filter((r) => !r.managed).map((r) => (
+                      <option value={r.id} selected={roleCfg.ACTIVES_ROLE_ID === r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <button class="btn btn-ghost" type="submit">Save roles</button>
+              </form>
             </div>
-            <form method="post" action="/register/sync-roles" class="queue-actions">
-              <input type="hidden" name="csrf" value={csrf} />
-              <button class="btn btn-ghost" type="submit">Sync Discord roles</button>
-            </form>
+            {rolesOn && (
+              <form method="post" action="/register/sync-roles" class="queue-actions">
+                <input type="hidden" name="csrf" value={csrf} />
+                <button class="btn btn-primary" type="submit">Sync Discord roles</button>
+              </form>
+            )}
           </div>
-        ) : (
-          <p class="queue-intro">
-            Not configured yet: the bot token and the role ids are missing. See
-            docs/register-access-setup.md, step 9.
-          </p>
         )}
       </section>
 

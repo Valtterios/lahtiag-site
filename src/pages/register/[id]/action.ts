@@ -13,7 +13,7 @@ import {
   RuleError,
 } from '../../../lib/db';
 import { parseApplication, LIMITS, MEMBER_TYPES, type MemberType } from '../../../lib/register';
-import { applyRoles, type RoleOutcome } from '../../../lib/roles';
+import { applyRoles, loadRoleConfig, type RoleOutcome } from '../../../lib/roles';
 
 // Every board write on one register entry, dispatched on `action`:
 // approve | reject | update | former | member | erase | link_confirm |
@@ -37,9 +37,10 @@ export const POST: APIRoute = async ({ request, redirect, params }) => {
   // can say so next to the success message.
   const done = (target: string, roles?: RoleOutcome) =>
     redirect(roles && roles.failed.length > 0 ? `${target}&roles=failed` : target, 303);
+  const roleCfg = await loadRoleConfig(env, env.DB);
   const sync = async () => {
     const entry = await getRegisterEntry(env.DB, id);
-    return entry ? applyRoles(env, entry) : undefined;
+    return entry ? applyRoles(roleCfg, entry) : undefined;
   };
 
   try {
@@ -51,7 +52,7 @@ export const POST: APIRoute = async ({ request, redirect, params }) => {
         const before = await getRegisterEntry(env.DB, id);
         await decideApplication(env.DB, id, 'reject', board.email, now);
         const roles = before?.discord_id
-          ? await applyRoles(env, { status: 'former', is_active: false, discord_id: before.discord_id })
+          ? await applyRoles(roleCfg, { status: 'former', is_active: false, discord_id: before.discord_id })
           : undefined;
         return done('/register?ok=rejected', roles);
       }
@@ -68,13 +69,13 @@ export const POST: APIRoute = async ({ request, redirect, params }) => {
       case 'active_approve':
       case 'active_revoke': {
         const entry = await setActive(env.DB, id, action === 'active_approve', board.email, now);
-        return done(`${back}?ok=${action}`, await applyRoles(env, entry));
+        return done(`${back}?ok=${action}`, await applyRoles(roleCfg, entry));
       }
       case 'erase': {
         const before = await getRegisterEntry(env.DB, id);
         const gone = await eraseRegisterEntry(env.DB, id);
         const roles = before?.discord_id
-          ? await applyRoles(env, { status: 'former', is_active: false, discord_id: before.discord_id })
+          ? await applyRoles(roleCfg, { status: 'former', is_active: false, discord_id: before.discord_id })
           : undefined;
         return gone ? done('/register?ok=erased', roles) : redirect('/register?err=missing', 303);
       }
@@ -102,7 +103,7 @@ export const POST: APIRoute = async ({ request, redirect, params }) => {
         // A link changed by hand: strip the old account, set up the new one.
         let roles: RoleOutcome | undefined;
         if (before?.discord_id && before.discord_id !== (discordIdRaw || null)) {
-          roles = await applyRoles(env, { status: 'former', is_active: false, discord_id: before.discord_id });
+          roles = await applyRoles(roleCfg, { status: 'former', is_active: false, discord_id: before.discord_id });
         }
         const after = await sync();
         if (after && (!roles || after.failed.length > 0)) roles = after;

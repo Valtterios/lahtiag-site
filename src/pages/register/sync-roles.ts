@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf } from '../../lib/guard';
 import { requireBoard } from '../../lib/board';
-import { syncAllRoles } from '../../lib/roles';
+import { syncAllRoles, loadRoleConfig } from '../../lib/roles';
 
 // Reconcile every linked member's Discord roles with the register, for
 // when something drifted (a role removed by hand, the bot added later).
@@ -14,7 +14,7 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   const form = await request.formData();
   if (!(await checkCsrf(request, form))) return redirect('/register?err=csrf', 303);
 
-  const summary = await syncAllRoles(env, env.DB);
+  const summary = await syncAllRoles(await loadRoleConfig(env, env.DB), env.DB);
   if (summary.error) return redirect(`/register?err=roles_${summary.error}`, 303);
   const params = new URLSearchParams({
     ok: 'synced',

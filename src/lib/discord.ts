@@ -352,3 +352,27 @@ export async function listGuildMemberRoles(
   return roles;
 }
 
+export interface GuildRole {
+  id: string;
+  name: string;
+  position: number;
+  managed: boolean;
+}
+
+// The server's roles, for the register's role picker. A 403 means the
+// bot is not in the server (or lost its permission); null either way.
+export async function listGuildRoles(botToken: string, guildId: string): Promise<GuildRole[] | null> {
+  try {
+    const response = await fetch(`${API}/guilds/${guildId}/roles`, {
+      headers: { authorization: `Bot ${botToken}` },
+    });
+    if (!response.ok) return null;
+    const roles = (await response.json()) as GuildRole[];
+    return roles
+      .filter((r) => r.id !== guildId) // @everyone shares the guild's id
+      .sort((a, b) => b.position - a.position);
+  } catch {
+    return null;
+  }
+}
+

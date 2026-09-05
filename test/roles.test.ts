@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { desiredRoles, planRoleChanges, rolesConfigured } from '../src/lib/roles';
+import { env } from 'cloudflare:test';
+import { desiredRoles, planRoleChanges, rolesConfigured, loadRoleConfig } from '../src/lib/roles';
+import { setSetting, getSettings } from '../src/lib/db';
 
 // The Discord role mirror, as pure planning: which roles an entry should
 // have, and what the sync would change given what the server reports.
@@ -41,5 +43,19 @@ describe('planRoleChanges', () => {
     ]);
     const changes = planRoleChanges(entries, guild, cfg).map((c) => `${c.discordId}:${c.roleId}:${c.on ? '+' : '-'}`).sort();
     expect(changes).toEqual(['1:A:+', '2:A:-', '3:M:-', '9:A:-']);
+  });
+});
+
+describe('loadRoleConfig', () => {
+  it('prefers the roles chosen on the register page over the vars, and forgets a cleared one', async () => {
+    await env.DB.prepare('DELETE FROM settings').run();
+    const vars = { DISCORD_BOT_TOKEN: 'tok', MEMBER_ROLE_ID: 'varM', ACTIVES_ROLE_ID: '' };
+    expect(await loadRoleConfig(vars, env.DB)).toEqual({ DISCORD_BOT_TOKEN: 'tok', MEMBER_ROLE_ID: 'varM', ACTIVES_ROLE_ID: '' });
+    await setSetting(env.DB, 'member_role_id', 'dbM', 'chair', 1);
+    await setSetting(env.DB, 'actives_role_id', 'dbA', 'chair', 1);
+    expect(await loadRoleConfig(vars, env.DB)).toMatchObject({ MEMBER_ROLE_ID: 'dbM', ACTIVES_ROLE_ID: 'dbA' });
+    await setSetting(env.DB, 'actives_role_id', '', 'chair', 2);
+    expect(await getSettings(env.DB)).toEqual({ member_role_id: 'dbM' });
+    expect(await loadRoleConfig(vars, env.DB)).toMatchObject({ MEMBER_ROLE_ID: 'dbM', ACTIVES_ROLE_ID: '' });
   });
 });

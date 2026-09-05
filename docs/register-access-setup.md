@@ -130,19 +130,21 @@ whole system, used for roles and nothing else.
    **Manage Roles** only → open the URL, pick the LahtiAG server.
 3. In the server: Server Settings → **Roles**. Create `Member` and
    `Actives` if they don't exist. Drag the bot's own role (named after the
-   application) **above** both of them; Discord refuses otherwise. Copy
-   each role's id (Developer Mode on: right-click the role → Copy Role ID).
+   application) **above** both of them; Discord refuses otherwise.
 4. Gate the actives channel: channel settings → Permissions → add the
    `Actives` role with View Channel, remove it from @everyone.
-5. Put the ids in `wrangler.toml` under `[vars]` **and** `[env.preview.vars]`
-   (`MEMBER_ROLE_ID`, `ACTIVES_ROLE_ID`), push, then set the token:
+5. Set the token:
 
    ```
    cd ~/projects/lahtiag-site
    npx wrangler secret put DISCORD_BOT_TOKEN
    ```
 
-6. On /register, click **Sync Discord roles** once. It gives every linked
-   member the Member role and every approved active the Actives role, and
-   removes either from people who shouldn't have it. Repeat if it says
-   changes are left.
+6. On /register, scroll to **Discord roles**. It should say the bot is
+   connected and list the server's roles: pick the Member and the Actives
+   role, **Save roles**, then **Sync Discord roles** once. That gives every
+   linked member the Member role and every approved active the Actives
+   role, and removes either from people who shouldn't have it. Repeat if
+   it says changes are left. (The choice is stored in the database; the
+   `MEMBER_ROLE_ID` / `ACTIVES_ROLE_ID` vars in `wrangler.toml` are only a
+   fallback and can stay empty.)

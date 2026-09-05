@@ -1655,3 +1655,36 @@ export async function removeRegisterAdmin(db: D1Database, email: string): Promis
   return (result.meta.changes ?? 0) > 0;
 }
 
+// --- settings ------------------------------------------------------------------
+// Board-editable configuration (migration 0010). Keys live here so a typo
+// cannot invent one.
+
+export type SettingKey = 'member_role_id' | 'actives_role_id';
+
+export async function getSettings(db: D1Database): Promise<Partial<Record<SettingKey, string>>> {
+  const { results } = await db.prepare('SELECT key, value FROM settings').all<{ key: SettingKey; value: string }>();
+  const out: Partial<Record<SettingKey, string>> = {};
+  for (const row of results) out[row.key] = row.value;
+  return out;
+}
+
+export async function setSetting(
+  db: D1Database,
+  key: SettingKey,
+  value: string,
+  by: string,
+  now: number,
+): Promise<void> {
+  if (value === '') {
+    await db.prepare('DELETE FROM settings WHERE key = ?1').bind(key).run();
+    return;
+  }
+  await db
+    .prepare(
+      `INSERT INTO settings (key, value, updated_by, updated_at) VALUES (?1, ?2, ?3, ?4)
+       ON CONFLICT (key) DO UPDATE SET value = ?2, updated_by = ?3, updated_at = ?4`,
+    )
+    .bind(key, value, by, now)
+    .run();
+}
+
