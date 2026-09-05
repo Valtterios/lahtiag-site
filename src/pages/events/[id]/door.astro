@@ -78,7 +78,7 @@ Astro.response.headers.set('cache-control', 'no-store');
         <p class="hero-eyebrow"><a href={`/events/${event.id}`}>{event.title}</a></p>
         <h1>The door</h1>
         <p class="queue-meta">{formatHelsinkiRange(event.starts_at, event.ends_at)} · {sales!.checked_in} of {sales!.tickets} tickets in · {(sales!.revenue_cents / 100).toFixed(2)} € sold</p>
-        {mark && <p class="queue-meta">Shop pick-ups: today's mark is {mark.icon} <strong>{mark.name}</strong>. <a href="/shop/orders">Items to hand over</a></p>}
+        {mark && <p class="queue-meta">Today's mark is {mark.icon} <strong>{mark.name}</strong>: a live ticket or purchase page shows the same. Holders may press "Mark as used" themselves in front of you. <a href="/shop/orders">Items to hand over</a></p>}
       </article>
       {flash && <p class={`flash${okKey === 'in' ? ' flash-good' : ''}`}>{flash}{flashName && <> <strong>{flashName}</strong></>}</p>}
 
@@ -149,7 +149,7 @@ Astro.response.headers.set('cache-control', 'no-store');
               <li class={`door-row${t.checked_in_at ? ' door-in' : ''}`}>
                 <div>
                   <p class="door-name">{t.holder_name}</p>
-                  <p class="queue-meta">{t.type_name} · {t.code}{t.source === 'door' ? ' · door' : ''}{t.checked_in_at ? ` · in ${formatHelsinki(t.checked_in_at)}` : ''}</p>
+                  <p class="queue-meta">{t.type_name} · {t.code}{t.source === 'door' ? ' · door' : ''}{t.checked_in_at ? ` · in ${formatHelsinki(t.checked_in_at)}${t.checked_in_by === 'holder' ? ' (marked by the holder)' : ''}` : ''}</p>
                   {answersFor(t).length > 0 && (
                     <p class="queue-meta door-answers">{answersFor(t).map((a) => `${a.label}: ${a.value}`).join(' · ')}</p>
                   )}

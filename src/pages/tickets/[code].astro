@@ -5,7 +5,8 @@ import { currentSession, ensureCsrf } from '../../lib/guard';
 import { getTicketByCode, listTicketsByPurchase } from '../../lib/db';
 import { getPurchase, resumablePurchase } from '../../lib/purchases';
 import { normalizeTicketCode, qrSvg, ticketUrl } from '../../lib/qr';
-import { formatHelsinkiRange } from '../../lib/time';
+import { formatHelsinkiRange, formatHelsinki } from '../../lib/time';
+import { dailyMark } from '../../lib/stamp';
 
 // One ticket: the QR the door scans, and its state. Anyone holding the
 // code can open it (that is what a ticket is); the code is unguessable.
@@ -25,6 +26,18 @@ const siblings = purchase ? (await listTicketsByPurchase(env.DB, purchase.id)).f
 const resume = !justPaid ? resumablePurchase(purchase, Math.floor(Date.now() / 1000)) : null;
 // Whoever holds the purchase may release it; one on an account, only that account.
 const canRelease = Boolean(purchase && purchase.status === 'pending' && !justPaid && (!purchase.discord_id || session?.discordId === purchase.discord_id));
+// The holder: the account the ticket is on, or whoever holds a by-name ticket's link.
+const holder = Boolean(ticket && (!ticket.discord_id || session?.discordId === ticket.discord_id));
+const valid = ticket?.status === 'paid' && !ticket.checked_in_at;
+const mark = valid && env.SESSION_SECRET ? await dailyMark(env.SESSION_SECRET, Math.floor(Date.now() / 1000)) : null;
+const FLASH: Record<string, string> = {
+  used: 'Marked as used. Have a good one.',
+  csrf: 'The form was stale. Try again.',
+  forbidden: 'Only the ticket holder can do that.',
+  not_paid: 'This ticket is not paid.',
+};
+const okKey = Astro.url.searchParams.get('ok');
+const flash = FLASH[okKey ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
 Astro.response.headers.set('cache-control', 'no-store');
 ---
 <Base title={ticket ? `Ticket: ${ticket.event_title}` : 'Ticket'} description="LahtiAG event ticket.">
@@ -40,6 +53,7 @@ Astro.response.headers.set('cache-control', 'no-store');
         <h1>{ticket.event_title}</h1>
         <p class="queue-meta">{formatHelsinkiRange(ticket.starts_at, null)} · {ticket.type_name}</p>
       </article>
+      {flash && <p class={`flash${okKey ? ' flash-good' : ''}`}>{flash}</p>}
       {issued && <p class="flash">Your ticket is ready. {!ticket.discord_id && 'Keep this link, it is your ticket. '}Show this page at the door.</p>}
       {waiting && <p class="flash">Thanks, payment received. Confirming with Stripe, one moment…</p>}
       {justPaid && ticket.status === 'paid' && <p class="flash">Paid. {!ticket.discord_id && 'Keep this link, it is your ticket. '}Show this page at the door.</p>}
@@ -50,12 +64,24 @@ Astro.response.headers.set('cache-control', 'no-store');
           <p class="ticket-code">{ticket.code}</p>
           <p class="ticket-state">
             {ticket.status === 'paid' && !ticket.checked_in_at && 'Valid ticket'}
-            {ticket.status === 'paid' && ticket.checked_in_at && 'Used at the door'}
+            {ticket.status === 'paid' && ticket.checked_in_at && `Used ${formatHelsinki(ticket.checked_in_at)}${ticket.checked_in_by === 'holder' ? ', marked by the holder' : ' at the door'}`}
             {ticket.status === 'pending' && 'Payment not completed'}
             {ticket.status === 'refunded' && 'Refunded'}
             {ticket.status === 'void' && 'Cancelled'}
           </p>
           {ticket.amount_cents > 0 && <p class="queue-meta">{(ticket.amount_cents / 100).toFixed(2)} €</p>}
+          {mark && (
+            <p class="daily-mark">
+              <span class="daily-mark-icon" aria-hidden="true">{mark.icon}</span>
+              <span>Today's mark is <strong>{mark.name}</strong>. The door scans the code, or checks the mark and you press the button.</span>
+            </p>
+          )}
+          {valid && holder && (
+            <form method="post" action={`/tickets/${ticket.code}/use`}>
+              <input type="hidden" name="csrf" value={csrf} />
+              <button class="btn btn-ghost" type="submit" data-confirm="Mark this ticket as used? Do it at the door, in front of the board member. It cannot be used again.">Mark as used</button>
+            </form>
+          )}
           {ticket.status === 'pending' && !justPaid && !resume && (
             <p class="queue-meta">The payment window closed. Release it, then buy again from the <a href={`/events/${ticket.event_id}`}>event</a>.</p>
           )}
