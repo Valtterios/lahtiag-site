@@ -54,7 +54,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
       productName: `${event.title}: ${type.name}`,
       description: formatHelsinkiRange(event.starts_at, event.ends_at),
       successUrl: `${url.origin}/tickets/${ticket.code}?paid=1`,
-      cancelUrl: `${back}?err=cancelled_checkout`,
+      cancelUrl: `${url.origin}${back}?err=cancelled_checkout`,
       clientReferenceId: String(ticket.id),
       metadata: { ticket_id: String(ticket.id), event_id: String(id), discord_id: session.discordId },
       customerEmail: entry?.email,
