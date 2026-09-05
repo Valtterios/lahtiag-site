@@ -2,7 +2,7 @@
 import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
 import BoardGate from '../../components/BoardGate.astro';
-import { requireBoard } from '../../lib/board';
+import { requireBoard, boardStatus } from '../../lib/board';
 import { listRegister } from '../../lib/db';
 import { STUDENT_STATUS_LABELS, MEMBER_TYPE_LABELS } from '../../lib/register';
 import { formatHelsinkiDate } from '../../lib/time';
@@ -12,6 +12,7 @@ import { formatHelsinkiDate } from '../../lib/time';
 // step-up like the rest of the register.
 
 const board = await requireBoard(Astro.request, env);
+Astro.response.status = boardStatus(board);
 const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 100);
 const rows = board.ok && q ? await listRegister(env.DB, { q, limit: 20 }) : [];
 ---

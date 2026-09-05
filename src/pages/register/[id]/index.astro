@@ -4,7 +4,7 @@ import Base from '../../../layouts/Base.astro';
 import BoardBox from '../../../components/BoardBox.astro';
 import BoardGate from '../../../components/BoardGate.astro';
 import { ensureCsrf } from '../../../lib/guard';
-import { requireBoard } from '../../../lib/board';
+import { requireBoard, boardStatus } from '../../../lib/board';
 import { getRegisterEntry } from '../../../lib/db';
 import {
   GAMES,
@@ -22,6 +22,7 @@ import { formatHelsinkiDate } from '../../../lib/time';
 // board, plus the status actions and erasure. Behind the Google step-up.
 
 const board = await requireBoard(Astro.request, env);
+Astro.response.status = boardStatus(board);
 const csrf = ensureCsrf(Astro.cookies);
 const id = Number(Astro.params.id);
 const entry = board.ok && Number.isInteger(id) ? await getRegisterEntry(env.DB, id) : null;

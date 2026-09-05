@@ -5,6 +5,7 @@ import {
   acceptGoogleUser,
   allowedBoardEmails,
   requireBoard,
+  boardStatus,
   BOARD_COOKIE,
   BOARD_TTL_SECONDS,
 } from '../src/lib/board';
@@ -62,6 +63,14 @@ describe('acceptGoogleUser', () => {
     expect(acceptGoogleUser({ email: 'chair@lahtiag.fi', email_verified: true }, list)).toMatchObject({ reason: 'wrong_domain' });
     expect(acceptGoogleUser({ email: 'chair@gmail.com', email_verified: true, hd: 'lahtiag.fi' }, list)).toMatchObject({ reason: 'wrong_domain' });
     expect(acceptGoogleUser({ email: 'secretary@lahtiag.fi', email_verified: true, hd: 'lahtiag.fi' }, list)).toMatchObject({ reason: 'not_allowed' });
+  });
+});
+
+describe('boardStatus', () => {
+  it('maps the check to the HTTP status the page answers with', () => {
+    expect(boardStatus({ ok: true, email: 'x@lahtiag.fi' })).toBe(200);
+    expect(boardStatus({ ok: false, reason: 'unauthenticated' })).toBe(401);
+    expect(boardStatus({ ok: false, reason: 'unconfigured' })).toBe(503);
   });
 });
 

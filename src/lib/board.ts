@@ -139,6 +139,14 @@ export type BoardCheck =
   | { ok: true; email: string }
   | { ok: false; reason: 'unauthenticated' | 'unconfigured' };
 
+// The HTTP status a register page answers with for a refused check. Pages
+// set Astro.response.status from this in their frontmatter, before any
+// HTML streams.
+export function boardStatus(check: BoardCheck): number {
+  if (check.ok) return 200;
+  return check.reason === 'unconfigured' ? 503 : 401;
+}
+
 // The gate in front of every register page and route. The allowlist is
 // re-read on every request, so removing an address (from the var or on
 // the register page) locks that person out on their next click, cookie

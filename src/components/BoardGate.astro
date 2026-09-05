@@ -7,8 +7,10 @@ interface Props {
   check: Exclude<BoardCheck, { ok: true }>;
 }
 
+// The HTTP status is set by the page (boardStatus in board.ts), not here:
+// by the time this component renders inside the layout, Astro has already
+// streamed the response head and a status set here is lost.
 const { check } = Astro.props;
-Astro.response.status = check.reason === 'unconfigured' ? 503 : 401;
 ---
 <article class="prose">
   {check.reason === 'unauthenticated' && (

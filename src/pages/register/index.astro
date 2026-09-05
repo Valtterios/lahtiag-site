@@ -4,7 +4,7 @@ import Base from '../../layouts/Base.astro';
 import BoardBox from '../../components/BoardBox.astro';
 import BoardGate from '../../components/BoardGate.astro';
 import { ensureCsrf } from '../../lib/guard';
-import { requireBoard, allowedBoardEmails, WORKSPACE_DOMAIN } from '../../lib/board';
+import { requireBoard, boardStatus, allowedBoardEmails, WORKSPACE_DOMAIN } from '../../lib/board';
 import { listRegister, registerCounts, listRegisterAdmins } from '../../lib/db';
 import {
   REGISTER_STATUSES,
@@ -20,6 +20,7 @@ import { formatHelsinkiDate } from '../../lib/time';
 // is full of personal data.
 
 const board = await requireBoard(Astro.request, env);
+Astro.response.status = boardStatus(board);
 const csrf = ensureCsrf(Astro.cookies);
 
 const statusParam = Astro.url.searchParams.get('status') ?? 'all';
