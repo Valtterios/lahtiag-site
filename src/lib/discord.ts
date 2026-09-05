@@ -145,10 +145,10 @@ export async function fetchGuildMember(
   accessToken: string,
   guildId: string,
 ): Promise<GuildMembership> {
-  // Admin writes re-verify on every request, so rapid clicking (recording
-  // bracket winners) can trip Discord's per-token rate limit. A 429 is not
-  // "Discord is down": wait out the advertised cooldown once and retry.
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // Admin writes re-verify (with a short cache), so rapid clicking can
+  // still trip Discord's per-token rate limit. A 429 is not "Discord is
+  // down": wait out the advertised cooldown, up to twice, and retry.
+  for (let attempt = 0; attempt < 3; attempt++) {
     let response: Response;
     try {
       response = await fetch(`${API}/users/@me/guilds/${guildId}/member`, {
@@ -158,9 +158,9 @@ export async function fetchGuildMember(
       return { status: 'error' };
     }
     if (response.status === 404) return { status: 'not_member' };
-    if (response.status === 429 && attempt === 0) {
+    if (response.status === 429 && attempt < 2) {
       const body = (await response.json().catch(() => ({}))) as { retry_after?: number };
-      const waitMs = Math.min((body.retry_after ?? 1) * 1000, 2500);
+      const waitMs = Math.min((body.retry_after ?? 1) * 1000, 5000);
       await new Promise((resolve) => setTimeout(resolve, waitMs));
       continue;
     }

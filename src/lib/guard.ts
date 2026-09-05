@@ -68,8 +68,21 @@ export type AdminCheck =
 
 // The cookie's is_admin flag gates what the UI shows; a write gets here and
 // asks Discord again with the user's own token. A revoked role therefore
-// takes effect immediately for writes, cookie expiry or not. The lookup is
-// a parameter only so tests can stub Discord; callers never pass it.
+// takes effect within a couple of minutes for writes, cookie expiry or
+// not. A confirmed answer is remembered per token for ADMIN_CACHE_MS, so a
+// burst of board actions (recording bracket results, adding participants)
+// does not ask Discord every time and trip its rate limit; and when
+// Discord does not answer, a confirmation from the last ADMIN_GRACE_MS
+// still counts. The lookup is a parameter only so tests can stub Discord;
+// callers never pass it.
+const ADMIN_CACHE_MS = 90_000;
+const ADMIN_GRACE_MS = 10 * 60_000;
+const adminChecks = new Map<string, { at: number; ok: boolean }>();
+
+export function clearAdminCache(): void {
+  adminChecks.clear();
+}
+
 export async function requireAdmin(
   request: Request,
   env: { SESSION_SECRET?: string; ADMIN_ROLE_ID: string },
@@ -77,10 +90,17 @@ export async function requireAdmin(
 ): Promise<AdminCheck> {
   const session = await currentSession(request, env);
   if (!session) return { ok: false, reason: 'unauthenticated' };
+  const key = `${session.discordId}:${session.accessToken}`;
+  const now = Date.now();
+  const cached = adminChecks.get(key);
+  if (cached?.ok && now - cached.at < ADMIN_CACHE_MS) return { ok: true, session };
   const membership = await fetchMember(session.accessToken, DISCORD_GUILD_ID);
-  if (membership.status === 'error') return { ok: false, reason: 'discord_down' };
-  if (membership.status === 'not_member' || !hasAdminRole(membership.roles, env.ADMIN_ROLE_ID)) {
-    return { ok: false, reason: 'forbidden' };
+  if (membership.status === 'error') {
+    if (cached?.ok && now - cached.at < ADMIN_GRACE_MS) return { ok: true, session };
+    return { ok: false, reason: 'discord_down' };
   }
+  const ok = membership.status === 'member' && hasAdminRole(membership.roles, env.ADMIN_ROLE_ID);
+  adminChecks.set(key, { at: now, ok });
+  if (!ok) return { ok: false, reason: 'forbidden' };
   return { ok: true, session };
 }

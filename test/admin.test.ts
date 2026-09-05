@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { sealSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from '../src/lib/auth';
-import { requireAdmin } from '../src/lib/guard';
+import { requireAdmin, clearAdminCache } from '../src/lib/guard';
 import { hasAdminRole, type GuildMembership } from '../src/lib/discord';
 
 // The demoted-admin case (spec, Authentication): the stateless cookie keeps
@@ -33,6 +33,8 @@ async function requestWithSession(isAdmin: boolean): Promise<Request> {
 const answer = (membership: GuildMembership) => async () => membership;
 
 describe('requireAdmin', () => {
+  beforeEach(clearAdminCache);
+
   it('rejects a request with no session', async () => {
     const result = await requireAdmin(new Request('https://lahtiag.fi/'), env, answer({ status: 'member', roles: [ADMIN_ROLE], nick: null }));
     expect(result).toEqual({ ok: false, reason: 'unauthenticated' });
@@ -64,6 +66,23 @@ describe('requireAdmin', () => {
   it('distinguishes Discord being unreachable from a denial', async () => {
     const result = await requireAdmin(await requestWithSession(true), env, answer({ status: 'error' }));
     expect(result).toEqual({ ok: false, reason: 'discord_down' });
+  });
+
+  it('remembers a confirmed role for a while, and rides out Discord not answering', async () => {
+    const request = await requestWithSession(true);
+    let asked = 0;
+    const confirm = async () => {
+      asked++;
+      return { status: 'member' as const, roles: [ADMIN_ROLE], nick: null };
+    };
+    expect((await requireAdmin(request, env, confirm)).ok).toBe(true);
+    expect((await requireAdmin(request, env, confirm)).ok).toBe(true);
+    expect(asked).toBe(1);
+    // Discord down right after a confirmation: still allowed
+    expect((await requireAdmin(request, env, answer({ status: 'error' }))).ok).toBe(true);
+    // a fresh session with no confirmation behind it is not
+    clearAdminCache();
+    expect(await requireAdmin(request, env, answer({ status: 'error' }))).toEqual({ ok: false, reason: 'discord_down' });
   });
 });
 
