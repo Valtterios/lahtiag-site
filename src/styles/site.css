@@ -2136,3 +2136,28 @@ html.display-mode,
   color: #b32626;
 }
 
+/* the register table's "show all" row */
+.expander-row td {
+  text-align: center;
+  padding: 0;
+  border-bottom: none;
+}
+
+.expander {
+  display: block;
+  padding: 0.7rem 1rem;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--blue);
+  text-decoration: none;
+  background: var(--bg);
+}
+
+.expander:hover {
+  background: var(--yellow-soft);
+  color: var(--ink);
+}
+

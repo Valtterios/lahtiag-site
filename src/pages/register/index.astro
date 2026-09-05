@@ -148,6 +148,13 @@ const rolesFlash = okKey === 'synced' || okKey === 'roles_saved' || errKey.start
 if (rolesFlash) flash = null;
 
 const viewHref = (key: View) => `/register?view=${key}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
+// The list shows ten rows and an expander; a search shows all its matches.
+// ?all=1 is the no-JavaScript fallback for the expander.
+const PREVIEW = 10;
+const showAll = Astro.url.searchParams.get('all') === '1' || q !== '';
+const firstRows = showAll ? rows : rows.slice(0, PREVIEW);
+const moreRows = showAll ? [] : rows.slice(PREVIEW);
+const allHref = `${viewHref(view)}&all=1`;
 const since = (r: RegisterRow) =>
   formatHelsinkiDate(r.status === 'pending' ? r.applied_at : (r.decided_at ?? r.applied_at));
 const days = (t: number) => Math.floor((now - t) / 86400);
@@ -331,19 +338,46 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {firstRows.map((r) => (
                   <tr class={stale.has(r.id) ? 'row-stale' : undefined}>
                     <td><a href={`/register/${r.id}`}>{r.full_name}</a></td>
                     <td>{r.email}</td>
                     <td>{r.member_type}</td>
                     <td>{r.student_status}</td>
                     <td>{r.discord_name ?? ''}{r.discord_id && <span class="linked-mark" title="Discord account linked">linked</span>}</td>
-                    <td>{r.wants_active ? 'yes' : ''}</td>
+                    <td>{r.is_active ? 'yes' : r.wants_active ? 'asked' : ''}</td>
                     <td>{since(r)}</td>
                     <td><span class={`status-badge status-${r.status}`}>{r.status}</span></td>
                   </tr>
                 ))}
               </tbody>
+              {moreRows.length > 0 && (
+                <>
+                  <tbody id="register-more" hidden>
+                    {moreRows.map((r) => (
+                      <tr class={stale.has(r.id) ? 'row-stale' : undefined}>
+                        <td><a href={`/register/${r.id}`}>{r.full_name}</a></td>
+                        <td>{r.email}</td>
+                        <td>{r.member_type}</td>
+                        <td>{r.student_status}</td>
+                        <td>{r.discord_name ?? ''}{r.discord_id && <span class="linked-mark" title="Discord account linked">linked</span>}</td>
+                        <td>{r.is_active ? 'yes' : r.wants_active ? 'asked' : ''}</td>
+                        <td>{since(r)}</td>
+                        <td><span class={`status-badge status-${r.status}`}>{r.status}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tbody id="register-expander">
+                    <tr class="expander-row">
+                      <td colspan="8">
+                        <a class="expander" href={allHref} data-expand="register-more">
+                          Show all {rows.length} ({moreRows.length} more)
+                        </a>
+                      </td>
+                    </tr>
+                  </tbody>
+                </>
+              )}
             </table>
           </div>
         )}
@@ -472,3 +506,18 @@ const days = (t: number) => Math.floor((now - t) / 86400);
     </>
   )}
 </Base>
+
+<script>
+  // The expander row reveals the hidden rows in place; without JavaScript
+  // the link reloads the page with ?all=1 instead.
+  document.querySelectorAll<HTMLAnchorElement>('a[data-expand]').forEach((link) => {
+    link.addEventListener('click', (event) => {
+      const target = document.getElementById(link.dataset.expand ?? '');
+      if (!target) return;
+      event.preventDefault();
+      target.hidden = false;
+      link.closest('tbody')?.remove();
+    });
+  });
+</script>
+
