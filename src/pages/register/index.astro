@@ -92,7 +92,7 @@ const since = (r: RegisterRow) =>
   formatHelsinkiDate(r.status === 'pending' ? r.applied_at : (r.decided_at ?? r.applied_at));
 const days = (t: number) => Math.floor((now - t) / 86400);
 ---
-<Base title="Member register" description="Board-only member register of Lahti Association of Gaming LAG ry.">
+<Base title="Member register" description="Board-only member register of Lahti Association of Gaming LAG ry." wide>
   {!board.ok ? (
     <BoardGate check={board} />
   ) : (

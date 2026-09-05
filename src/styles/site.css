@@ -1774,8 +1774,15 @@ html.display-mode,
 }
 
 .register-table {
-  min-width: 50rem;
-  font-size: 0.9rem;
+  min-width: 0;
+  width: 100%;
+  font-size: 0.88rem;
+}
+
+.register-table td:nth-child(2) {
+  max-width: 20rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .register-table td a {
@@ -1912,3 +1919,9 @@ html.display-mode,
   gap: 1rem;
   flex-wrap: wrap;
 }
+
+/* register pages: the whole window, so a table row fits on one line */
+.site-main-wide {
+  max-width: 110rem;
+}
+

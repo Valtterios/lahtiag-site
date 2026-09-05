@@ -58,7 +58,7 @@ const SOURCE: Record<string, string> = {
   board: 'added by the board',
 };
 ---
-<Base title={entry ? entry.full_name : 'Register entry'} description="Board-only member register entry.">
+<Base title={entry ? entry.full_name : 'Register entry'} description="Board-only member register entry." wide>
   {!board.ok ? (
     <BoardGate check={board} />
   ) : !entry ? (

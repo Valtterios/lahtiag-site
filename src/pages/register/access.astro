@@ -29,7 +29,7 @@ const FLASH: Record<string, string> = {
 const flash =
   FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
 ---
-<Base title="Register access" description="Board-only member register.">
+<Base title="Register access" description="Board-only member register." wide>
   {!board.ok ? (
     <BoardGate check={board} />
   ) : (

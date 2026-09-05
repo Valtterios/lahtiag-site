@@ -6,9 +6,12 @@ import '../styles/site.css';
 interface Props {
   title: string;
   description?: string;
+  // Register pages: a table with eight columns wants the whole window,
+  // not the reading measure.
+  wide?: boolean;
 }
 
-const { title, description } = Astro.props;
+const { title, description, wide = false } = Astro.props;
 
 // The nav is built from the collection at build time, so a new Markdown
 // file with a navOrder appears in the header without touching this file.
@@ -60,7 +63,7 @@ const pathname = Astro.url.pathname;
         </nav>
       </div>
     </header>
-    <main class="site-main" id="main">
+    <main class={wide ? 'site-main site-main-wide' : 'site-main'} id="main">
       <slot />
     </main>
     <footer class="site-footer">

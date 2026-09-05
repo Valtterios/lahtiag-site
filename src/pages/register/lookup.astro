@@ -18,7 +18,7 @@ const csrf = ensureCsrf(Astro.cookies);
 const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 100);
 const rows = board.ok && q ? await listRegister(env.DB, { q, limit: 20 }) : [];
 ---
-<Base title="Venue lookup" description="Board-only member lookup for the door.">
+<Base title="Venue lookup" description="Board-only member lookup for the door." wide>
   {!board.ok ? (
     <BoardGate check={board} />
   ) : (
