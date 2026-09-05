@@ -2659,3 +2659,14 @@ html.display-mode,
 .app-form .ticket-block label {
   margin: 0.5rem 0 0;
 }
+
+/* Six links in the header on a phone: tighter, still one line. */
+@media (max-width: 480px) {
+  .site-header nav ul {
+    gap: 0.9rem;
+  }
+  .site-header nav a {
+    font-size: 0.74rem;
+    letter-spacing: 0.05em;
+  }
+}
