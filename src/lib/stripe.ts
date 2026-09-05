@@ -186,6 +186,7 @@ export interface StripeEvent {
       metadata?: Record<string, string>;
       amount_total?: number | null;
       amount?: number | null;
+      description?: string | null;
       amount_refunded?: number | null;
       refunded?: boolean;
       custom_fields?: { key: string; text?: { value?: string | null } }[];

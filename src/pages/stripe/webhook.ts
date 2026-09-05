@@ -92,7 +92,7 @@ export const POST: APIRoute = async ({ request }) => {
       // Dashboard app's Tap to Pay, waiting for the door to say who it was.
       if (!object.metadata?.purchase_id && !object.metadata?.ticket_id && typeof object.amount === 'number') {
         const known = (await getTicketByPaymentIntent(env.DB, object.id)) ?? (await getPurchaseByPaymentIntent(env.DB, object.id));
-        if (!known) await recordDoorPayment(env.DB, object.id, object.amount, now);
+        if (!known) await recordDoorPayment(env.DB, object.id, object.amount, now, object.description ?? null);
       }
       break;
     }

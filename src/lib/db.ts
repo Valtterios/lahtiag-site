@@ -2566,10 +2566,10 @@ export async function undoCheckIn(db: D1Database, ticketId: number): Promise<voi
 
 // Tap to Pay in the Stripe Dashboard app: a payment with no ticket behind
 // it, kept until someone at the door attaches it to a person.
-export async function recordDoorPayment(db: D1Database, paymentIntent: string, amountCents: number, now: number): Promise<void> {
+export async function recordDoorPayment(db: D1Database, paymentIntent: string, amountCents: number, now: number, note: string | null = null): Promise<void> {
   await db
-    .prepare('INSERT OR IGNORE INTO door_payments (stripe_payment_intent, amount_cents, created_at) VALUES (?1, ?2, ?3)')
-    .bind(paymentIntent, amountCents, now)
+    .prepare('INSERT OR IGNORE INTO door_payments (stripe_payment_intent, amount_cents, created_at, note) VALUES (?1, ?2, ?3, ?4)')
+    .bind(paymentIntent, amountCents, now, note ? note.replace(/\s+/g, ' ').trim().slice(0, 80) || null : null)
     .run();
 }
 
@@ -2578,6 +2578,7 @@ export interface DoorPaymentRow {
   amount_cents: number;
   created_at: number;
   ticket_id: number | null;
+  note: string | null; // the description typed in the Stripe app
 }
 
 export async function listUnattachedDoorPayments(db: D1Database, since: number): Promise<DoorPaymentRow[]> {

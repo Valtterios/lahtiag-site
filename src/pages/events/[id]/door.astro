@@ -116,8 +116,8 @@ Astro.response.headers.set('cache-control', 'no-store');
         <section class="door-tap">
           <h2 class="section-label">Card at the door</h2>
           <p class="queue-intro">
-            No phone to scan with? Open the <strong>Stripe</strong> app, choose <strong>Collect payment</strong>, type the amount and let them tap their card.
-            The payment shows up below within a few seconds; say who it was and which ticket, and they are in.
+            No phone to scan with? In the <strong>Stripe Dashboard</strong> app tap <strong>+</strong>, <strong>Charge card or send invoice</strong>, type the amount and the buyer's name as the description, choose <strong>Tap to Pay</strong>, and let them tap their card.
+            The payment shows up below within a few seconds with that name filled in; pick the ticket and they are in.
             Amounts:{' '}
             {types
               .filter((t) => t.active === 1 && t.price_cents > 0)
@@ -135,13 +135,13 @@ Astro.response.headers.set('cache-control', 'no-store');
           {payments.map((p) => (
             <div class="queue-card">
               <div class="queue-body">
-                <p class="queue-name">{(p.amount_cents / 100).toFixed(2)} €</p>
+                <p class="queue-name">{(p.amount_cents / 100).toFixed(2)} €{p.note ? ` · ${p.note}` : ''}</p>
                 <p class="queue-meta">{formatHelsinki(p.created_at)} · {p.stripe_payment_intent}</p>
               </div>
               <form method="post" action={`/events/${event.id}/door/attach`} class="queue-actions door-attach">
                 <input type="hidden" name="csrf" value={csrf} />
                 <input type="hidden" name="payment_intent" value={p.stripe_payment_intent} />
-                <input name="holder_name" placeholder="Name" required maxlength="60" aria-label="Name" />
+                <input name="holder_name" placeholder="Name" required maxlength="60" aria-label="Name" value={p.note ?? ''} />
                 <select name="ticket_type_id" aria-label="Ticket type">
                   {types
                     .filter((t) => t.active === 1)

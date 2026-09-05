@@ -242,9 +242,9 @@ describe('ticket lifecycle', () => {
     expect(await ticketOffer(db(), ev, type, 'a', NOW)).toMatchObject({ ok: false, reason: 'has_ticket' });
     expect(await voidTicket(db(), held.id)).toBe(true);
     expect(await ticketOffer(db(), ev, type, 'a', NOW)).toMatchObject({ ok: true, amount_cents: 1000 });
-    await recordDoorPayment(db(), 'pi_tap', 1000, NOW);
+    await recordDoorPayment(db(), 'pi_tap', 1000, NOW, '  Walk  In ');
     await recordDoorPayment(db(), 'pi_tap', 1000, NOW); // idempotent
-    expect((await listUnattachedDoorPayments(db(), NOW - 3600)).map((p) => p.stripe_payment_intent)).toEqual(['pi_tap']);
+    expect((await listUnattachedDoorPayments(db(), NOW - 3600)).map((p) => [p.stripe_payment_intent, p.note])).toEqual([['pi_tap', 'Walk In']]);
     const ticket = await attachDoorPayment(db(), 'pi_tap', id, typeId, 'Walk In', NOW + 5);
     expect(ticket).toMatchObject({ status: 'paid', source: 'door', holder_name: 'Walk In', stripe_payment_intent: 'pi_tap' });
     expect(await listUnattachedDoorPayments(db(), NOW - 3600)).toEqual([]);
