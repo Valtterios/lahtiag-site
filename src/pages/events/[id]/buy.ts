@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession } from '../../../lib/guard';
-import { getEvent, getTicketType, ticketOffer, createTicket, voidTicket, upsertMember, RuleError } from '../../../lib/db';
+import { getEvent, getTicketType, ticketOffer, createTicket, voidTicket, upsertMember, getRegisterByDiscord, RuleError } from '../../../lib/db';
 import { createCheckoutSession, stripeConfigured } from '../../../lib/stripe';
 import { formatHelsinkiRange } from '../../../lib/time';
 
@@ -48,6 +48,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
       { event_id: id, ticket_type_id: typeId, discord_id: session.discordId, holder_name: holder, amount_cents: offer.amount_cents, status: 'pending', source: 'online' },
       now,
     );
+    const entry = await getRegisterByDiscord(env.DB, session.discordId);
     const checkout = await createCheckoutSession(env.STRIPE_SECRET_KEY!, {
       amountCents: offer.amount_cents,
       productName: `${event.title}: ${type.name}`,
@@ -56,6 +57,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
       cancelUrl: `${back}?err=cancelled_checkout`,
       clientReferenceId: String(ticket.id),
       metadata: { ticket_id: String(ticket.id), event_id: String(id), discord_id: session.discordId },
+      customerEmail: entry?.email,
     });
     if (!checkout) {
       await voidTicket(env.DB, ticket.id);

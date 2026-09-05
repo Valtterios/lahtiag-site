@@ -4,6 +4,11 @@
 // STRIPE_WEBHOOK_SECRET exist; callers show "payments not set up".
 
 const API = 'https://api.stripe.com/v1';
+// Pinned so the account's default version can move without changing what
+// this code sees. Bump deliberately, with the changelog open.
+const API_VERSION = '2026-08-26.dahlia';
+// Tags Checkout sessions in the Dashboard's analytics.
+const INTEGRATION_IDENTIFIER = 'lahtiag_tickets_qmzrwbtk';
 
 export interface StripeConfig {
   STRIPE_SECRET_KEY?: string;
@@ -56,8 +61,15 @@ export async function createCheckoutSession(
     expires_at: now + Math.max(1800, Math.min(input.expiresInSeconds ?? 1800, 86400)),
     customer_email: input.customerEmail,
     locale: 'auto',
+    integration_identifier: INTEGRATION_IDENTIFIER,
   };
-  for (const [k, v] of Object.entries(input.metadata)) params[`metadata[${k}]`] = v;
+  for (const [k, v] of Object.entries(input.metadata)) {
+    params[`metadata[${k}]`] = v;
+    // Copied onto the PaymentIntent and its charge as well: refunds and
+    // payment_intent.succeeded then identify the ticket on their own.
+    params[`payment_intent_data[metadata][${k}]`] = v;
+  }
+  params['payment_intent_data[description]'] = input.productName.slice(0, 200);
   if (input.askName) {
     params['custom_fields[0][key]'] = 'holder_name';
     params['custom_fields[0][label][type]'] = 'custom';
@@ -70,6 +82,7 @@ export async function createCheckoutSession(
       headers: {
         authorization: `Bearer ${secretKey}`,
         'content-type': 'application/x-www-form-urlencoded',
+        'stripe-version': API_VERSION,
       },
       body: encode(params),
     });
@@ -134,6 +147,7 @@ export interface StripeEvent {
       id: string;
       object: string;
       payment_intent?: string | null;
+      payment_status?: 'paid' | 'unpaid' | 'no_payment_required';
       client_reference_id?: string | null;
       metadata?: Record<string, string>;
       amount_total?: number | null;

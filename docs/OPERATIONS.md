@@ -255,11 +255,17 @@ version:
   refunded and frees the seat. Cancelling an event does not refund by
   itself — refund in Stripe (all charges of that event), then cancel.
 - **Stripe setup**: secrets `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`
-  (`npx wrangler secret put`); in the Stripe dashboard add a webhook
-  endpoint `https://lahtiag.fi/stripe/webhook` for the events
-  `checkout.session.completed`, `checkout.session.expired`,
+  (`npx wrangler secret put`). Prefer a **restricted key** (Developers →
+  API keys → Create restricted key) with write access to Checkout
+  Sessions only, rather than the full secret key. In the dashboard add a
+  webhook endpoint `https://lahtiag.fi/stripe/webhook` for the events
+  `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+  `checkout.session.async_payment_failed`, `checkout.session.expired`,
   `charge.refunded`, `payment_intent.succeeded`, and use its signing
-  secret. Until both secrets exist the site says "card payments are not
+  secret. Turn on **MobilePay** (and Apple/Google Pay come with cards)
+  under Settings → Payment methods. Test first with test-mode keys and
+  card 4242 4242 4242 4242; switch both secrets to live keys when the
+  account is activated. Until both secrets exist the site says "card payments are not
   set up"; free tickets and the door check-in work regardless. Payouts go
   to the Holvi account; the treasurer books the monthly Stripe report.
   Terms of sale: `src/content/pages/terms.md`, linked from every buy page.

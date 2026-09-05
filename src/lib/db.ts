@@ -2220,6 +2220,9 @@ export async function markTicketPaid(
     .bind(ticketId, now, paymentIntent, holderName)
     .run();
   if (ticket.discord_id) await ensureYesSignup(db, ticket.event_id, ticket.discord_id, now);
+  if (paymentIntent) {
+    await db.prepare('DELETE FROM door_payments WHERE stripe_payment_intent = ?1 AND ticket_id IS NULL').bind(paymentIntent).run();
+  }
   return (await db.prepare('SELECT * FROM tickets WHERE id = ?1').bind(ticketId).first<TicketRow>())!;
 }
 
