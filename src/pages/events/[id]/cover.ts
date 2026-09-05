@@ -10,7 +10,8 @@ import { getEventCover, setEventCover, deleteEventCover, RuleError } from '../..
 export const GET: APIRoute = async ({ params, request }) => {
   const id = Number(params.id);
   const cover = Number.isInteger(id) ? await getEventCover(env.DB, id) : null;
-  if (!cover) return new Response('no cover', { status: 404 });
+  // Never let an empty body be cached as the image for a day.
+  if (!cover || cover.bytes.byteLength === 0) return new Response('no cover', { status: 404, headers: { 'cache-control': 'no-store' } });
   const etag = `"${id}-${cover.updated_at}"`;
   if (request.headers.get('if-none-match') === etag) return new Response(null, { status: 304, headers: { etag } });
   return new Response(cover.bytes, {

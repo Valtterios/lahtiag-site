@@ -156,7 +156,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
 <Base
   title={event ? event.title : 'Event not found'}
   description={event ? `${event.title}, ${formatHelsinkiRange(event.starts_at, event.ends_at)}` : undefined}
-  image={event && coverAt !== null ? `${Astro.url.origin}/events/${event.id}/cover?v=${coverAt}` : undefined}
+  image={event && coverAt !== null ? `${Astro.url.origin}/events/${event.id}/cover?t=${coverAt}` : undefined}
   wide
 >
   {!event ? (
@@ -168,7 +168,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
     <>
       <div class="event-layout">
       <header class="event-head">
-        {coverAt !== null && <img class="event-cover" src={`/events/${event.id}/cover?v=${coverAt}`} alt="" width="1200" height="630" />}
+        {coverAt !== null && <img class="event-cover" src={`/events/${event.id}/cover?t=${coverAt}`} alt="" width="1200" height="630" />}
         <div class="event-head-body">
           <h1>{event.title}</h1>
           {event.organizers && <p class="event-by">by {event.organizers}</p>}
