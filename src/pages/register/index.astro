@@ -13,6 +13,7 @@ import {
   listActiveRequests,
   listHousekeeping,
   findSimilarEntries,
+  type SimilarEntry,
   HOUSEKEEPING,
   type RegisterRow,
 } from '../../lib/db';
@@ -94,7 +95,7 @@ if (rolePlan?.ok && rolePlan.changes.length > 0) {
 const whoIs = (id: string) => linkedNames.get(id) ?? `Discord id ${id}`;
 
 const pending = view === 'all' || view === 'pending' ? rows.filter((r) => r.status === 'pending') : [];
-const hints = new Map<number, { warning: string | null; similar: RegisterRow[] }>();
+const hints = new Map<number, { warning: string | null; similar: SimilarEntry[] }>();
 if (board.ok) {
   for (const r of pending.slice(0, 20)) {
     hints.set(r.id, { warning: eligibilityWarning(r), similar: await findSimilarEntries(env.DB, r) });
@@ -209,11 +210,11 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                       <ul class="similar-list">
                         {hint.similar.map((s) => (
                           <li>
-                            <a href={`/register/${s.id}`}>{s.full_name}</a> ({s.status}{s.discord_id ? ', Discord linked' : ''})
+                            <a href={`/register/${s.entry.id}`}>{s.entry.full_name}</a> ({s.entry.status}) · <em>{s.reasons.join(', ')}</em>
                             <form method="post" action={`/register/${r.id}/action`} class="inline-form">
                               <input type="hidden" name="csrf" value={csrf} />
                               <input type="hidden" name="action" value="merge" />
-                              <input type="hidden" name="target" value={s.id} />
+                              <input type="hidden" name="target" value={s.entry.id} />
                               <button class="btn btn-ghost btn-sm" type="submit" data-confirm="Merge the application into this entry and delete the application?">Merge into this entry</button>
                             </form>
                           </li>

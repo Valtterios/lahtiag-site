@@ -1445,29 +1445,58 @@ export async function createBoardEntry(
   return result!.id;
 }
 
-// Entries that look like the same person: same surname or same email
-// local part, accent-insensitively. A hint on pending applications, not a
+// Entries that may be the same person, each with the reasons: the same
+// Discord account, the same email, the same email name, the same Discord
+// handle, or the same surname (whole words only, accent-insensitively, so
+// "Jin" never matches "Jingwen"). A hint on pending applications, not a
 // rule; the board decides.
+export interface SimilarEntry {
+  entry: RegisterRow;
+  reasons: string[];
+}
+
 export async function findSimilarEntries(
   db: D1Database,
-  entry: { id: number; full_name: string; email: string; discord_name?: string | null },
-): Promise<RegisterRow[]> {
+  entry: { id: number; full_name: string; email: string; discord_name?: string | null; discord_id?: string | null },
+): Promise<SimilarEntry[]> {
   const escape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
-  const nameTokens = searchKey([entry.full_name]).split(' ').filter((t) => t.length >= 3);
-  const surname = nameTokens.length > 1 ? nameTokens[nameTokens.length - 1] : null;
-  const local = searchKey([entry.email.split('@')[0] ?? '']);
+  const nameTokens = searchKey([entry.full_name]).split(' ').filter(Boolean);
+  const lastName = nameTokens.length > 1 ? nameTokens[nameTokens.length - 1] : null;
+  const surname = lastName && lastName.length >= 3 ? lastName : null;
+  const email = searchKey([entry.email]);
+  const local = email.split('@')[0] ?? '';
   const handle = searchKey([entry.discord_name ?? '']).replace(/^@/, '');
-  const patterns: string[] = [];
-  if (surname) patterns.push(`%${escape(surname)}%`);
-  if (local.length >= 4) patterns.push(`%${escape(local)}%`);
-  if (handle.length >= 3) patterns.push(`%${escape(handle)}%`);
-  if (patterns.length === 0) return [];
-  const clauses = patterns.map((_, i) => `search_key LIKE ?${i + 2} ESCAPE '\\'`).join(' OR ');
+  const clauses: string[] = [];
+  const binds: (string | number)[] = [entry.id];
+  const add = (clause: string, value: string) => {
+    binds.push(value);
+    clauses.push(clause.replace('?N', `?${binds.length}`));
+  };
+  if (entry.discord_id) add('discord_id = ?N', entry.discord_id);
+  if (email) add("(' ' || search_key || ' ') LIKE ?N ESCAPE '\\'", `% ${escape(email)} %`);
+  if (local.length >= 4) add("(' ' || search_key || ' ') LIKE ?N ESCAPE '\\'", `% ${escape(local)}@%`);
+  if (handle.length >= 3) add("(' ' || search_key || ' ') LIKE ?N ESCAPE '\\'", `% ${escape(handle)} %`);
+  if (surname) add("(' ' || search_key || ' ') LIKE ?N ESCAPE '\\'", `% ${escape(surname)} %`);
+  if (clauses.length === 0) return [];
   const { results } = await db
-    .prepare(`SELECT * FROM register WHERE id != ?1 AND (${clauses}) ORDER BY full_name COLLATE NOCASE LIMIT 5`)
-    .bind(entry.id, ...patterns)
+    .prepare(`SELECT * FROM register WHERE id != ?1 AND (${clauses.join(' OR ')}) ORDER BY full_name COLLATE NOCASE LIMIT 8`)
+    .bind(...binds)
     .all<RegisterDbRow>();
-  return results.map(fromDb);
+  const out: SimilarEntry[] = [];
+  for (const row of results.map(fromDb)) {
+    const reasons: string[] = [];
+    const theirs = searchKey([row.full_name]).split(' ');
+    const theirEmail = searchKey([row.email]);
+    const theirHandle = searchKey([row.discord_name ?? '']).replace(/^@/, '');
+    if (entry.discord_id && row.discord_id === entry.discord_id) reasons.push('same Discord account');
+    if (email && theirEmail === email) reasons.push('same email');
+    else if (local.length >= 4 && theirEmail.split('@')[0] === local) reasons.push('same email name');
+    if (handle.length >= 3 && theirHandle === handle) reasons.push('same Discord name');
+    if (surname && theirs.length > 1 && theirs[theirs.length - 1] === surname) reasons.push('same surname');
+    if (reasons.length > 0) out.push({ entry: row, reasons });
+  }
+  const weight = (r: string[]) => (r.includes('same Discord account') ? 3 : r.includes('same email') ? 2 : 0) + r.length;
+  return out.sort((x, y) => weight(y.reasons) - weight(x.reasons)).slice(0, 5);
 }
 
 // A pending application that is really an existing member applying again:

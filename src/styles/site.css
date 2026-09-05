@@ -3265,3 +3265,17 @@ details.admin-panel[open] > summary {
 .event-body .event-card {
   max-width: none;
 }
+
+/* Register queue: notes stack under the details; buttons stay at the top right. */
+.queue-card {
+  align-items: flex-start;
+}
+.queue-body .warn-tag {
+  display: block;
+  width: fit-content;
+  margin-top: 0.6rem;
+}
+.queue-body .similar-box {
+  width: auto;
+  max-width: none;
+}

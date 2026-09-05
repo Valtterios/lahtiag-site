@@ -106,11 +106,11 @@ const SOURCE: Record<string, string> = {
           <ul class="similar-list">
             {similar.map((s) => (
               <li>
-                <a href={`/register/${s.id}`}>{s.full_name}</a> ({s.status}{s.discord_id ? ', Discord linked' : ''})
+                <a href={`/register/${s.entry.id}`}>{s.entry.full_name}</a> ({s.entry.status}) · <em>{s.reasons.join(', ')}</em>
                 <form method="post" action={`/register/${entry.id}/action`} class="inline-form">
                   <input type="hidden" name="csrf" value={csrf} />
                   <input type="hidden" name="action" value="merge" />
-                  <input type="hidden" name="target" value={s.id} />
+                  <input type="hidden" name="target" value={s.entry.id} />
                   <button class="btn btn-ghost btn-sm" type="submit" data-confirm="Merge this application into the chosen entry and delete this application?">Merge into this entry</button>
                 </form>
               </li>

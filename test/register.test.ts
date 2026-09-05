@@ -423,8 +423,18 @@ describe('hints for the board', () => {
     const c = await applyForMembership(db(), application({ full_name: 'Bo Virtanen', email: 'bo@example.com' }), null, NOW);
     await applyForMembership(db(), application({ full_name: 'Cara Nieminen', email: 'cara@example.com' }), null, NOW);
     const similar = await findSimilarEntries(db(), { id: b, full_name: 'Aino Virtanen', email: 'aino.v@other.example' });
-    expect(similar.map((r) => r.id).sort()).toEqual([a, c].sort());
+    expect(similar.map((s) => s.entry.id).sort()).toEqual([a, c].sort());
+    expect(similar.every((s) => s.reasons.includes('same surname'))).toBe(true);
     expect(await findSimilarEntries(db(), { id: 999, full_name: 'X', email: 'x@y.z' })).toEqual([]);
+    // whole words only: "Jin" is not "Jingwen", and a 3-letter surname still matches itself
+    const jin = await applyForMembership(db(), application({ full_name: 'Kai Jin', email: 'kai@example.com' }), null, NOW);
+    await applyForMembership(db(), application({ full_name: 'Mei Jingwen', email: 'mei@example.com' }), null, NOW);
+    const forJin = await findSimilarEntries(db(), { id: 999, full_name: 'Lu Jin', email: 'lu@example.com' });
+    expect(forJin.map((s) => s.entry.id)).toEqual([jin]);
+    // the same Discord account outranks a shared surname
+    const linked = await applyForMembership(db(), application({ full_name: 'Some One', email: 'one@example.com' }), '4242', NOW);
+    const forLinked = await findSimilarEntries(db(), { id: 999, full_name: 'Other Virtanen', email: 'o@example.com', discord_id: '4242' });
+    expect(forLinked[0]).toMatchObject({ entry: { id: linked }, reasons: ['same Discord account'] });
   });
 });
 
@@ -565,7 +575,7 @@ describe('merging a duplicate application', () => {
   it('hints on a matching Discord name too', async () => {
     const a = await applyForMembership(db(), application({ email: 'a@example.com', full_name: 'Aa Bb', discord_name: 'gamer_tag' }), null, NOW);
     const similar = await findSimilarEntries(db(), { id: 999, full_name: 'Zz Yy', email: 'zz@yy.fi', discord_name: '@Gamer_Tag' });
-    expect(similar.map((r) => r.id)).toEqual([a]);
+    expect(similar.map((s) => [s.entry.id, s.reasons])).toEqual([[a, ['same Discord name']]]);
   });
 });
 
