@@ -4,6 +4,25 @@ The operations handbook for the LahtiAG website. Written for whoever runs
 this after the current maintainer — board members included. Last full
 revision: September 2026.
 
+## Contents
+
+- [What this is](#what-this-is)
+- [Who can do what](#who-can-do-what)
+- [Hosting a tournament, start to finish](#hosting-a-tournament-start-to-finish)
+- [The member register](#the-member-register)
+- [The privacy policy](#the-privacy-policy)
+- [Selling tickets](#selling-tickets)
+- [Taking payments at the door](#taking-payments-at-the-door)
+  - [Set up Tap to Pay, once per phone](#set-up-tap-to-pay-once-per-phone)
+  - [Take a card payment](#take-a-card-payment)
+  - [Link the payment to a person](#link-the-payment-to-a-person)
+  - [Buyers with their own phone](#buyers-with-their-own-phone)
+- [Editing the site's pages](#editing-the-sites-pages)
+- [The moving parts](#the-moving-parts)
+- [Local development](#local-development)
+- [Things that will bite you](#things-that-will-bite-you)
+- [When something breaks](#when-something-breaks)
+
 ## What this is
 
 One Cloudflare Worker serves https://lahtiag.fi. Static pages (home, members,
@@ -304,8 +323,9 @@ version:
   holder from the roster or set them to "maybe" (the roster says so);
   refund in Stripe instead, and the webhook removes them. Any signup that
   went missing earlier comes back the next time the event page loads.
-- **Card at the door (Tap to Pay)**: no code of ours; the **Stripe
-  Dashboard** iPhone app (by Stripe, LLC) takes the card. Setup, once per
+- **Card at the door (Tap to Pay)**: see [Taking payments at the
+  door](#taking-payments-at-the-door) for the illustrated steps. In short:
+  the **Stripe Dashboard** iPhone app (by Stripe, LLC) takes the card. Setup, once per
   phone: sign in with a Stripe team login that has the Administrator
   role, tap **+** top right, **Charge card or send invoice**, any amount,
   **Tap to Pay**, then **Enable Tap to Pay** (allow location, link the
@@ -354,6 +374,71 @@ version:
   set up"; free tickets and the door check-in work regardless. Payouts go
   to the Holvi account; the treasurer books the monthly Stripe report.
   Terms of sale: `src/content/pages/terms.md`, linked from every buy page.
+
+## Taking payments at the door
+
+Two ways, both ending on the event's **door page** (event page → Board
+tools → Door page). Buyers with a phone pay themselves through the sales
+QR. Buyers without one pay by card on a board member's iPhone with Tap to
+Pay in the **Stripe Dashboard** app, and the board links that payment to
+them on the door page.
+
+### Set up Tap to Pay, once per phone
+
+The app is **Stripe Dashboard** by Stripe, LLC. Sign in with a Stripe team
+login that has the Administrator role (the other roles cannot take
+payments).
+
+| | |
+|---|---|
+| ![App Store listing](images/door/app-1-appstore.jpg) | ![Home](images/door/app-2-home.jpg) |
+| 1. Install *Stripe Dashboard* from the App Store. | 2. Sign in. The **+** top right starts everything. |
+
+| | |
+|---|---|
+| ![Menu](images/door/app-3-menu.jpg) | ![Method](images/door/app-5-method.jpg) |
+| 3. Tap **+**, then **Charge card or send invoice**. | 4. Type any amount, **Next**, choose **Tap to Pay**. |
+
+| | |
+|---|---|
+| ![Enable](images/door/app-6-enable.jpg) | ![Linking](images/door/app-7-linking.jpg) |
+| 5. **Enable Tap to Pay**: allow location, accept Apple's terms. | 6. It links the phone's Apple ID. Done; cancel the test payment. |
+
+### Take a card payment
+
+| | |
+|---|---|
+| ![Amount](images/door/app-4-amount.jpg) | ![Method](images/door/app-5-method.jpg) |
+| 1. **+** → **Charge card or send invoice**. Type the amount from the door page's "Card at the door" line, and the buyer's name as the **Description**. | 2. **Tap to Pay**, **Next**. The buyer holds their card or phone to the top edge of the iPhone until it confirms. |
+
+The name matters: it travels with the payment and is filled in for you on
+the site.
+
+### Link the payment to a person
+
+Within a few seconds the payment reaches the site (Stripe's
+`payment_intent.succeeded` webhook). On the door page it waits under
+**Tap payments to attach** until someone says who it was; the same
+unattached payment shows on every event's door page opened within twelve
+hours, and disappears everywhere once attached.
+
+| | |
+|---|---|
+| ![Door page](images/door/site-1-door.png) | ![Attach](images/door/site-2-attach.png) |
+| The door page: scan, sales QR, "Card at the door" with the amounts, the waiting payment, the list. | The payment: name pre-filled from the app's description, ticket type pre-picked when the amount matches a price. Press **Attach**. |
+
+| | |
+|---|---|
+| ![After](images/door/site-3-after.png) | |
+| The person now holds a paid ticket marked *door*, already checked in. Undo is there if it was the wrong one. | |
+
+### Buyers with their own phone
+
+Faster for everyone: the door page shows a sales QR per ticket type. The
+buyer scans it, lands on the checkout on their own phone, types their name
+and pays with Apple Pay, MobilePay or a card. They appear in the door
+list as soon as Stripe confirms, and their ticket link is on Stripe's page
+and the receipt. Nothing to attach.
 
 ## Editing the site's pages
 
