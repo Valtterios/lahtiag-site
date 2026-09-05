@@ -343,6 +343,7 @@ export async function deleteEvent(db: D1Database, id: number): Promise<EventRow>
   if (!event) throw new RuleError('missing', `No event with id ${id}.`);
   await db.prepare('DELETE FROM signup_answers WHERE event_id = ?1').bind(id).run();
   await db.prepare('DELETE FROM event_questions WHERE event_id = ?1').bind(id).run();
+  await db.prepare('DELETE FROM event_covers WHERE event_id = ?1').bind(id).run();
   await db.prepare('DELETE FROM door_payments WHERE ticket_id IN (SELECT id FROM tickets WHERE event_id = ?1)').bind(id).run();
   await db.prepare('DELETE FROM tickets WHERE event_id = ?1').bind(id).run();
   await db.prepare('DELETE FROM ticket_types WHERE event_id = ?1').bind(id).run();
@@ -2214,6 +2215,44 @@ export async function ensureYesSignup(db: D1Database, eventId: number, discordId
     )
     .bind(eventId, discordId, now)
     .run();
+}
+
+// --- cover images -------------------------------------------------------------------
+
+export const COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export const COVER_MAX_BYTES = 1_500_000;
+
+// The cover's version (its upload time), for the image URL and caching.
+export async function coverVersion(db: D1Database, eventId: number): Promise<number | null> {
+  const row = await db.prepare('SELECT updated_at FROM event_covers WHERE event_id = ?1').bind(eventId).first<{ updated_at: number }>();
+  return row?.updated_at ?? null;
+}
+
+export async function getEventCover(db: D1Database, eventId: number): Promise<{ content_type: string; bytes: ArrayBuffer; updated_at: number } | null> {
+  const row = await db
+    .prepare('SELECT content_type, bytes, updated_at FROM event_covers WHERE event_id = ?1')
+    .bind(eventId)
+    .first<{ content_type: string; bytes: ArrayBuffer; updated_at: number }>();
+  return row ?? null;
+}
+
+export async function setEventCover(db: D1Database, eventId: number, contentType: string, bytes: ArrayBuffer, now: number): Promise<void> {
+  if (!(COVER_TYPES as readonly string[]).includes(contentType)) throw new RuleError('bad_input', 'JPEG, PNG or WebP only.');
+  if (bytes.byteLength === 0 || bytes.byteLength > COVER_MAX_BYTES) throw new RuleError('bad_input', 'The image is empty or over 1.5 MB.');
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  await db
+    .prepare(
+      `INSERT INTO event_covers (event_id, content_type, bytes, size, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
+       ON CONFLICT (event_id) DO UPDATE SET content_type = excluded.content_type, bytes = excluded.bytes, size = excluded.size, updated_at = excluded.updated_at`,
+    )
+    .bind(eventId, contentType, bytes, bytes.byteLength, now)
+    .run();
+}
+
+export async function deleteEventCover(db: D1Database, eventId: number): Promise<boolean> {
+  const result = await db.prepare('DELETE FROM event_covers WHERE event_id = ?1').bind(eventId).run();
+  return (result.meta.changes ?? 0) > 0;
 }
 
 // Every paid ticket on a linked account is a 'yes' signup; put back any

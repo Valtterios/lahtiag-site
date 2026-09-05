@@ -2703,3 +2703,79 @@ details.admin-panel[open] > summary {
   color: var(--muted);
   border: 1px dashed var(--line);
 }
+
+/* ---------- event page: header, a side column for tickets and signups, the body ---------- */
+.event-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 3rem;
+}
+.event-head {
+  max-width: none;
+}
+.event-cover {
+  display: block;
+  width: 100%;
+  max-width: 44rem;
+  aspect-ratio: 1200 / 630;
+  object-fit: cover;
+  clip-path: var(--cut);
+  margin: 0 0 1.2rem;
+}
+.event-side .tickets-box,
+.event-side .signup-bar,
+.event-side .signup-with-questions {
+  margin-top: 0;
+}
+.event-side .ticket-types {
+  max-width: none;
+}
+.event-side .ticket-type {
+  flex-direction: column;
+  align-items: stretch;
+}
+.event-side .ticket-why {
+  max-width: none;
+  text-align: left;
+}
+.event-side .basket-add {
+  justify-content: flex-start;
+}
+.event-side .basket-bar,
+.event-side .queue-card {
+  max-width: none;
+}
+.event-body {
+  min-width: 0;
+}
+.event-admin {
+  min-width: 0;
+}
+@media (min-width: 900px) {
+  .event-layout {
+    grid-template-columns: minmax(0, 1fr) 24rem;
+    grid-template-areas:
+      'head side'
+      'view side'
+      'body side'
+      'admin admin';
+    align-items: start;
+  }
+  .event-head { grid-area: head; }
+  .event-layout > .view-as { grid-area: view; }
+  .event-side {
+    grid-area: side;
+    position: sticky;
+    top: 1.5rem;
+  }
+  .event-body { grid-area: body; }
+  .event-admin { grid-area: admin; }
+}
+.cover-form {
+  align-items: center;
+}
+.cover-pick input[type='file'] {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.9rem;
+}

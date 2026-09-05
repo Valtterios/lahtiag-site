@@ -9,6 +9,7 @@ import {
   listSignups,
   listEventTeams,
   getBracket,
+  coverVersion,
   listTicketTypes,
   signupAccess,
   getTicketForHolder,
@@ -41,6 +42,7 @@ const csrf = ensureCsrf(Astro.cookies);
 
 const eventTeams = event?.team_size != null ? await listEventTeams(env.DB, event.id) : [];
 const hasBracket = event ? (await getBracket(env.DB, event.id)).length > 0 : false;
+const coverAt = event ? await coverVersion(env.DB, event.id) : null;
 
 // Tickets: an event with active ticket types sells tickets instead of
 // taking plain signups; a paid ticket is the signup. Membership gating
@@ -98,7 +100,7 @@ const signupsClosed = event?.signups_closed_at != null;
 const open = event ? event.cancelled_at === null && !signupsClosed : false;
 
 // Flashes from board actions open the (otherwise folded) board tools.
-const ADMIN_OPEN = new Set(['type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down']);
+const ADMIN_OPEN = new Set(['cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down']);
 const FLASH: Record<string, string> = {
   full: 'This event is full.',
   team_full: 'That team is already full.',
@@ -123,6 +125,8 @@ const FLASH: Record<string, string> = {
   cancelled_checkout: 'Payment cancelled. Nothing was charged. Continue below, or release the seat to pick another ticket.',
   answers: 'Please answer the required questions.',
   needs_ticket: 'This event needs a ticket first. Buy one above, then form or join a team.',
+  cover_missing: 'Pick an image file first.',
+  cover_bad: 'The cover must be a JPEG, PNG or WebP under 1.5 MB.',
   ticket_holder: 'That person holds a paid ticket, so they are going. Refund it in Stripe to remove them.',
 };
 const OK: Record<string, string> = {
@@ -133,12 +137,16 @@ const OK: Record<string, string> = {
   type_deleted: 'Ticket type removed (or retired, if tickets were sold on it).',
   question_saved: 'Questions saved.',
   answers_saved: 'Your details are saved.',
+  cover_saved: 'Cover image saved.',
+  cover_removed: 'Cover image removed.',
 };
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
 ---
 <Base
   title={event ? event.title : 'Event not found'}
   description={event ? `${event.title}, ${formatHelsinkiRange(event.starts_at, event.ends_at)}` : undefined}
+  image={event && coverAt !== null ? `${Astro.url.origin}/events/${event.id}/cover?v=${coverAt}` : undefined}
+  wide
 >
   {!event ? (
     <article class="prose">
@@ -147,7 +155,9 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
     </article>
   ) : (
     <>
-      <article class="prose">
+      <div class="event-layout">
+      <header class="event-head prose">
+        {coverAt !== null && <img class="event-cover" src={`/events/${event.id}/cover?v=${coverAt}`} alt="" width="1200" height="630" />}
         <p class="hero-eyebrow">
           {event.starts_at <= nowSeconds && event.ends_at !== null && event.ends_at > nowSeconds && (
             <span class="live-badge">Happening now</span>
@@ -159,9 +169,6 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
         {signupsClosed && event.cancelled_at === null && (
           <p class="flash">Signups are closed.</p>
         )}
-        {hasBracket && (
-          <p><a class="btn btn-primary" href={`/events/${event.id}/bracket`}>View the bracket</a></p>
-        )}
         {(event.members_only === 1 || event.member_slots !== null) && (
           <p class="event-gating">
             {event.members_only === 1 && <span class="status-badge status-member">Members only</span>}
@@ -171,10 +178,6 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
           </p>
         )}
         {event.organizers && <p class="event-meta">Organized by {event.organizers}</p>}
-        {event.link_url && (
-          <p><a class="btn btn-ghost" href={event.link_url} rel="noopener">Stream / info link</a></p>
-        )}
-        {event.description && <p>{event.description}</p>}
         <p class="event-meta">
           {isTeamEvent ? (
             <>
@@ -189,9 +192,9 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
             </>
           )}
         </p>
-      </article>
-
+      </header>
       <ViewAs mode={view.mode} path={`/events/${event.id}`} />
+      <aside class="event-side">
       <SessionBox session={session} csrf={csrf} />
       {flash && <p class="flash">{flash}</p>}
 
@@ -327,42 +330,6 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
         </form>
       )}
 
-      {!isTeamEvent && signups.length > 0 && (
-        <section class="prose">
-          <h2>Who's coming</h2>
-          {going.length > 0 && (
-            <div class="member-line"><strong>Going:</strong> {session?.isAdmin
-              ? going.map((s) => (
-                  <span class="member-chip">
-                    {s.username}
-                    {s.is_member === 1 && <span class="member-mark" title="In the member register">member</span>}
-                    <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
-                      <input type="hidden" name="csrf" value={csrf} />
-                      <input type="hidden" name="discord_id" value={s.discord_id} />
-                      <button class="chip-remove" type="submit" title="Remove signup">×</button>
-                    </form>
-                  </span>
-                ))
-              : going.map((s) => s.username).join(', ')}</div>
-          )}
-          {maybe.length > 0 && (
-            <div class="member-line"><strong>Maybe:</strong> {session?.isAdmin
-              ? maybe.map((s) => (
-                  <span class="member-chip">
-                    {s.username}
-                    {s.is_member === 1 && <span class="member-mark" title="In the member register">member</span>}
-                    <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
-                      <input type="hidden" name="csrf" value={csrf} />
-                      <input type="hidden" name="discord_id" value={s.discord_id} />
-                      <button class="chip-remove" type="submit" title="Remove signup">×</button>
-                    </form>
-                  </span>
-                ))
-              : maybe.map((s) => s.username).join(', ')}</div>
-          )}
-        </section>
-      )}
-
       {questions.length > 0 && session && open && (mine || hasTicket || (isTeamEvent && !ticketed)) && (
         <section class="self-panel" id="details">
           <h2 class="section-label">Your details for this event</h2>
@@ -397,6 +364,53 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
 
       {isTeamEvent && ticketed && session && open && !hasTicket && (
         <p class="flash">Teams are formed by ticket holders: get your ticket above first.</p>
+      )}
+
+      </aside>
+      <div class="event-body">
+        <div class="prose">
+          {hasBracket && (
+            <p><a class="btn btn-primary" href={`/events/${event.id}/bracket`}>View the bracket</a></p>
+          )}
+          {event.link_url && (
+            <p><a class="btn btn-ghost" href={event.link_url} rel="noopener">Stream / info link</a></p>
+          )}
+          {event.description && <p>{event.description}</p>}
+        </div>
+      {!isTeamEvent && signups.length > 0 && (
+        <section class="prose">
+          <h2>Who's coming</h2>
+          {going.length > 0 && (
+            <div class="member-line"><strong>Going:</strong> {session?.isAdmin
+              ? going.map((s) => (
+                  <span class="member-chip">
+                    {s.username}
+                    {s.is_member === 1 && <span class="member-mark" title="In the member register">member</span>}
+                    <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="discord_id" value={s.discord_id} />
+                      <button class="chip-remove" type="submit" title="Remove signup">×</button>
+                    </form>
+                  </span>
+                ))
+              : going.map((s) => s.username).join(', ')}</div>
+          )}
+          {maybe.length > 0 && (
+            <div class="member-line"><strong>Maybe:</strong> {session?.isAdmin
+              ? maybe.map((s) => (
+                  <span class="member-chip">
+                    {s.username}
+                    {s.is_member === 1 && <span class="member-mark" title="In the member register">member</span>}
+                    <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="discord_id" value={s.discord_id} />
+                      <button class="chip-remove" type="submit" title="Remove signup">×</button>
+                    </form>
+                  </span>
+                ))
+              : maybe.map((s) => s.username).join(', ')}</div>
+          )}
+        </section>
       )}
 
       {isTeamEvent && (
@@ -498,10 +512,19 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
         </section>
       )}
 
+      </div>
+      <div class="event-admin">
       {session?.isAdmin && (
         <details class="admin-panel" open={ADMIN_OPEN.has(Astro.url.searchParams.get('ok') ?? '') || ADMIN_OPEN.has(Astro.url.searchParams.get('err') ?? '')}>
           <summary>Board tools · sales, roster, questions, settings</summary>
           <h2>Admin</h2>
+          <form method="post" action={`/events/${event.id}/cover`} enctype="multipart/form-data" class="signup-bar cover-form">
+            <input type="hidden" name="csrf" value={csrf} />
+            <label class="cover-pick">Cover image <input type="file" name="cover" accept="image/jpeg,image/png,image/webp" /></label>
+            <button class="btn btn-ghost" type="submit">{coverAt !== null ? 'Replace cover' : 'Upload cover'}</button>
+            {coverAt !== null && <button class="btn btn-ghost" name="action" value="remove" type="submit" formnovalidate data-confirm="Remove the cover image?">Remove</button>}
+            <span class="queue-meta">JPEG, PNG or WebP, up to 1.5 MB; about 1200 × 630 looks best.</span>
+          </form>
           {event.cancelled_at !== null && (
             <form method="post" action={`/events/${event.id}/cancel`} class="signup-bar">
               <input type="hidden" name="csrf" value={csrf} />
@@ -719,6 +742,8 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
           </details>
         </details>
       )}
+      </div>
+      </div>
     </>
   )}
 </Base>

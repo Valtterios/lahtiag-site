@@ -15,6 +15,11 @@ import {
   adminRemoveSignup,
   repairTicketSignups,
   signupAccess,
+  setEventCover,
+  getEventCover,
+  coverVersion,
+  deleteEventCover,
+  deleteEvent,
 } from '../src/lib/db';
 import {
   createProduct,
@@ -49,7 +54,7 @@ const NOW = 1_760_000_000;
 const db = () => env.DB;
 
 async function wipe(): Promise<void> {
-  for (const table of ['purchase_items', 'purchases', 'products', 'signup_answers', 'event_questions', 'door_payments', 'tickets', 'ticket_types', 'signups', 'event_teams', 'events', 'register', 'members']) {
+  for (const table of ['event_covers', 'purchase_items', 'purchases', 'products', 'signup_answers', 'event_questions', 'door_payments', 'tickets', 'ticket_types', 'signups', 'event_teams', 'events', 'register', 'members']) {
     await db().prepare(`DELETE FROM ${table}`).run();
   }
 }
@@ -274,5 +279,28 @@ describe('a purchase of tickets', () => {
     // legacy: a ticket outside any purchase still lists
     await createTicket(db(), { event_id: id, ticket_type_id: typeId, discord_id: 'g', holder_name: 'G', amount_cents: 1000, status: 'paid', source: 'online' }, NOW);
     expect((await listMyTickets(db(), 'g')).map((t) => t.purchase_id)).toEqual([null]);
+  });
+});
+
+describe('event covers', () => {
+  it('stores one image per event, replaces it, and goes with the event', async () => {
+    const id = await event();
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]).buffer;
+    await expect(setEventCover(db(), id, 'image/gif', png, NOW)).rejects.toMatchObject({ code: 'bad_input' });
+    await expect(setEventCover(db(), id, 'image/png', new ArrayBuffer(0), NOW)).rejects.toMatchObject({ code: 'bad_input' });
+    await expect(setEventCover(db(), 999, 'image/png', png, NOW)).rejects.toMatchObject({ code: 'missing' });
+    expect(await coverVersion(db(), id)).toBeNull();
+    await setEventCover(db(), id, 'image/png', png, NOW);
+    expect(await coverVersion(db(), id)).toBe(NOW);
+    const stored = (await getEventCover(db(), id))!;
+    expect(stored.content_type).toBe('image/png');
+    expect(new Uint8Array(stored.bytes)).toEqual(new Uint8Array(png));
+    await setEventCover(db(), id, 'image/webp', png, NOW + 5);
+    expect(await coverVersion(db(), id)).toBe(NOW + 5);
+    expect(await deleteEventCover(db(), id)).toBe(true);
+    expect(await deleteEventCover(db(), id)).toBe(false);
+    await setEventCover(db(), id, 'image/jpeg', png, NOW + 9);
+    await deleteEvent(db(), id);
+    expect(await getEventCover(db(), id)).toBeNull();
   });
 });

@@ -10,9 +10,10 @@ interface Props {
   // Register pages: a table with eight columns wants the whole window,
   // not the reading measure.
   wide?: boolean;
+  image?: string; // absolute URL for og:image; the brand card otherwise
 }
 
-const { title, description, wide = false } = Astro.props;
+const { title, description, wide = false, image } = Astro.props;
 
 // The nav is built from the collection at build time, so a new Markdown
 // file with a navOrder appears in the header without touching this file.
@@ -31,7 +32,7 @@ const pathname = Astro.url.pathname;
     {description && <meta property="og:description" content={description} />}
     <meta property="og:site_name" content="LahtiAG" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content={new URL('/brand/og.png', Astro.site)} />
+    <meta property="og:image" content={image ?? new URL('/brand/og.png', Astro.site)} />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
     <meta name="theme-color" content="#4169e1" />
