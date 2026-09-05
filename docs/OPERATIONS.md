@@ -142,8 +142,19 @@ Workspace accounts on the list; the register is only as safe as they are.
   honorary members invited by the general meeting, supporting members,
   applications on paper. The entry records who added it.
 - **Hints on applications**: a red note when someone says LUT/LAB but
-  applies from a non-student address, a yellow one when a similar name or
-  email is already in the register. Hints only; the board decides.
+  applies from a non-student address, a yellow one when a similar name,
+  email or Discord name is already in the register. Each hinted match has
+  **Merge into this entry**: keeps the existing entry, carries over what
+  the application added (latest domicile, school, union, handles, games,
+  message, the actives request, and the Discord link if they applied
+  signed in), and deletes the duplicate application.
+- **Members' own page** (/membership, footer link "My membership"): a
+  linked member sees their status, the actives request, and edits every
+  detail they gave on the application themselves (name, municipality,
+  email, school, union, games, message). Class, status and the Discord
+  link stay with the board. `/membership` in Discord answers the same
+  status privately; after changing commands run
+  `scripts/register-commands.mjs` once (see Slash-command definitions).
 - **Housekeeping** appears on the register when there are applications
   older than 60 days nobody decided, or former members two years on. It
   suggests; nothing is deleted on its own.

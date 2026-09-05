@@ -24,8 +24,11 @@ import {
   setSignupsClosed,
   upsertMember,
   RuleError,
+  getRegisterByDiscord,
+  type RegisterRow,
 } from '../../lib/db';
-import { formatHelsinki, helsinkiToUnix } from '../../lib/time';
+import { formatHelsinki, formatHelsinkiDate, helsinkiToUnix } from '../../lib/time';
+import { MEMBER_TYPE_LABELS } from '../../lib/register';
 import { DISCORD_GUILD_ID } from '../../lib/config';
 
 // The Discord bot: an HTTP Interactions endpoint inside the same Worker
@@ -56,6 +59,23 @@ interface Interaction {
     resolved?: { users?: Record<string, { id: string; username: string; global_name: string | null; avatar: string | null }> };
   };
   member?: { roles?: string[]; nick?: string | null; user?: { id: string; username: string; global_name: string | null; avatar: string | null } };
+}
+
+function membershipStatus(entry: RegisterRow | null, origin: string): string {
+  if (!entry) {
+    return `This Discord account isn't linked to a LahtiAG membership. Members from before link it, and new people apply, at ${origin}/join`;
+  }
+  if (entry.status === 'pending') {
+    return `Your membership application from ${formatHelsinkiDate(entry.applied_at)} is waiting for the board.`;
+  }
+  if (entry.status === 'former') return `You're listed as a former member. Email board@lahtiag.fi to rejoin.`;
+  const since = formatHelsinkiDate(entry.decided_at ?? entry.applied_at);
+  const active = entry.is_active
+    ? " You're an active."
+    : entry.wants_active
+      ? ' Your actives request is waiting for the board.'
+      : '';
+  return `${MEMBER_TYPE_LABELS[entry.member_type]} of LahtiAG since ${since}.${active} Manage it at ${origin}/membership`;
 }
 
 function json(payload: unknown): Response {
@@ -108,6 +128,14 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   }
 
   const isAdmin = hasAdminRole(interaction.member?.roles ?? [], env.ADMIN_ROLE_ID);
+
+  // /membership: anyone in the server asks about themselves; one D1 read,
+  // answered directly and only to them.
+  if (interaction.type === 2 && interaction.data?.name === 'membership') {
+    const userId = interaction.member?.user?.id;
+    const entry = userId ? await getRegisterByDiscord(env.DB, userId) : null;
+    return json({ type: 4, data: { content: membershipStatus(entry, url.origin), flags: 64 } });
+  }
 
   // /tournament renders the interactive control panel: no database work, so
   // it responds directly instead of deferring.

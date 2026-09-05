@@ -88,6 +88,10 @@ const commands = [
     description: 'Publish an announcement to the site',
     options: [{ type: STRING, name: 'text', description: 'Announcement text (Markdown)', required: true }],
   },
+  {
+    name: 'membership',
+    description: 'Your LahtiAG membership status (only you see the answer)',
+  },
 ];
 
 const tokenResponse = await fetch('https://discord.com/api/v10/oauth2/token', {

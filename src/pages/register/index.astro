@@ -201,12 +201,23 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                   {r.message && <p class="queue-message">“{r.message}”</p>}
                   {hint?.warning && <p class="warn-tag">{hint.warning}</p>}
                   {hint && hint.similar.length > 0 && (
-                    <p class="warn-tag warn-soft">
-                      Might already be in the register:{' '}
-                      {hint.similar.map((s, i) => (
-                        <>{i > 0 && ', '}<a href={`/register/${s.id}`}>{s.full_name}</a> ({s.status})</>
-                      ))}
-                    </p>
+                    <div class="warn-tag warn-soft similar-box">
+                      <p>Might already be in the register:</p>
+                      <ul class="similar-list">
+                        {hint.similar.map((s) => (
+                          <li>
+                            <a href={`/register/${s.id}`}>{s.full_name}</a> ({s.status}{s.discord_id ? ', Discord linked' : ''})
+                            <form method="post" action={`/register/${r.id}/action`} class="inline-form">
+                              <input type="hidden" name="csrf" value={csrf} />
+                              <input type="hidden" name="action" value="merge" />
+                              <input type="hidden" name="target" value={s.id} />
+                              <button class="btn btn-ghost btn-sm" type="submit">Merge into this entry</button>
+                            </form>
+                          </li>
+                        ))}
+                      </ul>
+                      <p class="queue-meta">Merging keeps the existing entry, carries over what this application added, and deletes the application.</p>
+                    </div>
                   )}
                 </div>
                 <form method="post" action={`/register/${r.id}/action`} class="queue-actions">

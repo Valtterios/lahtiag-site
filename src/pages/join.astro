@@ -7,12 +7,10 @@ import {
   getRegisterByDiscord,
   getPendingLinkByDiscord,
   requestDiscordLink,
-  setOwnActive,
   RuleError,
 } from '../lib/db';
 import {
   parseApplication,
-  normalizeHandle,
   GAMES,
   STUDENT_STATUSES,
   STUDENT_STATUS_LABELS,
@@ -21,28 +19,21 @@ import {
   LIMITS,
   type FieldError,
 } from '../lib/register';
-import {
-  postWebhook,
-  applicationNotice,
-  linkRequestNotice,
-  activeNotice,
-  NO_MENTIONS,
-} from '../lib/discord';
-import { applyRoles, loadRoleConfig } from '../lib/roles';
-import { formatHelsinkiDate } from '../lib/time';
+import { postWebhook, applicationNotice, linkRequestNotice, NO_MENTIONS } from '../lib/discord';
 
-// The membership page, replacing the Google Form. Two ways in, shown as
-// two cards: new people apply; existing members sign in with Discord to
-// link their account (the board confirms) and then manage what they may
-// manage themselves (the actives flag, their Telegram handle). The form's
-// `intent` tells the three POSTs apart: apply | claim | self. The page
-// handles its own POST so a rejected application re-renders with what was
-// typed; success redirects (post/redirect/get).
+// The join page, replacing the Google Form. Two ways in, shown as two
+// cards: new people apply; existing members sign in with Discord to link
+// their account (the board confirms). Once linked, their own page is
+// /membership. The form's `intent` tells the two POSTs apart: apply |
+// claim. The page handles its own POST so a rejected application
+// re-renders with what was typed; success redirects (post/redirect/get).
 
 const session = await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
 const existing = session ? await getRegisterByDiscord(env.DB, session.discordId) : null;
-const pendingLink = session && !existing ? await getPendingLinkByDiscord(env.DB, session.discordId) : null;
+// A linked member's own page is /membership; the join page is for joining.
+if (existing) return Astro.redirect('/membership', 303);
+const pendingLink = session ? await getPendingLinkByDiscord(env.DB, session.discordId) : null;
 
 let errors: FieldError[] = [];
 let problem: 'csrf' | null = null;
@@ -65,27 +56,7 @@ if (Astro.request.method === 'POST') {
 
   if (!(await checkCsrf(Astro.request, form))) {
     problem = 'csrf';
-  } else if (intent === 'self' && session && existing) {
-    const wants = form.get('wants_active') === 'on';
-    const telegramRaw = String(form.get('telegram') ?? '');
-    if (telegramRaw.length > LIMITS.telegram) return Astro.redirect('/join?err=telegram', 303);
-    const telegram = normalizeHandle(telegramRaw);
-    const updated = await setOwnActive(env.DB, session.discordId, wants, telegram, now);
-    if (updated && wants && !existing.wants_active) {
-      notify(
-        activeNotice({
-          name: updated.full_name,
-          telegram: updated.telegram,
-          url: `${Astro.url.origin}/register/${updated.id}`,
-        }),
-      );
-    }
-    // Leaving the actives takes the Discord role away at once.
-    if (updated && existing.is_active && !updated.is_active) {
-      await applyRoles(await loadRoleConfig(env, env.DB), updated);
-    }
-    return Astro.redirect('/join?ok=saved', 303);
-  } else if (intent === 'claim' && session && !existing) {
+  } else if (intent === 'claim' && session) {
     const email = String(form.get('claim_email') ?? '')
       .trim()
       .toLowerCase();
@@ -100,7 +71,7 @@ if (Astro.request.method === 'POST') {
       notify(linkRequestNotice({ handle, url: `${Astro.url.origin}/register` }));
     }
     return Astro.redirect('/join?ok=claim', 303);
-  } else if (intent === 'apply' && !existing) {
+  } else if (intent === 'apply') {
     for (const name of [
       'full_name',
       'domicile',
@@ -159,11 +130,9 @@ const ok = Astro.url.searchParams.get('ok');
 const err = Astro.url.searchParams.get('err');
 const submitted = ok === '1';
 const NOTES: Record<string, string> = {
-  saved: 'Saved.',
   claim:
     'Thanks. If that email matches an entry, the board will confirm the link and this page will then show your membership. Nothing else to do.',
   claim_email: "That email address doesn't look right.",
-  telegram: 'That Telegram handle is too long.',
 };
 const note = NOTES[ok ?? err ?? ''] ?? null;
 const bad = (field: FieldError) => (errors.includes(field) ? 'field-error' : undefined);
@@ -181,12 +150,12 @@ const FIELD_MESSAGES: Record<FieldError, string> = {
 };
 ---
 <Base
-  title={existing ? 'Your membership' : 'Become a member'}
+  title="Become a member"
   description="Join Lahti Association of Gaming LAG ry. Membership is free and open to higher education students in Lahti."
 >
   <article class="prose">
-    <h1>{existing ? 'Your membership' : 'Become a member'}</h1>
-    {!existing && !submitted && (
+    <h1>Become a member</h1>
+    {!submitted && (
       <p>
         Membership is <strong>free</strong>. Higher education students in Lahti are eligible to join
         Lahti Association of Gaming LAG ry; alumni and friends of the association are welcome too.
@@ -209,58 +178,7 @@ const FIELD_MESSAGES: Record<FieldError, string> = {
     </>
   )}
 
-  {!submitted && existing && (
-    <>
-      <section class="member-card">
-        <p class="flash">
-          {existing.status === 'member' && (
-            <>You're a member of LahtiAG since {formatHelsinkiDate(existing.decided_at ?? existing.applied_at)}. Welcome!</>
-          )}
-          {existing.status === 'pending' && (
-            <>Your application from {formatHelsinkiDate(existing.applied_at)} is waiting for the board's decision.</>
-          )}
-          {existing.status === 'former' && (
-            <>You're listed as a former member. Email the board if you'd like to rejoin.</>
-          )}
-        </p>
-        <p>
-          Registered as <strong>{existing.full_name}</strong> ({existing.email}), linked to your
-          Discord account <strong>{session!.username}</strong>.
-        </p>
-        <p class="queue-meta">
-          To change other details or to resign, email <a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a>.
-        </p>
-      </section>
-
-      <section class="self-panel">
-        <h2 class="section-label">Actives</h2>
-        <p class="queue-intro">
-          Actives hear about event ideas, planning and meetings first, in the actives channel on
-          Discord. It commits you to nothing. The board approves actives; once approved you get the
-          Actives role. Untick to leave.
-        </p>
-        {existing.is_active && <p class="match-tag">You're an active.</p>}
-        {!existing.is_active && existing.wants_active && (
-          <p class="warn-tag warn-soft">Asked. Waiting for the board to approve.</p>
-        )}
-        <form method="post" action="/join" class="self-row">
-          <input type="hidden" name="csrf" value={csrf} />
-          <input type="hidden" name="intent" value="self" />
-          <label class="check">
-            <input type="checkbox" name="wants_active" checked={existing.wants_active} />
-            <span><strong>I want to be an active</strong></span>
-          </label>
-          <label class="self-field">
-            Telegram
-            <input name="telegram" maxlength={LIMITS.telegram} placeholder="@handle" value={existing.telegram ?? ''} />
-          </label>
-          <button class="btn btn-primary" type="submit">Save</button>
-        </form>
-      </section>
-    </>
-  )}
-
-  {!submitted && !existing && (
+  {!submitted && (
     <>
       <div class="paths">
         <section class="path-card path-new">

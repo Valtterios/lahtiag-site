@@ -22,6 +22,8 @@ import {
   refreshLinkedDiscordName,
   listActiveRequests,
   setActive,
+  mergeApplicationInto,
+  updateOwnEntry,
   createBoardEntry,
   findSimilarEntries,
   registerStats,
@@ -521,6 +523,62 @@ describe('actives: request, decision, leaving', () => {
     await setActive(db(), a, true, 'chair', NOW);
     await setRegisterStatus(db(), a, 'former', NOW + 1);
     expect(await getRegisterEntry(db(), a)).toMatchObject({ status: 'former', is_active: false, wants_active: false });
+  });
+});
+
+describe('merging a duplicate application', () => {
+  it('keeps the existing entry, carries over the new details and link, deletes the application', async () => {
+    const old = await applyForMembership(db(), application({ email: 'old@example.com', domicile: 'Lahti', games: 'Osu' }), null, NOW);
+    await decideApplication(db(), old, 'approve', 'board', NOW);
+    const dup = await applyForMembership(
+      db(),
+      application({ email: 'new@example.com', domicile: 'Hollola', student_status: 'alumni', telegram: 'tg', wants_active: true, message: 'hi' }),
+      '77',
+      NOW + 5,
+    );
+    const merged = await mergeApplicationInto(db(), dup, old, NOW + 9);
+    expect(merged).toMatchObject({
+      id: old,
+      status: 'member',
+      email: 'old@example.com',
+      domicile: 'Hollola',
+      student_status: 'alumni',
+      telegram: 'tg',
+      wants_active: true,
+      message: 'hi',
+      discord_id: '77',
+      updated_at: NOW + 9,
+    });
+    expect(await getRegisterEntry(db(), dup)).toBeNull();
+    expect((await getRegisterByDiscord(db(), '77'))?.id).toBe(old);
+  });
+
+  it('refuses when both sides are linked to different accounts, or the source is not pending', async () => {
+    const a = await applyForMembership(db(), application({ email: 'a@example.com' }), '1', NOW);
+    await decideApplication(db(), a, 'approve', 'board', NOW);
+    const b = await applyForMembership(db(), application({ email: 'b@example.com' }), '2', NOW);
+    await expect(mergeApplicationInto(db(), b, a, NOW)).rejects.toMatchObject({ code: 'duplicate' });
+    await expect(mergeApplicationInto(db(), a, b, NOW)).rejects.toMatchObject({ code: 'missing' });
+    await expect(mergeApplicationInto(db(), b, b, NOW)).rejects.toMatchObject({ code: 'missing' });
+  });
+
+  it('hints on a matching Discord name too', async () => {
+    const a = await applyForMembership(db(), application({ email: 'a@example.com', full_name: 'Aa Bb', discord_name: 'gamer_tag' }), null, NOW);
+    const similar = await findSimilarEntries(db(), { id: 999, full_name: 'Zz Yy', email: 'zz@yy.fi', discord_name: '@Gamer_Tag' });
+    expect(similar.map((r) => r.id)).toEqual([a]);
+  });
+});
+
+describe('members editing their own details', () => {
+  it('updates the applicant fields with the same uniqueness rule, never the link or class', async () => {
+    const id = await applyForMembership(db(), application({ email: 'me@example.com' }), '77', NOW);
+    await decideApplication(db(), id, 'approve', 'board', NOW);
+    await applyForMembership(db(), application({ email: 'taken@example.com' }), null, NOW);
+    expect(await updateOwnEntry(db(), '99', application(), NOW)).toBeNull();
+    await expect(updateOwnEntry(db(), '77', application({ email: 'TAKEN@example.com' }), NOW)).rejects.toMatchObject({ code: 'duplicate' });
+    const updated = await updateOwnEntry(db(), '77', application({ email: 'me2@example.com', domicile: 'Orimattila', full_name: 'Aino V.' }), NOW + 3);
+    expect(updated).toMatchObject({ id, email: 'me2@example.com', domicile: 'Orimattila', full_name: 'Aino V.', discord_id: '77', member_type: 'full', status: 'member', updated_at: NOW + 3 });
+    expect((await listRegister(db(), { q: 'me2@' })).map((r) => r.id)).toEqual([id]);
   });
 });
 

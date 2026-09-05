@@ -10,6 +10,7 @@ import {
   resolveLinkRequest,
   setActive,
   getRegisterEntry,
+  mergeApplicationInto,
   RuleError,
 } from '../../../lib/db';
 import { parseApplication, LIMITS, MEMBER_TYPES, type MemberType } from '../../../lib/register';
@@ -17,7 +18,8 @@ import { applyRoles, loadRoleConfig, type RoleOutcome } from '../../../lib/roles
 
 // Every board write on one register entry, dispatched on `action`:
 // approve | reject | update | former | member | erase | link_confirm |
-// link_dismiss | active_approve | active_revoke. After a change that
+// link_dismiss | active_approve | active_revoke | merge (into `target`).
+// After a change that
 // affects Discord roles the entry's roles are brought in line; a failure
 // there is reported, never blocks the register change. Google step-up
 // (board.ts) and CSRF checked, like every register route.
@@ -66,6 +68,12 @@ export const POST: APIRoute = async ({ request, redirect, params }) => {
       case 'member':
         await setRegisterStatus(env.DB, id, action, now);
         return done(`${back}?ok=${action}`, await sync());
+      case 'merge': {
+        const target = Number(form.get('target'));
+        if (!Number.isInteger(target)) return redirect(`${back}?err=bad_input`, 303);
+        const merged = await mergeApplicationInto(env.DB, id, target, now);
+        return done(`/register/${target}?ok=merged`, await applyRoles(roleCfg, merged));
+      }
       case 'active_approve':
       case 'active_revoke': {
         const entry = await setActive(env.DB, id, action === 'active_approve', board.email, now);

@@ -129,7 +129,19 @@ explicit allowlist, not the domain.
   Discord Board role = member check (name + status only). Linked from the
   Events admin panel and the signed-in strip.
 
-## Phase 2 (next): members manage their own entry
+## Phase 2, fourth slice (shipped 2026-09-05): merge duplicates, self-service details, /membership
+
+- `mergeApplicationInto`: a pending application merged into an existing
+  entry (details carried over, Discord link taken, duplicate deleted);
+  buttons on every similarity hint. Similarity now includes Discord name.
+- `/membership`: the member's own page (status, actives request, editable
+  details via `updateOwnEntry`; same validation and email uniqueness as
+  the application). /join redirects linked members there. Footer link
+  "My membership", SessionBox link.
+- `/membership` slash command: private status answer; registration via
+  scripts/register-commands.mjs (client credentials, user-run).
+
+## Phase 2 remaining (nothing committed to yet)
 
 Agreed with the user 2026-09-05, not built yet. Members should be able to
 keep their own details current without emailing the board; resigning stays

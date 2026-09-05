@@ -41,6 +41,7 @@ const otherGames = gamesList.filter((g) => !(GAMES as readonly string[]).include
 const FLASH: Record<string, string> = {
   saved: 'Entry saved.',
   created: 'Entry added.',
+  merged: 'Application merged into this entry.',
   linked: 'Discord account linked.',
   link_dismissed: 'Link request dismissed.',
   former: 'Marked as a former member.',
@@ -100,12 +101,23 @@ const SOURCE: Record<string, string> = {
       {flash && <p class="flash">{flash}</p>}
       {warning && <p class="warn-tag">{warning}</p>}
       {similar.length > 0 && (
-        <p class="warn-tag warn-soft">
-          Might already be in the register:{' '}
-          {similar.map((s, i) => (
-            <>{i > 0 && ', '}<a href={`/register/${s.id}`}>{s.full_name}</a> ({s.status})</>
-          ))}
-        </p>
+        <div class="warn-tag warn-soft similar-box">
+          <p>Might already be in the register:</p>
+          <ul class="similar-list">
+            {similar.map((s) => (
+              <li>
+                <a href={`/register/${s.id}`}>{s.full_name}</a> ({s.status}{s.discord_id ? ', Discord linked' : ''})
+                <form method="post" action={`/register/${entry.id}/action`} class="inline-form">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="action" value="merge" />
+                  <input type="hidden" name="target" value={s.id} />
+                  <button class="btn btn-ghost btn-sm" type="submit">Merge into this entry</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+          <p class="queue-meta">Merging keeps the existing entry, carries over what this application added, and deletes this application.</p>
+        </div>
       )}
 
       {entry.link_discord_id !== null && (

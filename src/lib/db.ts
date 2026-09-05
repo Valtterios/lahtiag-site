@@ -1307,15 +1307,17 @@ export async function createBoardEntry(
 // rule; the board decides.
 export async function findSimilarEntries(
   db: D1Database,
-  entry: { id: number; full_name: string; email: string },
+  entry: { id: number; full_name: string; email: string; discord_name?: string | null },
 ): Promise<RegisterRow[]> {
   const escape = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
   const nameTokens = searchKey([entry.full_name]).split(' ').filter((t) => t.length >= 3);
   const surname = nameTokens.length > 1 ? nameTokens[nameTokens.length - 1] : null;
   const local = searchKey([entry.email.split('@')[0] ?? '']);
+  const handle = searchKey([entry.discord_name ?? '']).replace(/^@/, '');
   const patterns: string[] = [];
   if (surname) patterns.push(`%${escape(surname)}%`);
   if (local.length >= 4) patterns.push(`%${escape(local)}%`);
+  if (handle.length >= 3) patterns.push(`%${escape(handle)}%`);
   if (patterns.length === 0) return [];
   const clauses = patterns.map((_, i) => `search_key LIKE ?${i + 2} ESCAPE '\\'`).join(' OR ');
   const { results } = await db
@@ -1323,6 +1325,107 @@ export async function findSimilarEntries(
     .bind(entry.id, ...patterns)
     .all<RegisterDbRow>();
   return results.map(fromDb);
+}
+
+// A pending application that is really an existing member applying again:
+// keep the existing entry, carry over what the application added (their
+// latest domicile, school, union, handles, games, message, the actives
+// request, and the Discord link if they applied signed in), delete the
+// duplicate. Name, email, class, status and dates stay as they were.
+export async function mergeApplicationInto(
+  db: D1Database,
+  pendingId: number,
+  targetId: number,
+  now: number,
+): Promise<RegisterRow> {
+  const pending = await getRegisterEntry(db, pendingId);
+  const target = await getRegisterEntry(db, targetId);
+  if (!pending || pending.status !== 'pending' || !target || target.id === pending.id) {
+    throw new RuleError('missing', 'Merging needs a pending application and a different existing entry.');
+  }
+  if (pending.discord_id && target.discord_id && target.discord_id !== pending.discord_id) {
+    throw new RuleError('duplicate', 'Both entries are linked to different Discord accounts.');
+  }
+  const discordId = target.discord_id ?? pending.discord_id;
+  const discordName = pending.discord_id ? pending.discord_name : (target.discord_name ?? pending.discord_name);
+  const telegram = pending.telegram ?? target.telegram;
+  const games = pending.games ?? target.games;
+  const message = pending.message ?? target.message;
+  const wantsActive = target.wants_active || pending.wants_active;
+  // The duplicate goes first: its Discord id must be free before the
+  // target can take it (unique index).
+  await db.prepare('DELETE FROM register WHERE id = ?1').bind(pendingId).run();
+  await db
+    .prepare(
+      `UPDATE register SET domicile = ?2, student_status = ?3, union_member = ?4, telegram = ?5,
+         discord_name = ?6, discord_id = ?7, games = ?8, wants_active = ?9, message = ?10,
+         link_discord_id = CASE WHEN link_discord_id = ?7 THEN NULL ELSE link_discord_id END,
+         link_discord_name = CASE WHEN link_discord_id = ?7 THEN NULL ELSE link_discord_name END,
+         link_requested_at = CASE WHEN link_discord_id = ?7 THEN NULL ELSE link_requested_at END,
+         updated_at = ?11, search_key = ?12
+       WHERE id = ?1`,
+    )
+    .bind(
+      targetId,
+      pending.domicile,
+      pending.student_status,
+      pending.union_member,
+      telegram,
+      discordName,
+      discordId,
+      games,
+      wantsActive ? 1 : 0,
+      message,
+      now,
+      searchKey([target.full_name, target.email, discordName, telegram]),
+    )
+    .run();
+  return (await getRegisterEntry(db, targetId))!;
+}
+
+// A linked member editing their own details on /membership: everything
+// they supplied on the application, with the same validation and the same
+// email uniqueness; never status, class, or the Discord link.
+export async function updateOwnEntry(
+  db: D1Database,
+  discordId: string,
+  input: ApplicationInput,
+  now: number,
+): Promise<RegisterRow | null> {
+  const entry = await getRegisterByDiscord(db, discordId);
+  if (!entry) return null;
+  const clash = await db
+    .prepare('SELECT id FROM register WHERE id != ?1 AND email = ?2 COLLATE NOCASE LIMIT 1')
+    .bind(entry.id, input.email)
+    .first();
+  if (clash) throw new RuleError('duplicate', 'Another entry already has that email.');
+  const isActive = input.wants_active && entry.is_active;
+  await db
+    .prepare(
+      `UPDATE register SET full_name = ?2, domicile = ?3, email = ?4, student_status = ?5,
+         union_member = ?6, telegram = ?7, games = ?8, wants_active = ?9, is_active = ?10,
+         active_since = CASE WHEN ?10 = 1 THEN active_since ELSE NULL END,
+         active_by = CASE WHEN ?10 = 1 THEN active_by ELSE NULL END,
+         message = ?11, updated_at = ?12, search_key = ?13
+       WHERE id = ?1`,
+    )
+    .bind(
+      entry.id,
+      input.full_name,
+      input.domicile,
+      input.email,
+      input.student_status,
+      input.union_member,
+      input.telegram,
+      input.games,
+      input.wants_active ? 1 : 0,
+      isActive ? 1 : 0,
+      input.message,
+      now,
+      searchKey([input.full_name, input.email, entry.discord_name, input.telegram]),
+    )
+    .run();
+  return (await getRegisterEntry(db, entry.id))!;
 }
 
 export interface RegisterStats {

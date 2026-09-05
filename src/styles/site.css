@@ -2161,3 +2161,22 @@ html.display-mode,
   color: var(--ink);
 }
 
+.similar-box p {
+  margin: 0 0 0.3rem;
+}
+
+.similar-list {
+  list-style: none;
+  margin: 0 0 0.4rem;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.similar-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
