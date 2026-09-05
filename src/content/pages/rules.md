@@ -17,4 +17,4 @@ contribute.
 ## Privacy
 
 How we handle member data is described in the
-[privacy policy](https://drive.google.com/file/d/1fiQObAwsNpSMynzs05ZCtp_L0VSlPt4f/view).
+[privacy policy](/privacy-policy.pdf).

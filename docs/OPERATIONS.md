@@ -208,6 +208,16 @@ the responses sheet as CSV, `node scripts/import-register.mjs file.csv
 with `npx wrangler d1 execute lahtiag --remote --file=…`. Both files are
 gitignored (`*.csv`, `*.import.sql`); shred them afterwards.
 
+## The privacy policy
+
+The association's general privacy policy is served by the site as
+`/privacy-policy.pdf` (file `public/privacy-policy.pdf`), linked from the
+Privacy and Rules pages. Its source text is
+`docs/privacy-policy-<date>.md`. To change it: edit the Markdown, regenerate
+the PDF (the maintainer's session notes describe the brand-styled render:
+pandoc to HTML, then headless Chromium `--print-to-pdf`), replace the file
+in `public/`, push. Keep the copy in the association's Drive in step.
+
 ## Editing the site's pages
 
 Add or edit Markdown in `src/content/pages/`, push to `main`, done. A page

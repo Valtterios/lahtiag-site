@@ -5,9 +5,9 @@ description: What lahtiag.fi stores about you, and how to have it removed.
 
 This page describes what **this website** (lahtiag.fi) stores when you use
 it. It supplements the association's general
-[privacy policy](https://drive.google.com/file/d/1fiQObAwsNpSMynzs05ZCtp_L0VSlPt4f/view),
+[privacy policy](/privacy-policy.pdf),
 which covers membership, surveys, and everything else Lahti Association of
-Gaming LAG ry does.
+Gaming LAG ry does (PDF, updated 5 September 2026).
 
 ## What this site stores
 
@@ -79,5 +79,5 @@ everything, contact the board at
 [board@lahtiag.fi](mailto:board@lahtiag.fi) and it will be deleted. Your
 other data protection rights (access, rectification, and the rest) are
 listed in the
-[general privacy policy](https://drive.google.com/file/d/1fiQObAwsNpSMynzs05ZCtp_L0VSlPt4f/view).
+[general privacy policy](/privacy-policy.pdf).
 Leaving the LahtiAG Discord server ends your ability to sign in by itself.
