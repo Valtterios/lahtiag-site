@@ -199,6 +199,16 @@ charged.
    first). Turn **Klarna** off unless you want instalments offered on
    tickets. Cards, Apple Pay and Link are on already.
 
+   Receipts: open **Settings → Business → Customer emails**
+   (`https://dashboard.stripe.com/settings/emails`) and under *Payments*
+   turn on **Successful payments** and **Refunds**. Stripe then emails a
+   receipt to the address typed on its payment page; the receipt line
+   reads "<event>: <ticket type> · <name on the ticket>". The terms of
+   sale promise this receipt. Set the logo and colours under **Settings →
+   Branding**. Sandboxes send no customer emails except to your own
+   team-member address, so a test purchase with your own email is the way
+   to see one.
+
 5. Test: create an event on the site with a ticket type priced 1.00 €,
    buy it signed in, and on Stripe's page use card `4242 4242 4242 4242`,
    any future expiry, any CVC. You should land on your ticket with the
@@ -206,7 +216,8 @@ charged.
    webhook delivery under the endpoint. Then refund it from the Payments
    page: the ticket turns "Refunded" on the site within seconds.
 
-6. Going live: repeat steps 1, 2 and 4 in the **live** account
+6. Going live: repeat steps 1, 2 and 4 (payment methods, receipts,
+   branding) in the **live** account
    (`https://dashboard.stripe.com/apikeys`, `/webhooks`,
    `/settings/payment_methods`) and run step 3 again with the live values.
    Payouts land in the Holvi account; the treasurer books Stripe's monthly

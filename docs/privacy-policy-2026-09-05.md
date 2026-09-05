@@ -40,18 +40,21 @@ From your application and the board's decisions we also record: your class of me
 
 **Access to the register.** For the board members allowed to open the register we store the Google Workspace address used to sign in, who granted it and when.
 
-We do **not** collect phone numbers, street addresses, dates of birth or payment details on our own forms. Tickets bought through Kide.app are handled by Kide under its own privacy policy.
+**Tickets and payments.** When you buy a ticket on lahtiag.fi we store the name on the ticket (your Discord name if you are signed in, otherwise the name you type), the event and ticket type, the price, the time of purchase and of check-in at the door, your answers to any questions the event asks, and Stripe's reference to the payment. Payment itself happens on Stripe's pages: Stripe receives the name on the ticket, the event and ticket type, the amount, and the email address you give there for the receipt, and it handles your card or MobilePay details under its own privacy policy. We never see or store card numbers.
+
+We do **not** collect phone numbers, street addresses or dates of birth. Tickets bought through Kide.app are handled by Kide under its own privacy policy.
 
 ## How we collect your data
 
 You give us almost all of it yourself: on the membership application at lahtiag.fi/join, on your membership page, when you sign in with Discord, when you sign up to events, and when you write to us. Older members' data was moved into the register from the Google Form we used until September 2026, with the answers they gave on that form.
 
-We may receive limited data indirectly from LTKY, KOE, the student guilds and associations of LUT University and LAB University of Applied Sciences, the universities themselves, and Kide.app, in connection with events we organise together or with the membership reports those organisations require.
+We may receive limited data indirectly from LTKY, KOE, the student guilds and associations of LUT University and LAB University of Applied Sciences, the universities themselves, and Kide.app, in connection with events we organise together or with the membership reports those organisations require. From Stripe we receive confirmation that a ticket payment or refund went through, and the name and email address given on its payment page.
 
 ## Why we process your data and on what legal basis
 
 - **Keeping the member register** (name and home municipality): a legal obligation under the Associations Act.
 - **Running the association**: deciding on applications, communicating with members, inviting members to meetings, member pricing at events, organising events around what members play, and reporting member counts: our legitimate interest in operating as an association, and the membership relationship itself.
+- **Selling tickets**: issuing the ticket, checking it at the door, refunding it, and keeping the payment records the Accounting Act requires: the contract with you, and a legal obligation for the accounting records.
 - **Optional information** (Discord and Telegram names, games, messages, the actives request, the Discord link): your consent, which you give by filling in those fields or by linking your account. You can withdraw it by removing the information on your membership page or by asking the board.
 - **Marketing**: we may tell members about our own events and those of our partners. You can opt out at any time by writing to board@lahtiag.fi.
 
@@ -65,6 +68,7 @@ We share your data with no one, with these exceptions:
 
 - **LTKY** receives our annual association report with the number of members, the number who are LTKY or KOE members, and the number of LUT students. No names.
 - **Discord** learns your membership status through the Member and Actives roles when your account is linked, and our board's private Discord channel receives a notice with your name and school when you apply, ask to link an account, or ask to become an active.
+- **Stripe** processes ticket payments and refunds for us, as described above, and emails you the receipt.
 - **Service providers** that store or process data for us, listed below.
 - **Authorities**, where the law requires it.
 
@@ -73,9 +77,10 @@ We share your data with no one, with these exceptions:
 - **lahtiag.fi and the member register**: on Cloudflare, Inc.'s infrastructure. The register database is located in the European Union. Cloudflare's privacy policy: https://www.cloudflare.com/privacypolicy/
 - **Email and documents** of the association, including the board's copies of exports and the accounts used to open the register: Google Workspace. Google's privacy policy: https://policies.google.com/privacy
 - **Discord**: the login, the roles and the board's notices. Discord's privacy policy: https://discord.com/privacy
-- **Kide.app**: event tickets.
+- **Stripe**: ticket payments. Our contract is with Stripe Payments Europe, Ltd. (Ireland). Stripe's privacy policy: https://stripe.com/privacy
+- **Kide.app**: tickets to events we sell through Kide.
 
-Cloudflare, Google and Discord are companies based in the United States. Where data is transferred outside the European Economic Area, it is done under the EU–US Data Privacy Framework or the European Commission's standard contractual clauses.
+Cloudflare, Google and Discord are companies based in the United States, and Stripe's group includes companies there. Where data is transferred outside the European Economic Area, it is done under the EU–US Data Privacy Framework or the European Commission's standard contractual clauses.
 
 ## How long we keep your data
 
@@ -84,6 +89,7 @@ Cloudflare, Google and Discord are companies based in the United States. Where d
 - **Former members** are kept for at most two years after the membership ended, so that the association's history and member counts can be verified, and are then erased. On request we erase earlier.
 - **Event signups and results** are kept as part of the association's event history; on request we remove your participation from one event or from everything.
 - **Discord link requests** that are not confirmed are deleted when dismissed.
+- **Tickets** stay with the event on the website until the board deletes the event. Records of payments and refunds are kept in Stripe and in the association's accounts for six years from the end of the financial year, as the Accounting Act requires. Payments started but never completed are voided within an hour and hold no card data.
 - Our hosting provider keeps database backups for 30 days; erased data disappears from backups after that.
 
 ## Cookies
@@ -108,8 +114,8 @@ The supervisory authority in Finland is the Office of the Data Protection Ombuds
 
 ## Other websites
 
-Our website links to other sites, such as Discord, Instagram and Kide.app. This policy covers only lahtiag.fi and the association's own processing; read the other sites' policies for what they do.
+Our website links to other sites, such as Discord, Instagram, Stripe and Kide.app. This policy covers only lahtiag.fi and the association's own processing; read the other sites' policies for what they do.
 
 ## Changes to this policy
 
-We review this policy when our processing changes and publish the current version on lahtiag.fi. This version is dated 5 September 2026 and replaces the version of 29 October 2024. The main changes: the member register moved from a Google Form and spreadsheet to the association's website; the description of who can open the register; the Discord account link and the Member and Actives roles; the removal of data we do not collect and of advertising cookies we do not use; the retention periods; and the legal bases.
+We review this policy when our processing changes and publish the current version on lahtiag.fi. This version is dated 5 September 2026 and replaces the version of 29 October 2024. The main changes: the member register moved from a Google Form and spreadsheet to the association's website; the description of who can open the register; the Discord account link and the Member and Actives roles; the removal of data we do not collect and of advertising cookies we do not use; the retention periods; the legal bases; and ticket sales through Stripe.

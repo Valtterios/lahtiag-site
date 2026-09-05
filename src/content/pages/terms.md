@@ -12,8 +12,9 @@ board@lahtiag.fi).
 A ticket is personal and admits one person to the event named on it. It is
 shown as a QR code on your ticket page; the code is checked once at the
 door. Tickets bought while signed in with Discord are kept under **My
-tickets**; tickets bought at the door by name are reached through the link
-Stripe shows after payment, so keep that page open or take a screenshot.
+tickets**; tickets bought by name, without Discord, are reached only
+through the link shown after payment, so keep that page open, bookmark it
+or take a screenshot.
 
 Member prices and members-only tickets need a membership linked to the
 Discord account you are signed in with.

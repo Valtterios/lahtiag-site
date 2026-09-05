@@ -288,7 +288,9 @@ version:
   `checkout.session.async_payment_failed`, `checkout.session.expired`,
   `charge.refunded`, `payment_intent.succeeded`, and use its signing
   secret. Turn on **MobilePay** (and Apple/Google Pay come with cards)
-  under Settings → Payment methods. Test first with test-mode keys and
+  under Settings → Payment methods, and receipts for **Successful
+  payments** and **Refunds** under Settings → Business → Customer emails
+  (the terms of sale say Stripe emails a receipt). Test first with test-mode keys and
   card 4242 4242 4242 4242; switch both secrets to live keys when the
   account is activated. Until both secrets exist the site says "card payments are not
   set up"; free tickets and the door check-in work regardless. Payouts go
