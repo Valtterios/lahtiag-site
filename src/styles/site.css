@@ -3097,3 +3097,11 @@ details.admin-panel[open] > summary {
     flex-basis: 100%;
   }
 }
+
+.daily-mark-used {
+  margin: 0.4rem 0 0;
+  border-left-color: var(--yellow);
+}
+.ticket-meta .daily-mark {
+  max-width: none;
+}

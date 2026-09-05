@@ -23,8 +23,12 @@ const waiting = justPaid && purchase?.status === 'pending';
 const resume = purchase && !justPaid ? resumablePurchase(purchase, now) : null;
 const mine = Boolean(purchase && (!purchase.discord_id || session?.discordId === purchase.discord_id));
 const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
-const waitingItems = purchase?.status === 'paid' ? items.filter((it) => !it.delivered_at) : [];
-const mark = waitingItems.length > 0 && env.SESSION_SECRET ? await dailyMark(env.SESSION_SECRET, now) : null;
+// A collected item shows the mark of the day it was collected on; the
+// board compares it with today's when the buyer marks it in front of them.
+const marks = new Map<number, { icon: string; name: string }>();
+if (purchase?.status === 'paid' && env.SESSION_SECRET) {
+  for (const it of items) if (it.delivered_at) marks.set(it.id, await dailyMark(env.SESSION_SECRET, it.delivered_at));
+}
 const collected = Astro.url.searchParams.get('ok') === 'collected';
 Astro.response.headers.set('cache-control', 'no-store');
 ---
@@ -41,7 +45,7 @@ Astro.response.headers.set('cache-control', 'no-store');
         <h1>{purchase.status === 'paid' ? 'Paid' : purchase.status === 'pending' ? 'Not paid yet' : purchase.status === 'refunded' ? 'Refunded' : 'Cancelled'}</h1>
         <p class="queue-meta">{formatHelsinki(purchase.created_at)} · {purchase.buyer_name} · {purchase.total_cents === 0 ? 'Free' : euro(purchase.total_cents)}</p>
       </article>
-      {collected && <p class="flash flash-good">Marked as collected. Enjoy.</p>}
+      {collected && <p class="flash flash-good">Marked as collected. Show the mark to the board.</p>}
       {issued && <p class="flash flash-good">Done. {!purchase.discord_id && 'Keep this link: it is the way back to these tickets. '}Each ticket below opens its QR code.</p>}
       {waiting && <p class="flash">Thanks, payment received. Confirming with Stripe, one moment…</p>}
       {justPaid && purchase.status === 'paid' && <p class="flash flash-good">Paid. {!purchase.discord_id && 'Keep this link: it is the way back to these tickets. '}Each ticket below opens its QR code.</p>}
@@ -91,12 +95,6 @@ Astro.response.headers.set('cache-control', 'no-store');
       {items.length > 0 && (
         <section class="list">
           <h2 class="section-label">Items</h2>
-          {mark && (
-            <p class="daily-mark">
-              <span class="daily-mark-icon" aria-hidden="true">{mark.icon}</span>
-              <span>Today's mark is <strong>{mark.name}</strong>. Show this page when you collect; the board checks the mark matches theirs.</span>
-            </p>
-          )}
           <ul class="ticket-list">
             {items.map((it) => (
               <li class={`ticket-card${it.delivered_at ? ' ticket-used' : ''}`}>
@@ -104,13 +102,19 @@ Astro.response.headers.set('cache-control', 'no-store');
                   <p class="ticket-event">{it.name}</p>
                   <p class="queue-meta">{it.quantity} × {euro(it.unit_cents)}</p>
                   <p class="queue-meta">
-                    {purchase.status === 'paid' && !it.delivered_at && 'Collect it at an event or from the board.'}
+                    {purchase.status === 'paid' && !it.delivered_at && 'Collect it at an event or from the board: press the button in front of them.'}
                     {purchase.status === 'paid' && it.delivered_at && `Collected ${formatHelsinki(it.delivered_at)}${it.delivered_by === 'buyer' ? ', marked by you' : ''}.`}
                     {purchase.status === 'pending' && 'Reserved until payment.'}
                     {purchase.status === 'refunded' && 'Refunded.'}
                     {purchase.status === 'void' && 'Cancelled.'}
                   </p>
                 </div>
+                {marks.has(it.id) && (
+                  <p class="daily-mark daily-mark-used">
+                    <span class="daily-mark-icon" aria-hidden="true">{marks.get(it.id)!.icon}</span>
+                    <span>Mark of the day: <strong>{marks.get(it.id)!.name}</strong></span>
+                  </p>
+                )}
                 {purchase.status === 'paid' && !it.delivered_at && mine && (
                   <form method="post" action={`/purchase/${purchase.id}/collect`}>
                     <input type="hidden" name="csrf" value={csrf} />

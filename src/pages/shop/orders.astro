@@ -47,7 +47,7 @@ Astro.response.headers.set('cache-control', 'no-store');
       {mark && (
         <p class="daily-mark">
           <span class="daily-mark-icon" aria-hidden="true">{mark.icon}</span>
-          <span>Today's mark is <strong>{mark.name}</strong>. A buyer's live purchase page shows the same one; a screenshot from another day won't. Buyers can also press "Mark as collected" themselves, in front of you.</span>
+          <span>Today's mark is <strong>{mark.name}</strong>. When a buyer presses "Mark as collected" in front of you, their page shows this mark; a screenshot from another day shows a different one.</span>
         </p>
       )}
       {waiting.length === 0 ? (

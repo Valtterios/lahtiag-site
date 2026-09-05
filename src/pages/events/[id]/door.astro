@@ -78,7 +78,7 @@ Astro.response.headers.set('cache-control', 'no-store');
         <p class="hero-eyebrow"><a href={`/events/${event.id}`}>{event.title}</a></p>
         <h1>The door</h1>
         <p class="queue-meta">{formatHelsinkiRange(event.starts_at, event.ends_at)} · {sales!.checked_in} of {sales!.tickets} tickets in · {(sales!.revenue_cents / 100).toFixed(2)} € sold</p>
-        {mark && <p class="queue-meta">Today's mark is {mark.icon} <strong>{mark.name}</strong>: a live ticket or purchase page shows the same. Holders may press "Mark as used" themselves in front of you. <a href="/shop/orders">Items to hand over</a></p>}
+        {mark && <p class="queue-meta">Today's mark is {mark.icon} <strong>{mark.name}</strong>. A ticket marked used by its holder in front of you shows this mark; another mark means another day. <a href="/shop/orders">Items to hand over</a></p>}
       </article>
       {flash && <p class={`flash${okKey === 'in' ? ' flash-good' : ''}`}>{flash}{flashName && <> <strong>{flashName}</strong></>}</p>}
 

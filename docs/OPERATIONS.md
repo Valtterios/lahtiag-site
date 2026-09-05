@@ -301,10 +301,11 @@ version:
 - **The door, without a scanner**: scanning a ticket's QR on the door
   page marks it used; a second scan is refused. Where nobody scans, the
   holder presses **Mark as used** on their ticket page in front of a board
-  member; the page shows the **mark of the day** (an icon that changes
-  daily, shown on the door page and the hand-over list too), so a
-  screenshot from another day gives itself away. Shop items work the same
-  way: **Mark as collected** on the purchase page, beside the mark.
+  member; the used ticket then shows the **mark of the day** it was used
+  on (an icon that changes daily; the door page and the hand-over list
+  show today's), so a screenshot of a used ticket from another day gives
+  itself away. Shop items work the same way: **Mark as collected** on the
+  purchase page, and the collected item shows the mark.
 - **Shop** (`/shop`, in the header): board members add products there
   (name, description, price, member price, stock or uncounted, on sale).
   Buyers pay at the checkout and collect at an event or from the board;

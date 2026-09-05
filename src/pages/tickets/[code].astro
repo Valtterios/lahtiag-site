@@ -29,9 +29,11 @@ const canRelease = Boolean(purchase && purchase.status === 'pending' && !justPai
 // The holder: the account the ticket is on, or whoever holds a by-name ticket's link.
 const holder = Boolean(ticket && (!ticket.discord_id || session?.discordId === ticket.discord_id));
 const valid = ticket?.status === 'paid' && !ticket.checked_in_at;
-const mark = valid && env.SESSION_SECRET ? await dailyMark(env.SESSION_SECRET, Math.floor(Date.now() / 1000)) : null;
+// Once used, the page carries the mark of the day it was used on: the
+// door compares it with today's, so a screenshot from another day shows.
+const mark = ticket?.status === 'paid' && ticket.checked_in_at && env.SESSION_SECRET ? await dailyMark(env.SESSION_SECRET, ticket.checked_in_at) : null;
 const FLASH: Record<string, string> = {
-  used: 'Marked as used. Have a good one.',
+  used: 'Marked as used. Show this to the door.',
   csrf: 'The form was stale. Try again.',
   forbidden: 'Only the ticket holder can do that.',
   not_paid: 'This ticket is not paid.',
@@ -71,15 +73,15 @@ Astro.response.headers.set('cache-control', 'no-store');
           </p>
           {ticket.amount_cents > 0 && <p class="queue-meta">{(ticket.amount_cents / 100).toFixed(2)} €</p>}
           {mark && (
-            <p class="daily-mark">
+            <p class="daily-mark daily-mark-used">
               <span class="daily-mark-icon" aria-hidden="true">{mark.icon}</span>
-              <span>Today's mark is <strong>{mark.name}</strong>. The door scans the code, or checks the mark and you press the button.</span>
+              <span>Used. Mark of the day: <strong>{mark.name}</strong>.</span>
             </p>
           )}
           {valid && holder && (
             <form method="post" action={`/tickets/${ticket.code}/use`}>
               <input type="hidden" name="csrf" value={csrf} />
-              <button class="btn btn-ghost" type="submit" data-confirm="Mark this ticket as used? Do it at the door, in front of the board member. It cannot be used again.">Mark as used</button>
+              <button class="btn btn-ghost" type="submit" data-confirm="Mark this ticket as used? Do it at the door, in front of the board member. It cannot be used again.">Mark as used at the door</button>
             </form>
           )}
           {ticket.status === 'pending' && !justPaid && !resume && (
