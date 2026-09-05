@@ -294,7 +294,7 @@ describe('event covers', () => {
     expect(await coverVersion(db(), id)).toBe(NOW);
     const stored = (await getEventCover(db(), id))!;
     expect(stored.content_type).toBe('image/png');
-    expect(stored.bytes).toEqual(new Uint8Array(png));
+    expect(new Uint8Array(stored.bytes)).toEqual(new Uint8Array(png));
     await setEventCover(db(), id, 'image/webp', png, NOW + 5);
     expect(await coverVersion(db(), id)).toBe(NOW + 5);
     expect(await deleteEventCover(db(), id)).toBe(true);
@@ -302,5 +302,16 @@ describe('event covers', () => {
     await setEventCover(db(), id, 'image/jpeg', png, NOW + 9);
     await deleteEvent(db(), id);
     expect(await getEventCover(db(), id)).toBeNull();
+  });
+});
+
+describe('event location', () => {
+  it('is stored, edited and capped', async () => {
+    await person('admin', false);
+    const id = await createEvent(db(), { title: 'LAN', description: null, starts_at: NOW + 86400, ends_at: null, capacity: null, team_size: null, location: '  Mukkulankatu 19 ', created_by: 'admin' }, NOW);
+    expect((await getEvent(db(), id))!.location).toBe('Mukkulankatu 19');
+    await expect(
+      createEvent(db(), { title: 'LAN', description: null, starts_at: NOW + 86400, ends_at: null, capacity: null, team_size: null, location: 'x'.repeat(121), created_by: 'admin' }, NOW),
+    ).rejects.toMatchObject({ code: 'bad_input' });
   });
 });

@@ -43,6 +43,8 @@ const csrf = ensureCsrf(Astro.cookies);
 const eventTeams = event?.team_size != null ? await listEventTeams(env.DB, event.id) : [];
 const hasBracket = event ? (await getBracket(env.DB, event.id)).length > 0 : false;
 const coverAt = event ? await coverVersion(env.DB, event.id) : null;
+// Blank lines split the description into paragraphs; single line breaks stay.
+const paragraphs = event?.description ? event.description.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean) : [];
 
 // Tickets: an event with active ticket types sells tickets instead of
 // taking plain signups; a paid ticket is the signup. Membership gating
@@ -129,6 +131,15 @@ const FLASH: Record<string, string> = {
   cover_bad: 'The cover must be a JPEG, PNG or WebP under 1.5 MB.',
   ticket_holder: 'That person holds a paid ticket, so they are going. Refund it in Stripe to remove them.',
 };
+// Short tags on ticket rows for why a type is not open to this person.
+const TYPE_TAGS: Record<string, string> = {
+  sold_out: 'Sold out',
+  full: 'Full',
+  reserved: 'Members only now',
+  sales_closed: 'Sales closed',
+  cancelled: 'Cancelled',
+  has_ticket: 'Yours',
+};
 const OK: Record<string, string> = {
   reinstated: 'The event is back on. The Discord cancellation line was removed.',
   released: 'Released. Nothing was charged.',
@@ -156,42 +167,56 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
   ) : (
     <>
       <div class="event-layout">
-      <header class="event-head prose">
+      <header class="event-head">
         {coverAt !== null && <img class="event-cover" src={`/events/${event.id}/cover?v=${coverAt}`} alt="" width="1200" height="630" />}
-        <p class="hero-eyebrow">
-          {event.starts_at <= nowSeconds && event.ends_at !== null && event.ends_at > nowSeconds && (
-            <span class="live-badge">Happening now</span>
-          )}
-          {formatHelsinkiRange(event.starts_at, event.ends_at)}
-        </p>
-        <h1>{event.title}</h1>
-        {event.cancelled_at !== null && <p class="flash">This event is cancelled.</p>}
-        {signupsClosed && event.cancelled_at === null && (
-          <p class="flash">Signups are closed.</p>
-        )}
-        {(event.members_only === 1 || event.member_slots !== null) && (
-          <p class="event-gating">
-            {event.members_only === 1 && <span class="status-badge status-member">Members only</span>}
-            {event.member_slots !== null && event.members_only !== 1 && (
-              <span class="status-badge">{event.member_slots} of {event.capacity} seats reserved for members{access && access.openSeatsLeft !== null && !access.member ? `, ${access.openSeatsLeft} open to everyone` : ''}</span>
-            )}
+        <div class="event-head-body">
+          <h1>{event.title}</h1>
+          {event.organizers && <p class="event-by">by {event.organizers}</p>}
+          <p class="event-actions">
+            <a class="btn btn-ghost btn-sm" href={`/events/${event.id}/event.ics`}>Add to calendar</a>
+            <button class="btn btn-ghost btn-sm" type="button" id="share-event" data-title={event.title} hidden>Share</button>
           </p>
-        )}
-        {event.organizers && <p class="event-meta">Organized by {event.organizers}</p>}
-        <p class="event-meta">
-          {isTeamEvent ? (
-            <>
-              Teams of {event.team_size}: {eventTeams.length}
-              {event.capacity !== null ? ` / ${event.capacity}` : ''} teams,
-              {' '}{going.length} players in
-            </>
-          ) : (
-            <>
-              {going.length}{event.capacity !== null ? ` / ${event.capacity}` : ''} going
-              {maybe.length > 0 ? `, ${maybe.length} maybe` : ''}
-            </>
+          <ul class="event-facts">
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+              <span>
+                {formatHelsinkiRange(event.starts_at, event.ends_at)}
+                {event.starts_at <= nowSeconds && event.ends_at !== null && event.ends_at > nowSeconds && <> <span class="live-badge">Happening now</span></>}
+              </span>
+            </li>
+            {event.location && (
+              <li>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                <span>{event.location}</span>
+              </li>
+            )}
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+              <span>
+                {isTeamEvent
+                  ? `Teams of ${event.team_size}: ${eventTeams.length}${event.capacity !== null ? ` / ${event.capacity}` : ''} teams, ${going.length} players in`
+                  : `${going.length}${event.capacity !== null ? ` / ${event.capacity}` : ''} going${maybe.length > 0 ? `, ${maybe.length} maybe` : ''}`}
+                {ticketed && event.capacity !== null && going.length >= event.capacity && <> <span class="status-badge status-muted">Sold out</span></>}
+              </span>
+            </li>
+            {hasTicket && myTicket && (
+              <li class="event-fact-mine">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3a3 3 0 0 1 0-6V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z" /><path d="M13 5v2" /><path d="M13 17v2" /><path d="M13 11v2" /></svg>
+                <span>You have a ticket · {myTicket.type_name}{myTicket.checked_in_at ? ' · checked in' : ''} · <a href={`/tickets/${myTicket.code}`}>Show ticket</a></span>
+              </li>
+            )}
+          </ul>
+          {(event.cancelled_at !== null || (signupsClosed && event.cancelled_at === null) || event.members_only === 1 || event.member_slots !== null) && (
+            <p class="event-gating">
+              {event.cancelled_at !== null && <span class="status-badge status-danger">Cancelled</span>}
+              {signupsClosed && event.cancelled_at === null && <span class="status-badge status-muted">Signups closed</span>}
+              {event.members_only === 1 && <span class="status-badge status-member">Members only</span>}
+              {event.member_slots !== null && event.members_only !== 1 && (
+                <span class="status-badge">{event.member_slots} of {event.capacity} seats reserved for members{access && access.openSeatsLeft !== null && !access.member ? `, ${access.openSeatsLeft} open to everyone` : ''}</span>
+              )}
+            </p>
           )}
-        </p>
+        </div>
       </header>
       <ViewAs mode={view.mode} path={`/events/${event.id}`} />
       <aside class="event-side">
@@ -217,15 +242,6 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               </div>
             </div>
           )}
-          {hasTicket && myTicket && (
-            <div class="queue-card">
-              <div class="queue-body">
-                <p class="queue-name">You have a ticket</p>
-                <p class="queue-meta">{myTicket.type_name} · {myTicket.holder_name}{myTicket.checked_in_at ? ' · checked in' : ''}</p>
-              </div>
-              <a class="btn btn-primary" href={`/tickets/${myTicket.code}`}>Show ticket</a>
-            </div>
-          )}
           <ul class="ticket-types">
             {activeTypes.map((t) => {
               const offer = offers.get(t.id)!;
@@ -235,15 +251,22 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               const have = inBasket(t.id);
               return (
                 <li class="ticket-type">
-                  <div>
+                  <div class="ticket-type-main">
                     <p class="ticket-type-name">{t.name}</p>
-                    <p class="queue-meta">
-                      {t.member_price_cents !== null && t.member_price_cents !== t.price_cents
-                        ? `${euro(t.price_cents)}, members ${euro(t.member_price_cents)}`
-                        : t.price_cents === 0 ? 'Free' : euro(t.price_cents)}
-                      {t.members_only === 1 ? ' · members only' : ''}
-                      {left !== null ? ` · ${left} left` : ''}
-                      {t.sales_close_at !== null ? ` · sales close ${formatHelsinki(t.sales_close_at)}` : ''}
+                    <p class="ticket-type-tags">
+                      <span class="ticket-price">
+                        {t.member_price_cents !== null && t.member_price_cents !== t.price_cents
+                          ? `${euro(t.price_cents)} · members ${euro(t.member_price_cents)}`
+                          : t.price_cents === 0 ? 'Free' : euro(t.price_cents)}
+                      </span>
+                      {t.members_only === 1 && <span class="status-badge status-member">Members only</span>}
+                      {!offer.ok && offer.reason !== 'members_only' && (
+                        <span class="status-badge status-muted">{TYPE_TAGS[offer.reason] ?? offer.reason}</span>
+                      )}
+                      {offer.ok && max === 0 && <span class="status-badge status-muted">Sold out</span>}
+                      {offer.ok && max > 0 && !canPay && <span class="status-badge status-muted">At the door</span>}
+                      {offer.ok && max > 0 && left !== null && left <= 10 && <span class="queue-meta">{left} left</span>}
+                      {t.sales_close_at !== null && offer.ok && <span class="queue-meta">until {formatHelsinki(t.sales_close_at)}</span>}
                     </p>
                   </div>
                   {offer.ok && max > 0 && canPay ? (
@@ -259,9 +282,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                       )}
                       <button class="btn btn-cta" type="submit">{have > 0 ? `In basket (${have}) · Add more` : hasTicket ? 'Add for a friend' : 'Add to basket'}</button>
                     </form>
-                  ) : (
-                    <span class="ticket-why">{!offer.ok ? (FLASH[offer.reason] ?? offer.reason) : !canPay ? FLASH.payments_off : 'Sold out'}</span>
-                  )}
+                  ) : null}
                 </li>
               );
             })}
@@ -368,15 +389,18 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
 
       </aside>
       <div class="event-body">
-        <div class="prose">
-          {hasBracket && (
-            <p><a class="btn btn-primary" href={`/events/${event.id}/bracket`}>View the bracket</a></p>
-          )}
-          {event.link_url && (
-            <p><a class="btn btn-ghost" href={event.link_url} rel="noopener">Stream / info link</a></p>
-          )}
-          {event.description && <p>{event.description}</p>}
-        </div>
+        {(event.description || hasBracket || event.link_url) && (
+          <section class="event-card">
+            <h2 class="section-label">Description</h2>
+            {paragraphs.map((para) => <p>{para}</p>)}
+            {(hasBracket || event.link_url) && (
+              <p class="entry-actions">
+                {hasBracket && <a class="btn btn-primary" href={`/events/${event.id}/bracket`}>View the bracket</a>}
+                {event.link_url && <a class="btn btn-ghost" href={event.link_url} rel="noopener">Stream / info link</a>}
+              </p>
+            )}
+          </section>
+        )}
       {!isTeamEvent && signups.length > 0 && (
         <section class="prose">
           <h2>Who's coming</h2>
@@ -572,6 +596,10 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                 <input name="organizers" maxlength="120" value={event.organizers ?? ''} placeholder="LahtiAG, Kapital" />
               </label>
               <label>
+                Location
+                <input name="location" maxlength="120" value={event.location ?? ''} placeholder="Mukkulankatu 19, Lahti" />
+              </label>
+              <label>
                 Link
                 <input name="link_url" type="url" maxlength="300" value={event.link_url ?? ''} placeholder="https:// stream, rules, venue…" />
               </label>
@@ -747,3 +775,26 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
     </>
   )}
 </Base>
+
+<script>
+  // Share: the system share sheet where there is one, the clipboard
+  // elsewhere. Hidden until this runs, so without JS there is no dead button.
+  const share = document.getElementById('share-event') as HTMLButtonElement | null;
+  if (share && (navigator.share || navigator.clipboard)) {
+    share.hidden = false;
+    share.addEventListener('click', async () => {
+      const url = `${location.origin}${location.pathname}`;
+      const title = share.dataset.title ?? document.title;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title, url });
+        } catch {
+          /* dismissed */
+        }
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      share.textContent = 'Link copied';
+    });
+  }
+</script>

@@ -22,6 +22,7 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
   const capacityRaw = String(form.get('capacity') ?? '').trim();
   const teamSizeRaw = String(form.get('team_size') ?? '').trim();
   const organizers = String(form.get('organizers') ?? '').trim();
+  const location = String(form.get('location') ?? '').trim();
   const linkUrl = String(form.get('link_url') ?? '').trim();
   const membersOnly = form.get('members_only') === 'on';
   const memberSlotsRaw = String(form.get('member_slots') ?? '').trim();
@@ -41,6 +42,7 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
         capacity: capacityRaw ? Number(capacityRaw) : null,
         team_size: teamSize,
         organizers: organizers || null,
+        location: location || null,
         link_url: linkUrl || null,
         members_only: membersOnly,
         member_slots: memberSlots,

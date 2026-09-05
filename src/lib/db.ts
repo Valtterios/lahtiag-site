@@ -54,6 +54,7 @@ export interface EventRow {
   team_id: number | null; // legacy, unused: organizers replaced it
   team_size: number | null; // set = tournament-style team signups
   organizers: string | null; // comma-separated free-text names
+  location: string | null; // venue, free text
   link_url: string | null; // optional stream/info link
   display_note: string | null; // live message for the venue display
   cancel_message_id: string | null; // the Discord "cancelled" post, removed on reinstate
@@ -188,10 +189,12 @@ function checkEventText(input: {
   title: string;
   description: string | null;
   organizers?: string | null;
+  location?: string | null;
 }): void {
   capLength(input.title.trim(), 120, 'A title');
   capLength(input.description, 2000, 'A description');
   capLength(input.organizers ?? null, 120, 'The organizers line');
+  capLength(input.location ?? null, 120, 'The location');
 }
 
 // Optional external link: http(s) only, nothing else renders as an href.
@@ -214,6 +217,7 @@ export async function createEvent(
     capacity: number | null;
     team_size?: number | null;
     organizers?: string | null;
+    location?: string | null;
     link_url?: string | null;
     members_only?: boolean;
     member_slots?: number | null;
@@ -239,8 +243,8 @@ export async function createEvent(
   const linkUrl = normalizeLink(input.link_url);
   const row = await db
     .prepare(
-      `INSERT INTO events (title, description, starts_at, ends_at, capacity, team_size, organizers, link_url, created_by, created_at, members_only, member_slots)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) RETURNING id`,
+      `INSERT INTO events (title, description, starts_at, ends_at, capacity, team_size, organizers, link_url, created_by, created_at, members_only, member_slots, location)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) RETURNING id`,
     )
     .bind(
       input.title.trim(),
@@ -255,6 +259,7 @@ export async function createEvent(
       now,
       input.members_only ? 1 : 0,
       memberSlots,
+      input.location?.trim() || null,
     )
     .first<{ id: number }>();
   return row!.id;
@@ -274,6 +279,7 @@ export async function updateEvent(
     ends_at: number | null;
     capacity: number | null;
     organizers: string | null;
+    location?: string | null;
     link_url: string | null;
     members_only?: boolean;
     member_slots?: number | null;
@@ -294,7 +300,7 @@ export async function updateEvent(
   await db
     .prepare(
       `UPDATE events SET title = ?2, description = ?3, starts_at = ?4, ends_at = ?5, capacity = ?6, organizers = ?7, link_url = ?8,
-         members_only = ?9, member_slots = ?10
+         members_only = ?9, member_slots = ?10, location = ?11
        WHERE id = ?1`,
     )
     .bind(
@@ -308,6 +314,7 @@ export async function updateEvent(
       normalizeLink(input.link_url),
       input.members_only ? 1 : 0,
       memberSlots,
+      input.location?.trim() || null,
     )
     .run();
   return (await getEvent(db, id))!;
@@ -2229,16 +2236,20 @@ export async function coverVersion(db: D1Database, eventId: number): Promise<num
 }
 
 // D1 hands a BLOB back as an ArrayBuffer locally and as a plain array of
-// bytes over its JSON transport in production; both become a Uint8Array.
-function blobBytes(value: unknown): Uint8Array {
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  if (Array.isArray(value)) return Uint8Array.from(value as number[]);
-  if (value && typeof value === 'object') return Uint8Array.from(Object.values(value as Record<string, number>));
-  return new Uint8Array();
+// bytes over its JSON transport in production; both become one ArrayBuffer.
+function blobBytes(value: unknown): ArrayBuffer {
+  let view: Uint8Array;
+  if (value instanceof ArrayBuffer) return value;
+  else if (ArrayBuffer.isView(value)) view = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  else if (Array.isArray(value)) view = Uint8Array.from(value as number[]);
+  else if (value && typeof value === 'object') view = Uint8Array.from(Object.values(value as Record<string, number>));
+  else view = new Uint8Array();
+  const copy = new ArrayBuffer(view.byteLength);
+  new Uint8Array(copy).set(view);
+  return copy;
 }
 
-export async function getEventCover(db: D1Database, eventId: number): Promise<{ content_type: string; bytes: Uint8Array; updated_at: number } | null> {
+export async function getEventCover(db: D1Database, eventId: number): Promise<{ content_type: string; bytes: ArrayBuffer; updated_at: number } | null> {
   const row = await db
     .prepare('SELECT content_type, bytes, updated_at FROM event_covers WHERE event_id = ?1')
     .bind(eventId)

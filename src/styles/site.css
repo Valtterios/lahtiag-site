@@ -2782,3 +2782,129 @@ details.admin-panel[open] > summary {
   margin-top: 0.3rem;
   font-size: 0.9rem;
 }
+
+/* ---------- event header card, facts, description card ---------- */
+.event-head {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  clip-path: var(--cut);
+  margin: 0 0 1.5rem;
+}
+.event-head .event-cover {
+  max-width: none;
+  margin: 0;
+  clip-path: none;
+}
+.event-head-body {
+  padding: 1.2rem 1.4rem 1.3rem;
+}
+.event-head h1 {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: clamp(1.6rem, 3.5vw, 2.3rem);
+  line-height: 1.05;
+  margin: 0 0 0.3rem;
+}
+.event-by {
+  color: var(--muted);
+  margin: 0 0 0.9rem;
+}
+.event-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0 0 1rem;
+}
+.event-facts {
+  list-style: none;
+  margin: 0;
+  padding: 0.9rem 0 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 0.55rem;
+}
+.event-facts li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  line-height: 1.4;
+}
+.event-facts svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 0.15rem;
+  color: var(--blue);
+}
+.event-fact-mine {
+  color: var(--ink);
+  font-weight: 600;
+}
+.event-head .event-gating {
+  margin: 0.9rem 0 0;
+}
+.event-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  clip-path: var(--cut);
+  padding: 1rem 1.4rem 1.1rem;
+  margin: 0 0 1.5rem;
+  max-width: var(--prose-measure);
+}
+.event-card p {
+  white-space: pre-line;
+  margin: 0 0 0.8rem;
+}
+.event-card p:last-child {
+  margin-bottom: 0;
+}
+.ticket-type-main {
+  min-width: 0;
+}
+.ticket-type-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  align-items: center;
+  font-size: 0.9rem;
+}
+.ticket-price {
+  font-weight: 600;
+}
+.status-muted {
+  background: var(--line);
+  color: var(--muted);
+}
+.status-danger {
+  background: #fde2e1;
+  color: #8a1c14;
+}
+.nav-cart {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.1rem !important;
+}
+.nav-cart svg {
+  width: 20px;
+  height: 20px;
+}
+.nav-cart-count {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.75rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--yellow);
+  color: var(--ink);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

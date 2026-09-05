@@ -44,6 +44,7 @@ export const GET: APIRoute = async ({ url }) => {
       // No end recorded: assume three hours so calendar blocks look sane.
       `DTEND:${icsDate(event.ends_at ?? event.starts_at + 3 * 3600)}`,
       `SUMMARY:${escapeText(event.title)}`,
+      ...(event.location ? [`LOCATION:${escapeText(event.location)}`] : []),
       `DESCRIPTION:${escapeText(description)}`,
       `URL:${url.origin}/events/${event.id}`,
       'END:VEVENT',
