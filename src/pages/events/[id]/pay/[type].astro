@@ -8,10 +8,11 @@ import { parseAnswers, questionOptions, type AnswerErrors } from '../../../../li
 import { createCheckoutSession, stripeConfigured } from '../../../../lib/stripe';
 import { formatHelsinkiRange } from '../../../../lib/time';
 
-// The page a door QR opens on the buyer's own phone: one ticket type, its
-// price, a Pay button. No sign-in needed; the buyer types their name on
-// Stripe's page and the ticket is issued by name. Signed-in members get
-// their price and the ticket on their account instead.
+// One ticket type, its price, a Pay button: the page a door QR opens on
+// the buyer's own phone, and "Buy without Discord" from the event page.
+// No sign-in needed; the buyer types the name for the ticket and it is
+// issued by name, as a link they keep. Signed-in members get their price
+// and the ticket on their account instead.
 
 const id = Number(Astro.params.id);
 const typeId = Number(Astro.params.type);
@@ -41,31 +42,41 @@ const previous = valid && session ? await getAnswers(env.DB, event.id, { discord
 let answerErrors: AnswerErrors = [];
 let typed = new Map<number, string>();
 let problem: string | null = null;
+let name = '';
 
 if (Astro.request.method === 'POST' && valid && offer?.ok) {
   const form = await Astro.request.formData();
   const parsed = parseAnswers(questions, form);
   for (const q of questions) typed.set(q.id, String(form.get(`q${q.id}`) ?? ''));
+  name = String(form.get('holder_name') ?? '').trim().replace(/\s+/g, ' ').slice(0, 60);
+  const holder = session ? session.username : name;
+  const source = session ? 'online' : 'door';
+  const answerKey = (ticketId: number) => (session ? { discordId: session.discordId } : { ticketId });
   if (!(await checkCsrf(Astro.request, form))) {
     problem = 'csrf';
+  } else if (!session && !name) {
+    problem = 'name';
   } else if (!parsed.ok) {
     answerErrors = parsed.errors;
-  } else if (offer.amount_cents === 0 && session) {
-    await saveAnswers(env.DB, event.id, { discordId: session.discordId }, parsed.answers, now);
-    const ticket = await createTicket(env.DB, { event_id: event.id, ticket_type_id: type.id, discord_id: session.discordId, holder_name: session.username, amount_cents: 0, status: 'paid', source: 'online' }, now);
-    return Astro.redirect(`/tickets/${ticket.code}?ok=issued`, 303);
-  } else if (!paymentsOn) {
+  } else if (offer.amount_cents > 0 && !paymentsOn) {
     problem = 'payments_off';
   } else {
     try {
+      if (offer.amount_cents === 0) {
+        const ticket = await createTicket(
+          env.DB,
+          { event_id: event.id, ticket_type_id: type.id, discord_id: session?.discordId ?? null, holder_name: holder, amount_cents: 0, status: 'paid', source },
+          now,
+        );
+        if (questions.length > 0) await saveAnswers(env.DB, event.id, answerKey(ticket.id), parsed.answers, now);
+        return Astro.redirect(`/tickets/${ticket.code}?ok=issued`, 303);
+      }
       const ticket = await createTicket(
         env.DB,
-        { event_id: event.id, ticket_type_id: type.id, discord_id: session?.discordId ?? null, holder_name: session?.username ?? 'Door ticket', amount_cents: offer.amount_cents, status: 'pending', source: session ? 'online' : 'door' },
+        { event_id: event.id, ticket_type_id: type.id, discord_id: session?.discordId ?? null, holder_name: holder, amount_cents: offer.amount_cents, status: 'pending', source },
         now,
       );
-      if (parsed.ok && questions.length > 0) {
-        await saveAnswers(env.DB, event.id, session ? { discordId: session.discordId } : { ticketId: ticket.id }, parsed.answers, now);
-      }
+      if (questions.length > 0) await saveAnswers(env.DB, event.id, answerKey(ticket.id), parsed.answers, now);
       const checkout = await createCheckoutSession(env.STRIPE_SECRET_KEY!, {
         amountCents: offer.amount_cents,
         productName: `${event.title}: ${type.name}`,
@@ -74,7 +85,6 @@ if (Astro.request.method === 'POST' && valid && offer?.ok) {
         cancelUrl: `${Astro.url.origin}/events/${event.id}/pay/${type.id}?err=cancelled_checkout`,
         clientReferenceId: String(ticket.id),
         metadata: { ticket_id: String(ticket.id), event_id: String(event.id), discord_id: session?.discordId ?? '' },
-        askName: !session,
       });
       if (!checkout) {
         await voidTicket(env.DB, ticket.id);
@@ -105,6 +115,7 @@ const REASONS: Record<string, string> = {
   stripe_down: "The payment page didn't open. Try again.",
   cancelled_checkout: 'Payment cancelled. Nothing was charged.',
   csrf: 'The form was stale. Try again.',
+  name: 'Type the name for the ticket.',
 };
 const OKS: Record<string, string> = {
   released: 'Seat released. Nothing was charged.',
@@ -130,7 +141,7 @@ const message =
         {session ? (
           <p class="queue-meta">Signed in as <strong>{session.username}</strong>; the ticket goes on your account.</p>
         ) : (
-          <p class="queue-meta">You'll type your name on the payment page; the ticket is issued by name. <a href={`/login?next=/events/${event.id}/pay/${type.id}`}>Sign in with Discord</a> instead to get the member price and keep the ticket on your account.</p>
+          <p class="queue-meta">No Discord needed: the ticket is issued by name, as a link you keep. <a href={`/login?next=/events/${event.id}/pay/${type.id}`}>Sign in with Discord</a> instead for the member price and to keep the ticket on your account.</p>
         )}
         {resume && pendingMine && (
           <div class="flash">
@@ -154,6 +165,12 @@ const message =
         {offer?.ok && (
           <form method="post" action={`/events/${event.id}/pay/${type.id}`} class="app-form">
             <input type="hidden" name="csrf" value={csrf} />
+            {!session && (
+              <label>
+                Name on the ticket *
+                <input name="holder_name" maxlength="60" value={name} required autocomplete="name" />
+              </label>
+            )}
             {questions.map((q) => {
               const value = typed.get(q.id) ?? previous.get(q.id) ?? '';
               return q.kind === 'checkbox' ? (

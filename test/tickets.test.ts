@@ -33,7 +33,7 @@ import {
   PENDING_TICKET_SECONDS,
 } from '../src/lib/db';
 import { newTicketCode, normalizeTicketCode, codeFromScan, qrSvg } from '../src/lib/qr';
-import { verifyWebhookSignature, holderNameFromSession } from '../src/lib/stripe';
+import { verifyWebhookSignature } from '../src/lib/stripe';
 
 // Membership gating on events, reserved seats, ticket types and tickets
 // against the real schema (migration 0011), plus the pure pieces: ticket
@@ -278,12 +278,6 @@ describe('Stripe webhook signature', () => {
     expect(await verifyWebhookSignature('whsec_other', payload, `t=${NOW},v1=${v1}`, NOW + 10)).toBe(false);
     expect(await verifyWebhookSignature('whsec_test', payload, `t=${NOW},v1=${v1}`, NOW + 600)).toBe(false);
     expect(await verifyWebhookSignature('whsec_test', payload, null, NOW)).toBe(false);
-  });
-
-  it('reads the holder name typed on the checkout page', () => {
-    expect(holderNameFromSession({ id: 'cs', object: 'checkout.session', custom_fields: [{ key: 'holder_name', text: { value: '  Aino V ' } }] })).toBe('Aino V');
-    expect(holderNameFromSession({ id: 'cs', object: 'checkout.session', customer_details: { name: 'Card Name' } })).toBe('Card Name');
-    expect(holderNameFromSession({ id: 'cs', object: 'checkout.session' })).toBeNull();
   });
 });
 

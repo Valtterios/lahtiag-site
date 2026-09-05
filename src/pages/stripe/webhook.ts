@@ -8,7 +8,7 @@ import {
   refundTicket,
   recordDoorPayment,
 } from '../../lib/db';
-import { verifyWebhookSignature, holderNameFromSession, metadataInt, type StripeEvent } from '../../lib/stripe';
+import { verifyWebhookSignature, metadataInt, type StripeEvent } from '../../lib/stripe';
 
 // Stripe tells us what happened with the money. Everything here is
 // idempotent, because Stripe retries until it sees a 2xx.
@@ -52,7 +52,7 @@ export const POST: APIRoute = async ({ request }) => {
       if (object.payment_status === 'unpaid') break;
       const ticket = await sessionTicket();
       if (ticket) {
-        await markTicketPaid(env.DB, ticket.id, object.payment_intent ?? null, holderNameFromSession(object), now);
+        await markTicketPaid(env.DB, ticket.id, object.payment_intent ?? null, null, now);
       }
       break;
     }

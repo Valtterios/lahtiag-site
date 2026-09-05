@@ -37,9 +37,9 @@ Astro.response.headers.set('cache-control', 'no-store');
         <h1>{ticket.event_title}</h1>
         <p class="queue-meta">{formatHelsinkiRange(ticket.starts_at, null)} · {ticket.type_name}</p>
       </article>
-      {issued && <p class="flash">Your ticket is ready. Show this page at the door.</p>}
+      {issued && <p class="flash">Your ticket is ready. {!ticket.discord_id && 'Keep this link, it is your ticket. '}Show this page at the door.</p>}
       {waiting && <p class="flash">Thanks, payment received. Confirming with Stripe, one moment…</p>}
-      {justPaid && ticket.status === 'paid' && <p class="flash">Paid. Show this page at the door.</p>}
+      {justPaid && ticket.status === 'paid' && <p class="flash">Paid. {!ticket.discord_id && 'Keep this link, it is your ticket. '}Show this page at the door.</p>}
       <section class={`ticket-view ticket-${ticket.status}${ticket.checked_in_at ? ' ticket-used' : ''}`}>
         <div class="ticket-qr" set:html={ticket.status === 'paid' && !ticket.checked_in_at ? qrSvg(ticketUrl(Astro.url.origin, ticket.code), 240) : ''} />
         <div class="ticket-meta">

@@ -268,7 +268,12 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                       </p>
                     </div>
                     {!session ? (
-                      <a class="btn btn-primary" href={`/login?next=/events/${event.id}`}>Sign in to buy</a>
+                      <div class="entry-actions">
+                        <a class="btn btn-primary" href={`/login?next=/events/${event.id}`}>Sign in to buy</a>
+                        {offer.ok && (offer.amount_cents === 0 || paymentsOn) && (
+                          <a class="btn btn-ghost" href={`/events/${event.id}/pay/${t.id}`}>Buy without Discord</a>
+                        )}
+                      </div>
                     ) : offer.ok ? (
                       <form method="post" action={`/events/${event.id}/buy`}>
                         <input type="hidden" name="csrf" value={csrf} />
@@ -288,7 +293,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
           {!myTicket && session && !paymentsOn && activeTypes.some((t) => t.price_cents > 0) && (
             <p class="queue-meta">Card payments aren't set up yet; paid tickets are sold at the door.</p>
           )}
-          <p class="queue-meta">Tickets are personal and shown as a QR code. <a href="/terms">Terms of sale.</a></p>
+          <p class="queue-meta">Tickets are personal and shown as a QR code{!session && '; without Discord the ticket is a link you keep'}. <a href="/terms">Terms of sale.</a></p>
         </section>
       )}
 

@@ -265,6 +265,12 @@ version:
   forming a team. Answers show on the admin roster, on the door page, in
   the tickets CSV and in "Export roster with answers". People can edit
   their own answers while signups are open.
+- **Buying without Discord**: visitors who aren't signed in see "Buy
+  without Discord" on public ticket types (never on members-only ones).
+  They type the name for the ticket, pay on Stripe (or get a free ticket
+  at once), and the ticket is a link they keep; the door scans it like any
+  other. Signed-in tickets carry the Discord name. The door QR opens the
+  same page.
 - **Release this seat**: a pending ticket (payment started, not finished)
   holds its seat for 35 minutes and blocks the account from buying another
   type. The buyer's own "Release this seat" button, on the event page, the

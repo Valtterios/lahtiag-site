@@ -39,7 +39,6 @@ export interface CheckoutInput {
   metadata: Record<string, string>;
   clientReferenceId: string;
   expiresInSeconds?: number; // Stripe: 30 minutes to 24 hours
-  askName?: boolean; // door sales by QR: the buyer types their name on Stripe's page
   customerEmail?: string;
 }
 
@@ -71,12 +70,6 @@ export async function createCheckoutSession(
     params[`payment_intent_data[metadata][${k}]`] = v;
   }
   params['payment_intent_data[description]'] = input.productName.slice(0, 200);
-  if (input.askName) {
-    params['custom_fields[0][key]'] = 'holder_name';
-    params['custom_fields[0][label][type]'] = 'custom';
-    params['custom_fields[0][label][custom]'] = 'Name on the ticket';
-    params['custom_fields[0][type]'] = 'text';
-  }
   try {
     const response = await fetch(`${API}/checkout/sessions`, {
       method: 'POST',
@@ -192,15 +185,6 @@ export interface StripeEvent {
       customer_details?: { email?: string | null; name?: string | null };
     };
   };
-}
-
-// The name typed on Stripe's page for door sales by QR.
-export function holderNameFromSession(session: StripeEvent['data']['object']): string | null {
-  const field = session.custom_fields?.find((f) => f.key === 'holder_name');
-  const typed = field?.text?.value?.trim();
-  if (typed) return typed.slice(0, 60);
-  const cardName = session.customer_details?.name?.trim();
-  return cardName ? cardName.slice(0, 60) : null;
 }
 
 // Signature-only sanity for the metadata we set ourselves.
