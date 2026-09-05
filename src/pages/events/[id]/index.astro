@@ -3,8 +3,20 @@ import { env } from 'cloudflare:workers';
 import Base from '../../../layouts/Base.astro';
 import SessionBox from '../../../components/SessionBox.astro';
 import { currentSession, ensureCsrf } from '../../../lib/guard';
-import { getEvent, listSignups, listEventTeams, getBracket } from '../../../lib/db';
-import { formatHelsinkiRange, unixToHelsinkiInputs } from '../../../lib/time';
+import {
+  getEvent,
+  listSignups,
+  listEventTeams,
+  getBracket,
+  listTicketTypes,
+  ticketOffer,
+  signupAccess,
+  getTicketForHolder,
+  salesSummary,
+  type TicketTypeWithSales,
+} from '../../../lib/db';
+import { stripeConfigured } from '../../../lib/stripe';
+import { formatHelsinkiRange, unixToHelsinkiInputs, formatHelsinki } from '../../../lib/time';
 
 const nowSeconds = Math.floor(Date.now() / 1000);
 
@@ -21,6 +33,23 @@ const csrf = ensureCsrf(Astro.cookies);
 const signups = event ? await listSignups(env.DB, event.id) : [];
 const eventTeams = event?.team_size != null ? await listEventTeams(env.DB, event.id) : [];
 const hasBracket = event ? (await getBracket(env.DB, event.id)).length > 0 : false;
+
+// Tickets: an event with active ticket types sells tickets instead of
+// taking plain signups; a paid ticket is the signup. Membership gating
+// (members-only, reserved seats) applies to both paths.
+const types: TicketTypeWithSales[] = event ? await listTicketTypes(env.DB, event.id) : [];
+const activeTypes = types.filter((t) => t.active === 1);
+const ticketed = activeTypes.length > 0 && event?.team_size == null;
+const offers = new Map<number, Awaited<ReturnType<typeof ticketOffer>>>();
+if (event && ticketed) {
+  for (const t of activeTypes) offers.set(t.id, await ticketOffer(env.DB, event, t, session?.discordId ?? null, nowSeconds));
+}
+const myTicket = event && session ? await getTicketForHolder(env.DB, event.id, session.discordId) : null;
+const access = event && session ? await signupAccess(env.DB, event, session.discordId, true) : null;
+const sales = event && session?.isAdmin && types.length > 0 ? await salesSummary(env.DB, event.id) : null;
+const paymentsOn = stripeConfigured(env);
+const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
+const closeInputs = (t: TicketTypeWithSales) => (t.sales_close_at === null ? { date: '', time: '' } : unixToHelsinkiInputs(t.sales_close_at));
 
 const going = signups.filter((signup) => signup.status === 'yes');
 const maybe = signups.filter((signup) => signup.status === 'maybe');
@@ -51,8 +80,20 @@ const FLASH: Record<string, string> = {
   missing: 'No such team on this event.',
   forbidden: 'That needs the admin role in Discord.',
   discord_down: "Discord didn't answer while re-checking your role. Try again.",
+  members_only: 'This event is for members. Link your membership on the join page, or apply.',
+  reserved: 'The remaining seats are reserved for members.',
+  sold_out: 'That ticket type is sold out.',
+  sales_closed: 'Sales for that ticket have closed.',
+  has_ticket: 'You already have a ticket for this event.',
+  payments_off: 'Card payments are not set up yet. Free tickets work; paid ones at the door.',
+  stripe_down: "The payment page didn't open. Try again in a moment.",
+  cancelled_checkout: 'Payment cancelled. Nothing was charged; the seat is released shortly.',
 };
-const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
+const OK: Record<string, string> = {
+  type_saved: 'Ticket type saved.',
+  type_deleted: 'Ticket type removed (or retired, if tickets were sold on it).',
+};
+const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
 ---
 <Base
   title={event ? event.title : 'Event not found'}
@@ -80,6 +121,14 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
         {hasBracket && (
           <p><a class="btn btn-primary" href={`/events/${event.id}/bracket`}>View the bracket</a></p>
         )}
+        {(event.members_only === 1 || event.member_slots !== null) && (
+          <p class="event-gating">
+            {event.members_only === 1 && <span class="status-badge status-member">Members only</span>}
+            {event.member_slots !== null && event.members_only !== 1 && (
+              <span class="status-badge">{event.member_slots} of {event.capacity} seats reserved for members{access && access.openSeatsLeft !== null && !access.member ? `, ${access.openSeatsLeft} open to everyone` : ''}</span>
+            )}
+          </p>
+        )}
         {event.organizers && <p class="event-meta">Organized by {event.organizers}</p>}
         {event.link_url && (
           <p><a class="btn btn-ghost" href={event.link_url} rel="noopener">Stream / info link</a></p>
@@ -104,7 +153,65 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
       <SessionBox session={session} csrf={csrf} />
       {flash && <p class="flash">{flash}</p>}
 
-      {!isTeamEvent && session && open && (
+      {ticketed && (
+        <section class="tickets-box" id="buy">
+          <h2 class="section-label">Tickets</h2>
+          {myTicket ? (
+            <div class="queue-card">
+              <div class="queue-body">
+                <p class="queue-name">{myTicket.status === 'paid' ? 'You have a ticket' : 'Your payment is not finished'}</p>
+                <p class="queue-meta">{myTicket.type_name} · {myTicket.holder_name}{myTicket.checked_in_at ? ' · checked in' : ''}</p>
+              </div>
+              <a class="btn btn-primary" href={`/tickets/${myTicket.code}`}>{myTicket.status === 'paid' ? 'Show ticket' : 'Open ticket'}</a>
+            </div>
+          ) : (
+            <ul class="ticket-types">
+              {activeTypes.map((t) => {
+                const offer = offers.get(t.id)!;
+                const left = t.quantity === null ? null : Math.max(0, t.quantity - t.sold);
+                return (
+                  <li class="ticket-type">
+                    <div>
+                      <p class="ticket-type-name">{t.name}</p>
+                      <p class="queue-meta">
+                        {t.member_price_cents !== null && t.member_price_cents !== t.price_cents
+                          ? `${euro(t.price_cents)}, members ${euro(t.member_price_cents)}`
+                          : t.price_cents === 0 ? 'Free' : euro(t.price_cents)}
+                        {t.members_only === 1 ? ' · members only' : ''}
+                        {left !== null ? ` · ${left} left` : ''}
+                        {t.sales_close_at !== null ? ` · sales close ${formatHelsinki(t.sales_close_at)}` : ''}
+                      </p>
+                    </div>
+                    {!session ? (
+                      <a class="btn btn-primary" href={`/login?next=/events/${event.id}`}>Sign in to buy</a>
+                    ) : offer.ok ? (
+                      <form method="post" action={`/events/${event.id}/buy`}>
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="ticket_type_id" value={t.id} />
+                        <button class="btn btn-cta" type="submit" disabled={offer.amount_cents > 0 && !paymentsOn}>
+                          {offer.amount_cents === 0 ? 'Get ticket' : `Buy · ${euro(offer.amount_cents)}`}
+                        </button>
+                      </form>
+                    ) : (
+                      <span class="ticket-why">{FLASH[offer.reason] ?? offer.reason}</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {!myTicket && session && !paymentsOn && activeTypes.some((t) => t.price_cents > 0) && (
+            <p class="queue-meta">Card payments aren't set up yet; paid tickets are sold at the door.</p>
+          )}
+          <p class="queue-meta">Tickets are personal and shown as a QR code. <a href="/terms">Terms of sale.</a></p>
+        </section>
+      )}
+
+      {!ticketed && !isTeamEvent && session && open && access && !access.allowed && (
+        <p class="flash">{FLASH[access.reason!]}{access.reason === 'members_only' && <> <a href="/join">Link or apply</a>.</>}</p>
+      )}
+
+      {!ticketed && !isTeamEvent && session && open && (!access || access.allowed) && (
         <form method="post" action={`/events/${event.id}/signup`} class="signup-bar">
           <input type="hidden" name="csrf" value={csrf} />
           <button
@@ -311,6 +418,13 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
                 Link
                 <input name="link_url" type="url" maxlength="300" value={event.link_url ?? ''} placeholder="https:// stream, rules, venue…" />
               </label>
+              <label class="check check-standalone">
+                <input type="checkbox" name="members_only" checked={event.members_only === 1} /> <span>Members only</span>
+              </label>
+              <label>
+                Seats reserved for members
+                <input name="member_slots" type="number" min="1" value={event.member_slots ?? ''} placeholder="empty = none; needs a capacity" />
+              </label>
               <label>Description <textarea name="description" rows="3">{event.description ?? ''}</textarea></label>
               {event.team_size !== null && (
                 <p class="event-meta">Team size ({event.team_size}) can't change once teams exist.</p>
@@ -319,6 +433,52 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
             </form>
           </details>
           )}
+          <details class="admin-edit" id="tickets" open={types.length > 0}>
+            <summary>Tickets</summary>
+            <p class="event-meta">
+              Add a ticket type and the event sells tickets instead of taking plain signups (team
+              events keep signups). A price of 0 is a free ticket. Member price applies to linked
+              members. Quantity limits the type; the event's capacity limits everything.
+            </p>
+            {sales && (
+              <p class="event-meta">
+                <strong>{sales.tickets}</strong> tickets sold, <strong>{sales.checked_in}</strong> checked in,
+                {' '}<strong>{euro(sales.revenue_cents)}</strong> taken.
+                {' '}<a class="btn btn-ghost btn-sm" href={`/events/${event.id}/door`}>Door page</a>
+                {' '}<a class="btn btn-ghost btn-sm" href={`/events/${event.id}/tickets.csv`}>Export CSV</a>
+              </p>
+            )}
+            {types.map((t) => (
+              <form method="post" action={`/events/${event.id}/ticket-types`} class="type-row">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="action" value="update" />
+                <input type="hidden" name="ticket_type_id" value={t.id} />
+                <label>Name <input name="name" required maxlength="60" value={t.name} /></label>
+                <label>Price € <input name="price" type="text" inputmode="decimal" value={(t.price_cents / 100).toFixed(2)} /></label>
+                <label>Member € <input name="member_price" type="text" inputmode="decimal" value={t.member_price_cents === null ? '' : (t.member_price_cents / 100).toFixed(2)} placeholder="same" /></label>
+                <label>Qty <input name="quantity" type="number" min="1" value={t.quantity ?? ''} placeholder="∞" /></label>
+                <label>Sales close <input name="close_date" type="date" value={closeInputs(t).date} /></label>
+                <label>at <input name="close_time" type="time" value={closeInputs(t).time} /></label>
+                <label class="check"><input type="checkbox" name="members_only" checked={t.members_only === 1} /> members only</label>
+                <label class="check"><input type="checkbox" name="active" checked={t.active === 1} /> on sale</label>
+                <span class="event-meta">{t.sold} sold · {euro(t.revenue_cents)}</span>
+                <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+                <button class="btn btn-ghost btn-sm" type="submit" name="action" value="delete">Remove</button>
+              </form>
+            ))}
+            <form method="post" action={`/events/${event.id}/ticket-types`} class="type-row type-new">
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="action" value="create" />
+              <label>Name <input name="name" required maxlength="60" placeholder="Standard" /></label>
+              <label>Price € <input name="price" type="text" inputmode="decimal" placeholder="10.00" required /></label>
+              <label>Member € <input name="member_price" type="text" inputmode="decimal" placeholder="same" /></label>
+              <label>Qty <input name="quantity" type="number" min="1" placeholder="∞" /></label>
+              <label>Sales close <input name="close_date" type="date" /></label>
+              <label>at <input name="close_time" type="time" /></label>
+              <label class="check"><input type="checkbox" name="members_only" /> members only</label>
+              <button class="btn btn-primary btn-sm" type="submit">Add ticket type</button>
+            </form>
+          </details>
           <details class="admin-edit">
             <summary>Manage participants</summary>
             <p class="event-meta">

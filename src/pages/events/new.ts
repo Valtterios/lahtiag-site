@@ -23,6 +23,9 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
   const teamSizeRaw = String(form.get('team_size') ?? '').trim();
   const organizers = String(form.get('organizers') ?? '').trim();
   const linkUrl = String(form.get('link_url') ?? '').trim();
+  const membersOnly = form.get('members_only') === 'on';
+  const memberSlotsRaw = String(form.get('member_slots') ?? '').trim();
+  const memberSlots = memberSlotsRaw ? Number(memberSlotsRaw) : null;
   const description = String(form.get('description') ?? '').trim();
 
   try {
@@ -39,6 +42,8 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
         team_size: teamSize,
         organizers: organizers || null,
         link_url: linkUrl || null,
+        members_only: membersOnly,
+        member_slots: memberSlots,
         created_by: admin.session.discordId,
       },
       now,

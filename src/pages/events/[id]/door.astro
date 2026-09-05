@@ -1,0 +1,226 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../../layouts/Base.astro';
+import { currentSession, ensureCsrf, requireAdmin } from '../../../lib/guard';
+import { requireBoard } from '../../../lib/board';
+import { getEvent, listEventTickets, listTicketTypes, listUnattachedDoorPayments, salesSummary } from '../../../lib/db';
+import { qrSvg } from '../../../lib/qr';
+import { stripeConfigured } from '../../../lib/stripe';
+import { formatHelsinkiRange, formatHelsinki } from '../../../lib/time';
+
+// The door of a ticketed event, on a phone: scan a ticket's QR (or type
+// its code), see who is in, sell by QR to the buyer's own phone, and
+// attach Tap to Pay payments taken in the Stripe Dashboard app to the
+// people who made them. Board role or register access.
+
+const id = Number(Astro.params.id);
+const board = await requireBoard(Astro.request, env);
+const admin = board.ok ? null : await requireAdmin(Astro.request, env);
+const allowed = board.ok || admin?.ok === true;
+const who = board.ok ? board.email : admin?.ok ? admin.session.discordId : '';
+Astro.response.status = allowed ? 200 : 401;
+const csrf = ensureCsrf(Astro.cookies);
+const session = await currentSession(Astro.request, env);
+void session;
+
+const event = allowed && Number.isInteger(id) ? await getEvent(env.DB, id) : null;
+const [tickets, types, payments, sales] = event
+  ? await Promise.all([
+      listEventTickets(env.DB, event.id),
+      listTicketTypes(env.DB, event.id),
+      listUnattachedDoorPayments(env.DB, Math.floor(Date.now() / 1000) - 12 * 3600),
+      salesSummary(env.DB, event.id),
+    ])
+  : [[], [], [], null];
+const q = (Astro.url.searchParams.get('q') ?? '').trim().toLowerCase();
+const live = tickets.filter((t) => t.status === 'paid');
+const shown = q ? live.filter((t) => t.holder_name.toLowerCase().includes(q) || t.code.toLowerCase().includes(q)) : live;
+const paymentsOn = stripeConfigured(env);
+
+const FLASH: Record<string, string> = {
+  in: 'Checked in.',
+  undone: 'Check-in undone.',
+  attached: 'Payment attached; ticket issued.',
+  missing: 'No ticket with that code.',
+  not_paid: "That ticket isn't paid.",
+  used: 'That ticket was already used.',
+  bad_input: "That didn't parse.",
+  csrf: 'The form was stale. Try again.',
+};
+const okKey = Astro.url.searchParams.get('ok');
+const errKey = Astro.url.searchParams.get('err');
+const flash = FLASH[okKey ?? errKey ?? ''] ?? null;
+const flashName = Astro.url.searchParams.get('who');
+Astro.response.headers.set('cache-control', 'no-store');
+---
+<Base title={event ? `Door: ${event.title}` : 'Door'} description="Board-only door page." wide>
+  {!allowed ? (
+    <article class="prose">
+      <h1>The door</h1>
+      <p>Board members sign in with Discord to run the door.</p>
+      <p class="entry-actions">
+        <a class="btn btn-primary" href={`/login?next=/events/${id}/door`}>Sign in with Discord</a>
+      </p>
+    </article>
+  ) : !event ? (
+    <article class="prose"><h1>No such event</h1></article>
+  ) : (
+    <>
+      <article class="prose entry-head">
+        <p class="hero-eyebrow"><a href={`/events/${event.id}`}>{event.title}</a></p>
+        <h1>The door</h1>
+        <p class="queue-meta">{formatHelsinkiRange(event.starts_at, event.ends_at)} · {sales!.checked_in} of {sales!.tickets} tickets in · {(sales!.revenue_cents / 100).toFixed(2)} € sold</p>
+      </article>
+      {flash && <p class={`flash${okKey === 'in' ? ' flash-good' : ''}`}>{flash}{flashName && <> <strong>{flashName}</strong></>}</p>}
+
+      <section class="door-scan">
+        <h2 class="section-label">Scan a ticket</h2>
+        <div class="door-camera" id="door-camera" hidden>
+          <video id="door-video" playsinline muted></video>
+          <canvas id="door-canvas" hidden></canvas>
+        </div>
+        <form method="post" action={`/events/${event.id}/door/checkin`} class="door-form" id="door-form">
+          <input type="hidden" name="csrf" value={csrf} />
+          <input name="code" id="door-code" placeholder="Ticket code" autocomplete="off" autocapitalize="characters" aria-label="Ticket code" />
+          <button class="btn btn-primary" type="submit">Check in</button>
+          <button class="btn btn-ghost" type="button" id="door-scan-toggle" hidden>Scan with camera</button>
+        </form>
+      </section>
+
+      {paymentsOn && types.some((t) => t.active === 1 && t.price_cents > 0) && (
+        <section class="door-sell">
+          <h2 class="section-label">Sell at the door</h2>
+          <p class="queue-intro">The buyer scans one of these with their own phone and pays there; they appear in the list below as soon as Stripe confirms. Card and MobilePay.</p>
+          <div class="door-qrs">
+            {types.filter((t) => t.active === 1 && t.price_cents > 0).map((t) => (
+              <div class="door-qr">
+                <div set:html={qrSvg(`${Astro.url.origin}/events/${event.id}/pay/${t.id}`, 180)} />
+                <p><strong>{t.name}</strong> · {(t.price_cents / 100).toFixed(2)} €{t.member_price_cents !== null ? ` (members ${(t.member_price_cents / 100).toFixed(2)} €)` : ''}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {payments.length > 0 && (
+        <section class="queue">
+          <h2 class="section-label">Tap payments to attach</h2>
+          <p class="queue-intro">Taken with Tap to Pay in the Stripe app. Say who paid and which ticket, and they get a ticket that's checked in.</p>
+          {payments.map((p) => (
+            <div class="queue-card">
+              <div class="queue-body">
+                <p class="queue-name">{(p.amount_cents / 100).toFixed(2)} €</p>
+                <p class="queue-meta">{formatHelsinki(p.created_at)} · {p.stripe_payment_intent}</p>
+              </div>
+              <form method="post" action={`/events/${event.id}/door/attach`} class="queue-actions door-attach">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="payment_intent" value={p.stripe_payment_intent} />
+                <input name="holder_name" placeholder="Name" required maxlength="60" aria-label="Name" />
+                <select name="ticket_type_id" aria-label="Ticket type">
+                  {types.filter((t) => t.active === 1).map((t) => <option value={t.id}>{t.name}</option>)}
+                </select>
+                <button class="btn btn-primary btn-sm" type="submit">Attach</button>
+              </form>
+            </div>
+          ))}
+        </section>
+      )}
+
+      <section class="list">
+        <form method="get" action={`/events/${event.id}/door`} class="register-search">
+          <input type="search" name="q" value={q} placeholder="Find by name or code" aria-label="Search tickets" />
+          <button class="btn btn-ghost" type="submit">Search</button>
+        </form>
+        {shown.length === 0 ? (
+          <p class="app-empty">{q ? 'No paid ticket matches.' : 'No paid tickets yet.'}</p>
+        ) : (
+          <ul class="door-list">
+            {shown.map((t) => (
+              <li class={`door-row${t.checked_in_at ? ' door-in' : ''}`}>
+                <div>
+                  <p class="door-name">{t.holder_name}</p>
+                  <p class="queue-meta">{t.type_name} · {t.code}{t.source === 'door' ? ' · door' : ''}{t.checked_in_at ? ` · in ${formatHelsinki(t.checked_in_at)}` : ''}</p>
+                </div>
+                <form method="post" action={`/events/${event.id}/door/checkin`}>
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="code" value={t.code} />
+                  {t.checked_in_at ? (
+                    <button class="btn btn-ghost btn-sm" name="undo" value="1" type="submit">Undo</button>
+                  ) : (
+                    <button class="btn btn-primary btn-sm" type="submit">Check in</button>
+                  )}
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <p class="queue-meta">Signed in as {who}. <a href={`/events/${event.id}`}>Event page</a></p>
+    </>
+  )}
+</Base>
+
+<script>
+  // Camera scanning with jsQR, bundled by Astro into an external file
+  // (the CSP forbids inline scripts). Without a camera or permission the
+  // typed-code form works on its own.
+  import jsQR from 'jsqr';
+
+  const toggle = document.getElementById('door-scan-toggle') as HTMLButtonElement | null;
+  const box = document.getElementById('door-camera') as HTMLDivElement | null;
+  const video = document.getElementById('door-video') as HTMLVideoElement | null;
+  const canvas = document.getElementById('door-canvas') as HTMLCanvasElement | null;
+  const input = document.getElementById('door-code') as HTMLInputElement | null;
+  const form = document.getElementById('door-form') as HTMLFormElement | null;
+
+  if (toggle && box && video && canvas && input && form && navigator.mediaDevices?.getUserMedia) {
+    toggle.hidden = false;
+    let stream: MediaStream | null = null;
+    let raf = 0;
+
+    const stop = () => {
+      cancelAnimationFrame(raf);
+      stream?.getTracks().forEach((t) => t.stop());
+      stream = null;
+      box.hidden = true;
+      toggle.textContent = 'Scan with camera';
+    };
+
+    const tick = () => {
+      if (!stream) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const found = jsQR(image.data, image.width, image.height, { inversionAttempts: 'dontInvert' });
+          const tail = found?.data.trim().split('/').pop()?.split('?')[0] ?? '';
+          if (found && tail.length === 10) {
+            input.value = tail;
+            stop();
+            form.requestSubmit();
+            return;
+          }
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+
+    toggle.addEventListener('click', async () => {
+      if (stream) return stop();
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      } catch {
+        toggle.textContent = 'Camera unavailable';
+        return;
+      }
+      video.srcObject = stream;
+      await video.play();
+      box.hidden = false;
+      toggle.textContent = 'Stop camera';
+      raf = requestAnimationFrame(tick);
+    });
+  }
+</script>

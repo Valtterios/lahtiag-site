@@ -1,0 +1,46 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import { currentSession, ensureCsrf } from '../../lib/guard';
+import { listMyTickets } from '../../lib/db';
+import { formatHelsinkiRange } from '../../lib/time';
+
+// The signed-in person's tickets, newest event first.
+
+const session = await currentSession(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+void csrf;
+const tickets = session ? await listMyTickets(env.DB, session.discordId) : [];
+const now = Math.floor(Date.now() / 1000);
+---
+<Base title="My tickets" description="Your tickets to LahtiAG events.">
+  <article class="prose"><h1>My tickets</h1></article>
+  {!session ? (
+    <div class="paths">
+      <section class="path-card">
+        <h2>Sign in first</h2>
+        <p>Tickets belong to the Discord account that bought them.</p>
+        <a class="btn btn-primary" href="/login?next=/tickets">Sign in with Discord</a>
+      </section>
+    </div>
+  ) : tickets.length === 0 ? (
+    <p class="app-empty">No tickets yet. Events with tickets show them on the <a href="/events">events page</a>.</p>
+  ) : (
+    <ul class="ticket-list">
+      {tickets.map((t) => (
+        <li class={`ticket-card ticket-${t.status}${t.checked_in_at ? ' ticket-used' : ''}${t.starts_at < now ? ' ticket-past' : ''}`}>
+          <div>
+            <p class="ticket-event"><a href={`/events/${t.event_id}`}>{t.event_title}</a></p>
+            <p class="queue-meta">{formatHelsinkiRange(t.starts_at, null)} · {t.type_name} · {t.holder_name}</p>
+            <p class="queue-meta">
+              {t.status === 'pending' && 'Payment not completed yet.'}
+              {t.status === 'paid' && !t.checked_in_at && 'Valid.'}
+              {t.status === 'paid' && t.checked_in_at && 'Used at the door.'}
+            </p>
+          </div>
+          <a class="btn btn-primary btn-sm" href={`/tickets/${t.code}`}>Show ticket</a>
+        </li>
+      ))}
+    </ul>
+  )}
+</Base>

@@ -30,6 +30,9 @@ type WorkerEnv = {
   DISCORD_BOT_TOKEN?: string;
   MEMBER_ROLE_ID: string;
   ACTIVES_ROLE_ID: string;
+  // Ticket payments (src/lib/stripe.ts). Off until both exist.
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
 };
 
 // Astro v6+ with @astrojs/cloudflare 14: request env is imported from

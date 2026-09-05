@@ -21,7 +21,7 @@ const [upcoming, past] = await Promise.all([
 const FLASH: Record<string, string> = {
   forbidden: 'That needs the admin role in Discord.',
   discord_down: "Discord didn't answer while re-checking your role. Try again.",
-  bad_input: "The event couldn't be created from those values.",
+  bad_input: "The event couldn't be created from those values (reserved seats need a capacity and must not exceed it).",
   bad_time: "That date and time didn't parse. Use YYYY-MM-DD and HH:MM.",
   csrf: 'The form was stale. Try again.',
 };
@@ -126,6 +126,13 @@ const flash =
         <label>
           Capacity
           <input name="capacity" type="number" min="1" placeholder="unlimited (people, or teams for a team event)" />
+        </label>
+        <label class="check check-standalone">
+          <input type="checkbox" name="members_only" /> <span>Members only (a linked, current membership is needed to sign up or buy)</span>
+        </label>
+        <label>
+          Seats reserved for members
+          <input name="member_slots" type="number" min="1" placeholder="empty = none; needs a capacity" />
         </label>
         <label>
           Organizers

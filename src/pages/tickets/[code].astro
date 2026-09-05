@@ -1,0 +1,62 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import { currentSession } from '../../lib/guard';
+import { getTicketByCode } from '../../lib/db';
+import { normalizeTicketCode, qrSvg, ticketUrl } from '../../lib/qr';
+import { formatHelsinkiRange } from '../../lib/time';
+
+// One ticket: the QR the door scans, and its state. Anyone holding the
+// code can open it (that is what a ticket is); the code is unguessable.
+
+const code = normalizeTicketCode(Astro.params.code ?? '');
+const ticket = code ? await getTicketByCode(env.DB, code) : null;
+if (!ticket) Astro.response.status = 404;
+const session = await currentSession(Astro.request, env);
+const justPaid = Astro.url.searchParams.get('paid') === '1';
+const issued = Astro.url.searchParams.get('ok') === 'issued';
+// Stripe sends the buyer back before the webhook may have landed; the
+// page says so and refreshes itself once.
+const waiting = justPaid && ticket?.status === 'pending';
+Astro.response.headers.set('cache-control', 'no-store');
+---
+<Base title={ticket ? `Ticket: ${ticket.event_title}` : 'Ticket'} description="LahtiAG event ticket.">
+  {waiting && <meta http-equiv="refresh" content="3" />}
+  {!ticket ? (
+    <article class="prose">
+      <h1>No such ticket</h1>
+      <p>That code doesn't match a ticket. Check it and try again, or open <a href="/tickets">your tickets</a>.</p>
+    </article>
+  ) : (
+    <>
+      <article class="prose">
+        <h1>{ticket.event_title}</h1>
+        <p class="queue-meta">{formatHelsinkiRange(ticket.starts_at, null)} · {ticket.type_name}</p>
+      </article>
+      {issued && <p class="flash">Your ticket is ready. Show this page at the door.</p>}
+      {waiting && <p class="flash">Thanks, payment received. Confirming with Stripe, one moment…</p>}
+      {justPaid && ticket.status === 'paid' && <p class="flash">Paid. Show this page at the door.</p>}
+      <section class={`ticket-view ticket-${ticket.status}${ticket.checked_in_at ? ' ticket-used' : ''}`}>
+        <div class="ticket-qr" set:html={ticket.status === 'paid' && !ticket.checked_in_at ? qrSvg(ticketUrl(Astro.url.origin, ticket.code), 240) : ''} />
+        <div class="ticket-meta">
+          <p class="ticket-holder">{ticket.holder_name}</p>
+          <p class="ticket-code">{ticket.code}</p>
+          <p class="ticket-state">
+            {ticket.status === 'paid' && !ticket.checked_in_at && 'Valid ticket'}
+            {ticket.status === 'paid' && ticket.checked_in_at && 'Used at the door'}
+            {ticket.status === 'pending' && 'Payment not completed'}
+            {ticket.status === 'refunded' && 'Refunded'}
+            {ticket.status === 'void' && 'Cancelled'}
+          </p>
+          {ticket.amount_cents > 0 && <p class="queue-meta">{(ticket.amount_cents / 100).toFixed(2)} €</p>}
+          {ticket.status === 'pending' && !justPaid && (
+            <p class="queue-meta">If you closed the payment page, go back to the <a href={`/events/${ticket.event_id}`}>event</a> and try again.</p>
+          )}
+        </div>
+      </section>
+      <p class="queue-meta">
+        {session && ticket.discord_id === session.discordId ? <a href="/tickets">All my tickets</a> : <a href={`/events/${ticket.event_id}`}>Event page</a>}
+      </p>
+    </>
+  )}
+</Base>

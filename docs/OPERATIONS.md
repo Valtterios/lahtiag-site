@@ -223,6 +223,47 @@ changed them), render with
 (needs pandoc and Chromium), push, and upload the same PDF as a new
 version of the copy in the association's Drive.
 
+## Selling tickets
+
+An event sells tickets when it has at least one ticket type (event page →
+Admin → **Tickets**). Team events keep plain signups. Everything about
+tickets lives in docs/superpowers/plans/2026-09-05-tickets.md; the short
+version:
+
+- **Ticket types**: name, price (0 = free ticket), member price (for
+  linked members), members-only, quantity, sales close (default: when the
+  event starts), on sale or not. A type with sold tickets can't be deleted,
+  only retired.
+- **Membership gating** on any event, ticketed or not: **Members only**
+  needs a linked, current membership to sign up or buy; **Seats reserved
+  for members** keeps that many of the capacity for members (guests stop
+  at capacity minus reserved).
+- **Buying**: signed in, from the event page. Free tickets are issued at
+  once; paid ones go to Stripe's hosted page and come back to the ticket
+  page (QR code) when the webhook confirms. One ticket per Discord
+  account per event; a paid ticket is the signup. **My tickets** lists
+  them (footer, signed-in strip).
+- **The door** (`/events/<id>/door`, Board role or register access, phone
+  friendly): scan the QR with the camera or type the code, check people
+  in, undo; **Sell at the door** shows a QR per ticket type that the
+  buyer scans and pays on their own phone (name typed on Stripe's page);
+  **Tap payments to attach** lists Tap to Pay payments taken in the
+  Stripe Dashboard app so they can be turned into a checked-in ticket for
+  the named person. **Export CSV** on the event's Tickets panel is for the
+  treasurer.
+- **Refunds**: from the Stripe dashboard; the webhook marks the ticket
+  refunded and frees the seat. Cancelling an event does not refund by
+  itself — refund in Stripe (all charges of that event), then cancel.
+- **Stripe setup**: secrets `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`
+  (`npx wrangler secret put`); in the Stripe dashboard add a webhook
+  endpoint `https://lahtiag.fi/stripe/webhook` for the events
+  `checkout.session.completed`, `checkout.session.expired`,
+  `charge.refunded`, `payment_intent.succeeded`, and use its signing
+  secret. Until both secrets exist the site says "card payments are not
+  set up"; free tickets and the door check-in work regardless. Payouts go
+  to the Holvi account; the treasurer books the monthly Stripe report.
+  Terms of sale: `src/content/pages/terms.md`, linked from every buy page.
+
 ## Editing the site's pages
 
 Add or edit Markdown in `src/content/pages/`, push to `main`, done. A page

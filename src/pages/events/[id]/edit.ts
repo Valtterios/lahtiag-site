@@ -25,6 +25,9 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
   const description = String(form.get('description') ?? '').trim();
   const organizers = String(form.get('organizers') ?? '').trim();
   const linkUrl = String(form.get('link_url') ?? '').trim();
+  const membersOnly = form.get('members_only') === 'on';
+  const memberSlotsRaw = String(form.get('member_slots') ?? '').trim();
+  const memberSlots = memberSlotsRaw ? Number(memberSlotsRaw) : null;
 
   try {
     const event = await updateEvent(env.DB, id, {
@@ -35,6 +38,8 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
       capacity: capacityRaw ? Number(capacityRaw) : null,
       organizers: organizers || null,
       link_url: linkUrl || null,
+      members_only: membersOnly,
+      member_slots: memberSlots,
     });
     // Edit the original Discord announcement in place instead of reposting.
     if (event.discord_message_id && env.DISCORD_WEBHOOK_URL) {

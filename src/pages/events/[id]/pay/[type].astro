@@ -1,0 +1,113 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../../../layouts/Base.astro';
+import { currentSession, ensureCsrf, checkCsrf } from '../../../../lib/guard';
+import { getEvent, getTicketType, ticketOffer, createTicket, voidTicket, RuleError } from '../../../../lib/db';
+import { createCheckoutSession, stripeConfigured } from '../../../../lib/stripe';
+import { formatHelsinkiRange } from '../../../../lib/time';
+
+// The page a door QR opens on the buyer's own phone: one ticket type, its
+// price, a Pay button. No sign-in needed; the buyer types their name on
+// Stripe's page and the ticket is issued by name. Signed-in members get
+// their price and the ticket on their account instead.
+
+const id = Number(Astro.params.id);
+const typeId = Number(Astro.params.type);
+const session = await currentSession(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+const now = Math.floor(Date.now() / 1000);
+const event = Number.isInteger(id) ? await getEvent(env.DB, id) : null;
+const type = event && Number.isInteger(typeId) ? await getTicketType(env.DB, typeId) : null;
+const valid = event && type && type.event_id === event.id;
+if (!valid) Astro.response.status = 404;
+const offer = valid ? await ticketOffer(env.DB, event, type, session?.discordId ?? null, now) : null;
+const paymentsOn = stripeConfigured(env);
+let problem: string | null = null;
+
+if (Astro.request.method === 'POST' && valid && offer?.ok) {
+  const form = await Astro.request.formData();
+  if (!(await checkCsrf(Astro.request, form))) {
+    problem = 'csrf';
+  } else if (offer.amount_cents === 0 && session) {
+    const ticket = await createTicket(env.DB, { event_id: event.id, ticket_type_id: type.id, discord_id: session.discordId, holder_name: session.username, amount_cents: 0, status: 'paid', source: 'online' }, now);
+    return Astro.redirect(`/tickets/${ticket.code}?ok=issued`, 303);
+  } else if (!paymentsOn) {
+    problem = 'payments_off';
+  } else {
+    try {
+      const ticket = await createTicket(
+        env.DB,
+        { event_id: event.id, ticket_type_id: type.id, discord_id: session?.discordId ?? null, holder_name: session?.username ?? 'Door ticket', amount_cents: offer.amount_cents, status: 'pending', source: session ? 'online' : 'door' },
+        now,
+      );
+      const checkout = await createCheckoutSession(env.STRIPE_SECRET_KEY!, {
+        amountCents: offer.amount_cents,
+        productName: `${event.title}: ${type.name}`,
+        description: formatHelsinkiRange(event.starts_at, event.ends_at),
+        successUrl: `${Astro.url.origin}/tickets/${ticket.code}?paid=1`,
+        cancelUrl: `${Astro.url.origin}/events/${event.id}/pay/${type.id}?err=cancelled_checkout`,
+        clientReferenceId: String(ticket.id),
+        metadata: { ticket_id: String(ticket.id), event_id: String(event.id), discord_id: session?.discordId ?? '' },
+        askName: !session,
+      });
+      if (!checkout) {
+        await voidTicket(env.DB, ticket.id);
+        problem = 'stripe_down';
+      } else {
+        await env.DB.prepare('UPDATE tickets SET stripe_session_id = ?2 WHERE id = ?1').bind(ticket.id, checkout.id).run();
+        return Astro.redirect(checkout.url, 303);
+      }
+    } catch (error) {
+      if (!(error instanceof RuleError)) throw error;
+      problem = error.code;
+    }
+  }
+}
+
+const REASONS: Record<string, string> = {
+  sales_closed: 'Sales for this ticket have closed.',
+  sold_out: 'Sold out.',
+  full: 'The event is full.',
+  members_only: 'This ticket is for members. Sign in with Discord if your membership is linked.',
+  reserved: 'The remaining seats are reserved for members. Sign in with Discord if your membership is linked.',
+  has_ticket: 'You already have a ticket for this event.',
+  cancelled: 'This event is cancelled.',
+  payments_off: 'Card payments are not set up yet. Pay at the door.',
+  stripe_down: "The payment page didn't open. Try again.",
+  cancelled_checkout: 'Payment cancelled. Nothing was charged.',
+  csrf: 'The form was stale. Try again.',
+};
+const message = REASONS[problem ?? Astro.url.searchParams.get('err') ?? ''] ?? (offer && !offer.ok ? REASONS[offer.reason] : null);
+---
+<Base title={valid ? `Ticket: ${event.title}` : 'Ticket'} description="Buy a ticket to a LahtiAG event.">
+  {!valid ? (
+    <article class="prose"><h1>No such ticket</h1><p>Back to <a href="/events">events</a>.</p></article>
+  ) : (
+    <>
+      <article class="prose">
+        <p class="hero-eyebrow">{formatHelsinkiRange(event.starts_at, event.ends_at)}</p>
+        <h1>{event.title}</h1>
+      </article>
+      <section class="member-card">
+        <p class="ticket-event">{type.name}</p>
+        <p class="ticket-price">
+          {offer?.ok ? `${(offer.amount_cents / 100).toFixed(2)} €` : `${(type.price_cents / 100).toFixed(2)} €`}
+          {offer?.ok && offer.member && type.member_price_cents !== null && <span class="queue-meta"> member price</span>}
+        </p>
+        {session ? (
+          <p class="queue-meta">Signed in as <strong>{session.username}</strong>; the ticket goes on your account.</p>
+        ) : (
+          <p class="queue-meta">You'll type your name on the payment page; the ticket is issued by name. <a href={`/login?next=/events/${event.id}/pay/${type.id}`}>Sign in with Discord</a> instead to get the member price and keep the ticket on your account.</p>
+        )}
+        {message && <p class="flash">{message}</p>}
+        {offer?.ok && (
+          <form method="post" action={`/events/${event.id}/pay/${type.id}`}>
+            <input type="hidden" name="csrf" value={csrf} />
+            <button class="btn btn-cta" type="submit">{offer.amount_cents === 0 ? 'Get ticket' : 'Pay'}</button>
+          </form>
+        )}
+        <p class="queue-meta">By paying you accept the <a href="/terms">terms of sale</a>.</p>
+      </section>
+    </>
+  )}
+</Base>

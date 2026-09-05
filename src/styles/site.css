@@ -2180,3 +2180,331 @@ html.display-mode,
   flex-wrap: wrap;
 }
 
+/* ---------- tickets ---------- */
+
+.event-gating {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.6rem;
+}
+
+.tickets-box {
+  margin: 0 0 2rem;
+}
+
+.ticket-types {
+  list-style: none;
+  margin: 0 0 0.8rem;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+  max-width: 44rem;
+}
+
+.ticket-type {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--yellow);
+  clip-path: var(--cut);
+  padding: 0.8rem 1.1rem;
+}
+
+.ticket-type p {
+  margin: 0 0 0.2rem;
+}
+
+.ticket-type-name {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 1.05rem;
+}
+
+.ticket-why {
+  color: var(--muted);
+  font-size: 0.9rem;
+  max-width: 18rem;
+  text-align: right;
+}
+
+.ticket-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.7rem;
+  max-width: 44rem;
+}
+
+.ticket-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 5px solid #1f7a3f;
+  clip-path: var(--cut);
+  padding: 0.8rem 1.1rem;
+}
+
+.ticket-card p {
+  margin: 0 0 0.2rem;
+}
+
+.ticket-pending {
+  border-left-color: var(--yellow);
+}
+
+.ticket-used,
+.ticket-past,
+.ticket-refunded,
+.ticket-void {
+  border-left-color: var(--line);
+  opacity: 0.8;
+}
+
+.ticket-event {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 1.05rem;
+}
+
+.ticket-event a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.ticket-view {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 5px solid #1f7a3f;
+  clip-path: var(--cut);
+  padding: 1.3rem 1.5rem;
+  max-width: 44rem;
+  margin: 0 0 1rem;
+}
+
+.ticket-view.ticket-pending {
+  border-top-color: var(--yellow);
+}
+
+.ticket-view.ticket-used,
+.ticket-view.ticket-refunded,
+.ticket-view.ticket-void {
+  border-top-color: var(--line);
+}
+
+.ticket-qr svg {
+  display: block;
+  width: 240px;
+  height: 240px;
+  max-width: 100%;
+}
+
+.ticket-view.ticket-used .ticket-qr,
+.ticket-view.ticket-pending .ticket-qr,
+.ticket-view.ticket-refunded .ticket-qr,
+.ticket-view.ticket-void .ticket-qr {
+  display: none;
+}
+
+.ticket-meta p {
+  margin: 0 0 0.3rem;
+}
+
+.ticket-holder {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 1.5rem;
+  line-height: 1.1;
+}
+
+.ticket-code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 1.1rem;
+  letter-spacing: 0.15em;
+}
+
+.ticket-state {
+  font-weight: 600;
+}
+
+.ticket-price {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 1.8rem;
+  margin: 0 0 0.4rem;
+}
+
+/* the door page */
+.door-scan,
+.door-sell {
+  margin: 0 0 2rem;
+}
+
+.door-form {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.door-form input {
+  flex: 1 1 14rem;
+  font: inherit;
+  font-size: 1.2rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--surface);
+  border: 2px solid var(--line);
+  padding: 0.6rem 0.9rem;
+}
+
+.door-form input:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.door-camera {
+  max-width: 28rem;
+  margin: 0 0 0.8rem;
+  background: #000;
+  clip-path: var(--cut);
+}
+
+.door-camera video {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.door-qrs {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.door-qr {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 0.8rem;
+  text-align: center;
+}
+
+.door-qr p {
+  margin: 0.4rem 0 0;
+  font-size: 0.9rem;
+}
+
+.door-attach input,
+.door-attach select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 0.45rem 0.7rem;
+}
+
+.door-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+  max-width: 44rem;
+}
+
+.door-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--yellow);
+  padding: 0.6rem 1rem;
+}
+
+.door-row.door-in {
+  border-left-color: #1f7a3f;
+  opacity: 0.75;
+}
+
+.door-row p {
+  margin: 0;
+}
+
+.door-name {
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.flash-good {
+  background: #e6f4ea;
+  border-left-color: #1f7a3f;
+}
+
+/* ticket type rows in the admin panel */
+.type-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.7rem;
+  padding: 0.7rem 0 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.type-row label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.type-row label.check {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding-bottom: 0.45rem;
+}
+
+.type-row input:not([type='checkbox']) {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 0.4rem 0.55rem;
+  width: 7.5rem;
+}
+
+.type-row input[name='name'] {
+  width: 12rem;
+}
+
+.type-row input[name='quantity'] {
+  width: 5rem;
+}
+
+.type-new {
+  border-bottom: none;
+}
+
