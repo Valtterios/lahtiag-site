@@ -3260,3 +3260,8 @@ details.admin-panel[open] > summary {
 .site-wide .site-footer .inner {
   max-width: 110rem;
 }
+
+/* Every card in the event's left column spans the column, like the header. */
+.event-body .event-card {
+  max-width: none;
+}
