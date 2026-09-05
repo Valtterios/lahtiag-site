@@ -141,6 +141,11 @@ if (okKey === 'synced') {
 if (Astro.url.searchParams.get('roles') === 'failed') {
   flash = `${flash ?? ''} The Discord role could not be set: check the bot's permissions and role order, then use Sync.`.trim();
 }
+// Notices about the roles themselves belong next to the roles controls,
+// not at the top of the page.
+const errKey = Astro.url.searchParams.get('err') ?? '';
+const rolesFlash = okKey === 'synced' || okKey === 'roles_saved' || errKey.startsWith('roles_') || errKey === 'bad_role' ? flash : null;
+if (rolesFlash) flash = null;
 
 const viewHref = (key: View) => `/register?view=${key}${q ? `&q=${encodeURIComponent(q)}` : ''}`;
 const since = (r: RegisterRow) =>
@@ -358,6 +363,7 @@ const days = (t: number) => Math.floor((now - t) / 86400);
             with Manage Roles (setup guide, step 9.2) and that the token is current.
           </p>
         )}
+        {rolesFlash && <p class="flash">{rolesFlash}</p>}
         {guildRoles && (
           <div class="queue-card queue-quiet">
             <div class="queue-body">
@@ -388,45 +394,45 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                 </label>
                 <button class="btn btn-ghost" type="submit">Save roles</button>
               </form>
+              {rolePlan && !rolePlan.ok && rolePlan.reason === 'intent' && (
+                <p class="warn-tag">
+                  The bot can't list the server's members, so Sync can't work yet: Developer Portal →
+                  the application → Bot → Privileged Gateway Intents → turn on <strong>Server Members
+                  Intent</strong>, save, then reload this page.
+                </p>
+              )}
+              {rolePlan && !rolePlan.ok && rolePlan.reason === 'error' && (
+                <p class="warn-tag warn-soft">Discord didn't answer while reading the member list. Reload in a moment.</p>
+              )}
+              {rolePlan?.ok && (
+                <div class="role-plan">
+                  {rolePlan.changes.length === 0 ? (
+                    <p class="match-tag">Discord roles match the register. Nothing to sync.</p>
+                  ) : (
+                    <>
+                      <p class="queue-intro">
+                        Sync would make {rolePlan.changes.length} change{rolePlan.changes.length === 1 ? '' : 's'}
+                        {rolePlan.changes.length > 40 ? ' (40 per click)' : ''}:
+                      </p>
+                      <ul class="role-plan-list">
+                        {rolePlan.changes.slice(0, 40).map((c) => (
+                          <li>
+                            <span class={c.on ? 'plan-add' : 'plan-remove'}>{c.on ? 'give' : 'remove'}</span>
+                            {' '}<strong>{roleName(c.roleId)}</strong> {c.on ? 'to' : 'from'} {whoIs(c.discordId)}
+                          </li>
+                        ))}
+                        {rolePlan.changes.length > 40 && <li class="queue-meta">and {rolePlan.changes.length - 40} more.</li>}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
-            {rolesOn && (
+            {rolesOn && rolePlan?.ok && rolePlan.changes.length > 0 && (
               <form method="post" action="/register/sync-roles" class="queue-actions">
                 <input type="hidden" name="csrf" value={csrf} />
                 <button class="btn btn-primary" type="submit">Sync Discord roles</button>
               </form>
-            )}
-          </div>
-        )}
-        {rolePlan && !rolePlan.ok && rolePlan.reason === 'intent' && (
-          <p class="warn-tag">
-            The bot can't list the server's members, so Sync can't work yet: Developer Portal →
-            the application → Bot → Privileged Gateway Intents → turn on <strong>Server Members
-            Intent</strong>, save, then reload this page.
-          </p>
-        )}
-        {rolePlan && !rolePlan.ok && rolePlan.reason === 'error' && (
-          <p class="warn-tag warn-soft">Discord didn't answer while reading the member list. Reload in a moment.</p>
-        )}
-        {rolePlan?.ok && (
-          <div class="role-plan">
-            {rolePlan.changes.length === 0 ? (
-              <p class="match-tag">Discord roles match the register. Nothing to sync.</p>
-            ) : (
-              <>
-                <p class="queue-intro">
-                  Sync would make {rolePlan.changes.length} change{rolePlan.changes.length === 1 ? '' : 's'}
-                  {rolePlan.changes.length > 40 ? ' (40 per click)' : ''}:
-                </p>
-                <ul class="role-plan-list">
-                  {rolePlan.changes.slice(0, 40).map((c) => (
-                    <li>
-                      <span class={c.on ? 'plan-add' : 'plan-remove'}>{c.on ? 'give' : 'remove'}</span>
-                      {' '}<strong>{roleName(c.roleId)}</strong> {c.on ? 'to' : 'from'} {whoIs(c.discordId)}
-                    </li>
-                  ))}
-                  {rolePlan.changes.length > 40 && <li class="queue-meta">and {rolePlan.changes.length - 40} more.</li>}
-                </ul>
-              </>
             )}
           </div>
         )}
