@@ -148,6 +148,8 @@ const TYPE_TAGS: Record<string, string> = {
 const OK: Record<string, string> = {
   draft: 'Saved as a draft. Only the board sees it; publish it when it is ready.',
   published: 'Published and posted on Discord.',
+  team_saved: 'Team created. Put people in it with the team pickers below.',
+  grouped: 'Players without a team were grouped into teams.',
   reinstated: 'The event is back on. The Discord cancellation line was removed.',
   released: 'Released. Nothing was charged.',
   added: 'Added to your basket.',
@@ -241,7 +243,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
           </form>
         </div>
       )}
-      <SessionBox session={session} csrf={csrf} />
+      <SessionBox session={session} csrf={csrf} prompt={ticketed ? 'Sign in with Discord for member prices and to keep tickets on your account.' : undefined} />
       {flash && <p class="flash">{flash}</p>}
 
       {ticketed && (
@@ -315,7 +317,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
           <p class="queue-meta">
             {session
               ? 'Tickets are personal and shown as a QR code. You can buy tickets for friends by name at the checkout.'
-              : 'Sign in with Discord for member prices and to keep tickets on your account; without Discord, tickets are links you keep.'}{' '}
+              : 'Without Discord, tickets are links you keep. You can buy for friends by name at the checkout.'}{' '}
             <a href="/terms">Terms of sale.</a>
           </p>
         </section>
@@ -414,7 +416,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
         {(event.description || hasBracket || event.link_url) && (
           <section class="event-card">
             <h2 class="section-label">Description</h2>
-            {paragraphs.map((para) => <p>{para}</p>)}
+            <div class="event-description">{paragraphs.map((para) => <p>{para}</p>)}</div>
             {(hasBracket || event.link_url) && (
               <p class="entry-actions">
                 {hasBracket && <a class="btn btn-primary" href={`/events/${event.id}/bracket`}>View the bracket</a>}
@@ -424,8 +426,8 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
           </section>
         )}
       {!isTeamEvent && signups.length > 0 && (
-        <section class="prose">
-          <h2>Who's coming</h2>
+        <section class="event-card">
+          <h2 class="section-label">Who's coming</h2>
           {going.length > 0 && (
             <div class="member-line"><strong>Going:</strong> {session?.isAdmin
               ? going.map((s) => (
@@ -460,8 +462,8 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
       )}
 
       {isTeamEvent && (
-        <section class="prose">
-          <h2>Teams</h2>
+        <section class="event-card">
+          <h2 class="section-label">Teams</h2>
           {eventTeams.length === 0 && (
             <p class="app-empty">No teams yet. Start the first one!</p>
           )}
@@ -640,7 +642,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
           </form>
           </details>
           )}
-          <details class="admin-edit" id="tickets" open={types.length > 0}>
+          <details class="admin-edit" id="tickets" open={['type_saved', 'type_deleted'].includes(Astro.url.searchParams.get('ok') ?? '')}>
             <summary>Tickets</summary>
             <p class="event-meta">
               Add a ticket type and the event sells tickets instead of taking plain signups (team
@@ -688,7 +690,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               <button class="btn btn-primary btn-sm" type="submit">Add ticket type</button>
             </form>
           </details>
-          <details class="admin-edit" id="questions" open={questions.length > 0}>
+          <details class="admin-edit" id="questions" open={Astro.url.searchParams.get('ok') === 'question_saved'}>
             <summary>Questions</summary>
             <p class="event-meta">
               Asked when someone signs up or buys a ticket. Answers show on the roster below, on the
@@ -736,6 +738,21 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               name is for walk-ins without Discord; their signup can be
               edited and removed like any other.
             </p>
+            {isTeamEvent && (
+              <div class="entry-actions admin-teams">
+                <form method="post" action={`/events/${event.id}/admin-team`} class="participant-row">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="action" value="create" />
+                  <label>New team <input name="name" required maxlength="40" placeholder="Team name" /></label>
+                  <button class="btn btn-ghost btn-sm" type="submit">Create empty team</button>
+                </form>
+                <form method="post" action={`/events/${event.id}/admin-team`}>
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="action" value="auto" />
+                  <button class="btn btn-ghost btn-sm" type="submit">Group players without a team</button>
+                </form>
+              </div>
+            )}
             {signups.length > 0 && (
               <ul class="participant-admin">
                 {signups.map((s) => (

@@ -17,6 +17,7 @@ import {
   getEvent,
   listSignups,
   listEventTeams,
+  adminCreateTeam,
   RuleError,
 } from '../src/lib/db';
 
@@ -273,5 +274,18 @@ describe('closed signups', () => {
     await setSignupsClosed(db(), eventId, true, NOW);
     await generateBracket(db(), eventId);
     expect(await getBracket(db(), eventId)).toHaveLength(1);
+  });
+});
+
+describe('adminCreateTeam', () => {
+  it('makes an empty team the board can fill, within the team count', async () => {
+    await member('admin');
+    const eventId = await createEvent(db(), { title: 'Doubles', description: null, starts_at: NOW + 86400, capacity: 1, team_size: 2, created_by: 'admin' }, NOW);
+    const id = await adminCreateTeam(db(), eventId, ' Blue ', 'admin', NOW);
+    expect((await listEventTeams(db(), eventId)).map((t) => [t.id, t.name])).toEqual([[id, 'Blue']]);
+    await expect(adminCreateTeam(db(), eventId, 'blue', 'admin', NOW)).rejects.toMatchObject({ code: 'dup_name' });
+    await expect(adminCreateTeam(db(), eventId, 'Red', 'admin', NOW)).rejects.toMatchObject({ code: 'team_full' });
+    const solo = await createEvent(db(), { title: 'Solo', description: null, starts_at: NOW + 86400, capacity: null, team_size: null, created_by: 'admin' }, NOW);
+    await expect(adminCreateTeam(db(), solo, 'Nope', 'admin', NOW)).rejects.toMatchObject({ code: 'not_team_event' });
   });
 });

@@ -12,8 +12,8 @@ use their address above.
 
 ## Address
 
-Lahti Association of Gaming LAG ry
-Mukkulankatu 19
+Lahti Association of Gaming LAG ry  
+Mukkulankatu 19  
 15210 Lahti, Finland
 
 Business ID / Y-tunnus: 3485167-1

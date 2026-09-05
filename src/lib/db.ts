@@ -840,6 +840,27 @@ async function advance(
 // Builds the whole bracket from the event's current participants: full
 // 'yes' signups on a solo event, formed teams on a team event. Replaces any
 // existing bracket. Byes auto-advance immediately.
+// The board makes a team with nobody in it yet, then assigns people under
+// Manage participants. Only the team count is checked.
+export async function adminCreateTeam(db: D1Database, eventId: number, name: string, by: string, now: number): Promise<number> {
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  if (event.team_size === null) throw new RuleError('not_team_event', 'This event does not take team signups.');
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length > 40) throw new RuleError('bad_input', 'A team name is 1 to 40 characters.');
+  const dup = await db.prepare('SELECT 1 AS x FROM event_teams WHERE event_id = ?1 AND lower(name) = lower(?2)').bind(eventId, trimmed).first();
+  if (dup) throw new RuleError('dup_name', 'A team with that name already exists.');
+  if (event.capacity !== null) {
+    const teams = await db.prepare('SELECT COUNT(*) AS n FROM event_teams WHERE event_id = ?1').bind(eventId).first<{ n: number }>();
+    if ((teams?.n ?? 0) >= event.capacity) throw new RuleError('team_full', 'All team slots for this event are taken.');
+  }
+  const row = await db
+    .prepare(`INSERT INTO event_teams (event_id, name, created_by, created_at) VALUES (?1, ?2, ?3, ?4) RETURNING id`)
+    .bind(eventId, trimmed, by, now)
+    .first<{ id: number }>();
+  return row!.id;
+}
+
 // On a team event, players who signed up without a team are grouped into
 // teams of the event's size (the last one may be short) before the draw,
 // named after their first player. The board can still move people around

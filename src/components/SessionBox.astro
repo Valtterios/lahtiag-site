@@ -8,9 +8,10 @@ import type { Session } from '../lib/auth';
 interface Props {
   session: Session | null;
   csrf: string;
+  prompt?: string; // what signing in is for, on this page
 }
 
-const { session, csrf } = Astro.props;
+const { session, csrf, prompt = 'Sign in to join event signups.' } = Astro.props;
 ---
 <div class="session-box">
   {session ? (
@@ -29,7 +30,7 @@ const { session, csrf } = Astro.props;
     </>
   ) : (
     <>
-      <p>Sign in to join event signups.</p>
+      <p>{prompt}</p>
       <a class="btn btn-primary btn-sm" href="/login">Sign in with Discord</a>
     </>
   )}

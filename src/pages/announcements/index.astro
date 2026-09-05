@@ -45,7 +45,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
   <article class="prose">
     <h1>News</h1>
   </article>
-  <SessionBox session={session} csrf={csrf} />
+  {session && <SessionBox session={session} csrf={csrf} />}
   {flash && <p class="flash">{flash}</p>}
 
   {rendered.length === 0 ? (

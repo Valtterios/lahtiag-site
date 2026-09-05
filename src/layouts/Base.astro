@@ -46,7 +46,7 @@ const pathname = Astro.url.pathname;
       crossorigin
     />
   </head>
-  <body>
+  <body class={wide ? 'site-wide' : undefined}>
     <a class="skip-link" href="#main">Skip to content</a>
     <header class="site-header">
       <div class="inner">

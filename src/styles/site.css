@@ -3231,3 +3231,32 @@ details.admin-panel[open] > summary {
 .event-tile-actions {
   margin: auto 0 0;
 }
+
+/* Footer on a phone: two columns of short lists, not one long one. */
+@media (max-width: 480px) {
+  .site-footer .inner {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.2rem 1.4rem;
+  }
+}
+/* Only the description keeps its line breaks; other cards flow normally. */
+.event-card p {
+  white-space: normal;
+}
+.event-description p {
+  white-space: pre-line;
+}
+.event-card .member-line {
+  margin: 0 0 0.4rem;
+}
+.admin-teams {
+  margin: 0 0 0.8rem;
+  align-items: flex-end;
+}
+
+/* On wide pages (events, register, door) the header and footer stretch
+   with the content, so the edges line up. */
+.site-wide .site-header .inner,
+.site-wide .site-footer .inner {
+  max-width: 110rem;
+}
