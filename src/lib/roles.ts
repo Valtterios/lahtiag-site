@@ -5,7 +5,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { DISCORD_GUILD_ID } from './config';
-import { setGuildMemberRole, listGuildMemberRoles, type RoleResult } from './discord';
+import { setGuildMemberRole, listGuildMemberRoles, type RoleResult, type GuildMemberInfo } from './discord';
 import { listLinkedEntries, getSettings, type RegisterRow } from './db';
 
 export interface RoleConfig {
@@ -117,14 +117,41 @@ export function planRoleChanges(
 // anyone clicks. 'intent' = the bot cannot list members (Server Members
 // intent off in the Developer Portal).
 export type RolePlan =
-  | { ok: true; changes: RoleChange[] }
+  | { ok: true; changes: RoleChange[]; members: Map<string, GuildMemberInfo> }
   | { ok: false; reason: 'unconfigured' | 'intent' | 'error' };
 
 export async function planRoles(env: RoleConfig, db: D1Database): Promise<RolePlan> {
   if (!rolesConfigured(env)) return { ok: false, reason: 'unconfigured' };
   const members = await listGuildMemberRoles(env.DISCORD_BOT_TOKEN!, DISCORD_GUILD_ID);
   if (!members.ok) return { ok: false, reason: members.reason };
-  return { ok: true, changes: planRoleChanges(await listLinkedEntries(db), members.roles, env) };
+  return { ok: true, changes: planRoleChanges(await listLinkedEntries(db), members.roles, env), members: members.members };
+}
+
+export interface LinkWarning {
+  entry: RegisterRow;
+  problem: 'not_in_server' | 'name_differs';
+  actual: string | null; // the account's real handle when known
+}
+
+// Linked IDs pasted by hand can be wrong. Against the server's member
+// list: an ID nobody in the server has, or a stored Discord name that
+// isn't the account's handle.
+export function linkWarnings(
+  entries: RegisterRow[],
+  members: Map<string, GuildMemberInfo>,
+  same: (a: string | null, b: string | null) => boolean,
+): LinkWarning[] {
+  const out: LinkWarning[] = [];
+  for (const entry of entries) {
+    if (!entry.discord_id) continue;
+    const info = members.get(entry.discord_id);
+    if (!info) {
+      out.push({ entry, problem: 'not_in_server', actual: null });
+    } else if (entry.discord_name && !same(entry.discord_name, info.username) && !same(entry.discord_name, info.display)) {
+      out.push({ entry, problem: 'name_differs', actual: info.username });
+    }
+  }
+  return out;
 }
 
 export interface SyncSummary {

@@ -188,7 +188,18 @@ const FIELD_MESSAGES: Record<FieldError, string> = {
             asks an association to keep; the rest helps us plan events.
             {' '}<a href="/privacy">What we store and why.</a>
           </p>
-          <a class="btn btn-cta" href="#apply">Apply for membership</a>
+          {session ? (
+            <p>Signed in as <strong>{session.username}</strong>: your Discord account is linked to the application from the start.</p>
+          ) : (
+            <p>
+              <strong>Sign in with Discord first</strong> if you're on our server: your account is then
+              linked from the start, for the member price at events and your own membership page.
+            </p>
+          )}
+          <p class="entry-actions">
+            {!session && <a class="btn btn-primary" href="/login?next=/join">Sign in, then apply</a>}
+            <a class={session ? 'btn btn-cta' : 'btn btn-ghost'} href="#apply">{session ? 'Apply for membership' : 'Apply without signing in'}</a>
+          </p>
         </section>
 
         <section class="path-card">

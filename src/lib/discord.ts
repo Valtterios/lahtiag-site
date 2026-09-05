@@ -330,12 +330,19 @@ export async function setGuildMemberRole(
 // per 1000 members. Needs the Server Members intent on the bot; without
 // it Discord answers 403, which is reported as such so the page can say
 // exactly what to switch on.
+export interface GuildMemberInfo {
+  roles: string[];
+  username: string; // the unique handle
+  display: string; // server nick, else global name, else handle
+}
+
 export type GuildMembers =
-  | { ok: true; roles: Map<string, string[]> }
+  | { ok: true; roles: Map<string, string[]>; members: Map<string, GuildMemberInfo> }
   | { ok: false; reason: 'intent' | 'error' };
 
 export async function listGuildMemberRoles(botToken: string, guildId: string): Promise<GuildMembers> {
   const roles = new Map<string, string[]>();
+  const members = new Map<string, GuildMemberInfo>();
   let after = '0';
   for (let page = 0; page < 5; page++) {
     let response: Response;
@@ -348,12 +355,23 @@ export async function listGuildMemberRoles(botToken: string, guildId: string): P
     }
     if (response.status === 403) return { ok: false, reason: 'intent' };
     if (!response.ok) return { ok: false, reason: 'error' };
-    const members = (await response.json()) as { user: { id: string }; roles: string[] }[];
-    for (const m of members) roles.set(m.user.id, m.roles);
-    if (members.length < 1000) break;
-    after = members[members.length - 1].user.id;
+    const page_ = (await response.json()) as {
+      user: { id: string; username: string; global_name?: string | null };
+      nick?: string | null;
+      roles: string[];
+    }[];
+    for (const m of page_) {
+      roles.set(m.user.id, m.roles);
+      members.set(m.user.id, {
+        roles: m.roles,
+        username: m.user.username,
+        display: m.nick ?? m.user.global_name ?? m.user.username,
+      });
+    }
+    if (page_.length < 1000) break;
+    after = page_[page_.length - 1].user.id;
   }
-  return { ok: true, roles };
+  return { ok: true, roles, members };
 }
 
 export interface GuildRole {

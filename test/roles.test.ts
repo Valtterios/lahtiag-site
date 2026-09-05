@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { env } from 'cloudflare:test';
-import { desiredRoles, planRoleChanges, rolesConfigured, loadRoleConfig } from '../src/lib/roles';
+import { desiredRoles, planRoleChanges, rolesConfigured, loadRoleConfig, linkWarnings } from '../src/lib/roles';
+import { sameHandle } from '../src/lib/register';
 import { setSetting, getSettings } from '../src/lib/db';
 
 // The Discord role mirror, as pure planning: which roles an entry should
@@ -57,5 +58,24 @@ describe('loadRoleConfig', () => {
     await setSetting(env.DB, 'actives_role_id', '', 'chair', 2);
     expect(await getSettings(env.DB)).toEqual({ member_role_id: 'dbM' });
     expect(await loadRoleConfig(vars, env.DB)).toMatchObject({ MEMBER_ROLE_ID: 'dbM', ACTIVES_ROLE_ID: '' });
+  });
+});
+
+describe('linkWarnings', () => {
+  it('flags ids missing from the server and names that do not match the account', () => {
+    const entries = [
+      { id: 1, full_name: 'A', discord_id: '1', discord_name: 'alpha' },
+      { id: 2, full_name: 'B', discord_id: '2', discord_name: 'Beta#1234' },
+      { id: 3, full_name: 'C', discord_id: '3', discord_name: 'wrongname' },
+      { id: 4, full_name: 'D', discord_id: '4', discord_name: null },
+      { id: 5, full_name: 'E', discord_id: null, discord_name: 'nobody' },
+    ] as never[];
+    const members = new Map([
+      ['1', { roles: [], username: 'alpha', display: 'Alpha' }],
+      ['2', { roles: [], username: 'beta', display: 'B' }],
+      ['3', { roles: [], username: 'gamma', display: 'Gamma' }],
+    ]);
+    const out = linkWarnings(entries, members, sameHandle).map((w) => `${w.entry.id}:${w.problem}:${w.actual ?? ''}`);
+    expect(out).toEqual(['3:name_differs:gamma', '4:not_in_server:']);
   });
 });

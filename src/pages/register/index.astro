@@ -16,7 +16,8 @@ import {
   HOUSEKEEPING,
   type RegisterRow,
 } from '../../lib/db';
-import { rolesConfigured, loadRoleConfig, planRoles, type RolePlan } from '../../lib/roles';
+import { rolesConfigured, loadRoleConfig, planRoles, linkWarnings, type RolePlan } from '../../lib/roles';
+import { listLinkedEntries } from '../../lib/db';
 import { listGuildRoles, type GuildRole } from '../../lib/discord';
 import { DISCORD_GUILD_ID } from '../../lib/config';
 import {
@@ -73,6 +74,8 @@ const guildRoles: GuildRole[] | null =
 // What Sync would change, shown before the button so the board can see
 // whether the bot is able to read the server and what it would touch.
 const rolePlan: RolePlan | null = board.ok && rolesOn ? await planRoles(roleCfg, env.DB) : null;
+// IDs pasted by hand, checked against the server: wrong ones show up here.
+const warnings = rolePlan?.ok ? linkWarnings(await listLinkedEntries(env.DB), rolePlan.members, sameHandle) : [];
 const roleName = (id: string) => guildRoles?.find((r) => r.id === id)?.name ?? id;
 const linkedNames = new Map<string, string>();
 if (rolePlan?.ok && rolePlan.changes.length > 0) {
@@ -284,6 +287,31 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                 <button class="btn btn-primary" name="action" value="active_approve" type="submit">Approve as active</button>
                 <button class="btn btn-ghost" name="action" value="active_revoke" type="submit">Decline</button>
               </form>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {warnings.length > 0 && view === 'all' && !q && (
+        <section class="queue">
+          <h2 class="section-label">Linked accounts to check</h2>
+          <p class="queue-intro">
+            Compared with the Discord server's member list. A wrong ID gives the roles to the wrong
+            person; fix it on the entry (Developer Mode → right-click the member → Copy ID).
+          </p>
+          {warnings.map((w) => (
+            <div class="queue-card queue-quiet">
+              <div class="queue-body">
+                <p class="queue-name"><a href={`/register/${w.entry.id}`}>{w.entry.full_name}</a></p>
+                <p class="queue-meta">
+                  {w.problem === 'not_in_server'
+                    ? `Linked Discord id ${w.entry.discord_id} is not a member of the LahtiAG server: wrong id, or they left.`
+                    : `Entry says Discord "${w.entry.discord_name}", but the linked account is @${w.actual}.`}
+                </p>
+              </div>
+              <div class="queue-actions">
+                <a class="btn btn-ghost btn-sm" href={`/register/${w.entry.id}`}>Open entry</a>
+              </div>
             </div>
           ))}
         </section>
