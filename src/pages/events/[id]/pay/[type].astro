@@ -79,12 +79,12 @@ if (Astro.request.method === 'POST' && valid && offer?.ok) {
       if (questions.length > 0) await saveAnswers(env.DB, event.id, answerKey(ticket.id), parsed.answers, now);
       const checkout = await createCheckoutSession(env.STRIPE_SECRET_KEY!, {
         amountCents: offer.amount_cents,
-        productName: `${event.title}: ${type.name}`,
+        productName: `${event.title}: ${type.name} · ${holder}`,
         description: formatHelsinkiRange(event.starts_at, event.ends_at),
         successUrl: `${Astro.url.origin}/tickets/${ticket.code}?paid=1`,
         cancelUrl: `${Astro.url.origin}/events/${event.id}/pay/${type.id}?err=cancelled_checkout`,
         clientReferenceId: String(ticket.id),
-        metadata: { ticket_id: String(ticket.id), event_id: String(event.id), discord_id: session?.discordId ?? '' },
+        metadata: { ticket_id: String(ticket.id), ticket_code: ticket.code, event_id: String(event.id), discord_id: session?.discordId ?? '', holder_name: holder },
       });
       if (!checkout) {
         await voidTicket(env.DB, ticket.id);

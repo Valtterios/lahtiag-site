@@ -32,7 +32,7 @@ function encode(params: Record<string, string | number | boolean | null | undefi
 
 export interface CheckoutInput {
   amountCents: number;
-  productName: string;
+  productName: string; // "<event>: <type> · <name>": the receipt line says who it was for
   description?: string;
   successUrl: string;
   cancelUrl: string;

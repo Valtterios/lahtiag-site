@@ -273,6 +273,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                         {offer.ok && (offer.amount_cents === 0 || paymentsOn) && (
                           <a class="btn btn-ghost" href={`/events/${event.id}/pay/${t.id}`}>Buy without Discord</a>
                         )}
+                        {!offer.ok && offer.reason !== 'members_only' && <span class="ticket-why">{FLASH[offer.reason] ?? offer.reason}</span>}
                       </div>
                     ) : offer.ok ? (
                       <form method="post" action={`/events/${event.id}/buy`}>

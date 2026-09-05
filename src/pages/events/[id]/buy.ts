@@ -66,12 +66,12 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
     const entry = await getRegisterByDiscord(env.DB, session.discordId);
     const checkout = await createCheckoutSession(env.STRIPE_SECRET_KEY!, {
       amountCents: offer.amount_cents,
-      productName: `${event.title}: ${type.name}`,
+      productName: `${event.title}: ${type.name} · ${holder}`,
       description: formatHelsinkiRange(event.starts_at, event.ends_at),
       successUrl: `${url.origin}/tickets/${ticket.code}?paid=1`,
       cancelUrl: `${url.origin}${back}?err=cancelled_checkout`,
       clientReferenceId: String(ticket.id),
-      metadata: { ticket_id: String(ticket.id), event_id: String(id), discord_id: session.discordId },
+      metadata: { ticket_id: String(ticket.id), ticket_code: ticket.code, event_id: String(id), discord_id: session.discordId, holder_name: holder },
       customerEmail: entry?.email,
     });
     if (!checkout) {
