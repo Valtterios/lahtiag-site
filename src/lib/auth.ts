@@ -114,6 +114,15 @@ export function clearSessionCookie(): string {
   return `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
 }
 
+// A second, readable cookie with just the display name, so the header can
+// say who is signed in on every page, static ones included. It carries
+// nothing the session does not already show on the site.
+export const ACCOUNT_COOKIE = '__Host-account';
+
+export function clearAccountCookie(): string {
+  return `${ACCOUNT_COOKIE}=; Path=/; Max-Age=0; Secure; SameSite=Lax`;
+}
+
 // CSRF double-submit (spec): a random token in its own cookie, echoed as a
 // hidden field by every server-rendered form. The cookie is HttpOnly —
 // forms are rendered server-side, so no script ever needs to read it.

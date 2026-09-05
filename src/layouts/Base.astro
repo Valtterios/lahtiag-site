@@ -19,6 +19,9 @@ const { title, description, wide = false, image } = Astro.props;
 // file with a navOrder appears in the header without touching this file.
 const links = navLinks([...(await getCollection('pages')), ...APP_PAGES]);
 const inBasket = basketCount(readBasket(Astro.cookies));
+// Who is signed in, from the readable account cookie. Prerendered pages
+// see no cookies at build time; the script below fixes those in the browser.
+const account = Astro.cookies.get('__Host-account')?.value?.slice(0, 40) ?? null;
 const pathname = Astro.url.pathname;
 ---
 <!doctype html>
@@ -64,6 +67,10 @@ const pathname = Astro.url.pathname;
             ))}
           </ul>
         </nav>
+        <a class={`site-account${account ? ' is-in' : ''}`} id="site-account" href={account ? '/membership' : `/login?next=${encodeURIComponent(pathname)}`} aria-label={account ? `Signed in as ${account}` : 'Sign in with Discord'}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+          <span class="site-account-name">{account ?? 'Sign in'}</span>
+        </a>
         <a class="site-cart" href="/checkout" aria-label={inBasket > 0 ? `Basket, ${inBasket} in it` : 'Basket'} aria-current={pathname === '/checkout' ? 'page' : undefined}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg>
           {inBasket > 0 && <span class="nav-cart-count">{inBasket}</span>}
@@ -119,6 +126,21 @@ const pathname = Astro.url.pathname;
         </p>
       </div>
     </footer>
+    <script>
+      // The header's account link on prerendered pages: the server saw no
+      // cookie at build time, so read the account cookie here and show the
+      // name. On server-rendered pages this agrees with what was rendered.
+      const account = document.getElementById('site-account');
+      const match = document.cookie.match(/(?:^|;\s*)__Host-account=([^;]*)/);
+      const name = match ? decodeURIComponent(match[1]).slice(0, 40) : null;
+      if (account && name && !account.classList.contains('is-in')) {
+        account.classList.add('is-in');
+        account.setAttribute('href', '/membership');
+        account.setAttribute('aria-label', `Signed in as ${name}`);
+        const label = account.querySelector('.site-account-name');
+        if (label) label.textContent = name;
+      }
+    </script>
     <script>
       // Buttons and forms marked data-confirm ask before they act. Native
       // confirm(), no library; the CSP allows this file because Astro

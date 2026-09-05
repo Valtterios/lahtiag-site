@@ -3284,3 +3284,50 @@ details.admin-panel[open] > summary {
   margin: 0 0 1.5rem;
   max-width: 44rem;
 }
+
+/* Header account link: "Sign in" for visitors, the name when signed in. */
+.site-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  text-decoration: none;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.2rem;
+  margin-left: 1.2rem;
+  max-width: 12rem;
+}
+.site-account svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+.site-account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.site-account:hover {
+  color: var(--ink);
+}
+.site-account.is-in {
+  color: var(--blue);
+}
+.site-account.is-in svg {
+  fill: var(--blue);
+  stroke: var(--blue);
+}
+@media (max-width: 600px) {
+  .site-account {
+    order: 2;
+    margin-left: auto;
+    max-width: 8rem;
+  }
+  .site-cart {
+    margin-left: 0.4rem;
+  }
+}

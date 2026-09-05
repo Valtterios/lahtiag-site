@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
-import { clearSessionCookie } from '../lib/auth';
+import { clearSessionCookie, clearAccountCookie } from '../lib/auth';
 import { checkCsrf, currentSession } from '../lib/guard';
 import { revokeToken } from '../lib/discord';
 
@@ -21,5 +21,6 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
   }
   const response = redirect('/', 303);
   response.headers.append('Set-Cookie', clearSessionCookie());
+  response.headers.append('Set-Cookie', clearAccountCookie());
   return response;
 };

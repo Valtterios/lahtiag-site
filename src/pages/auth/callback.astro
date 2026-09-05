@@ -8,8 +8,7 @@ import {
   CSRF_COOKIE,
   SESSION_TTL_SECONDS,
   sealSession,
-  newCsrfToken,
-} from '../../lib/auth';
+  newCsrfToken, ACCOUNT_COOKIE } from '../../lib/auth';
 import { upsertMember, refreshLinkedDiscordName } from '../../lib/db';
 
 // The OAuth return leg. The three failure modes the spec's error handling
@@ -104,6 +103,7 @@ sign: {
   } as const;
   Astro.cookies.set(SESSION_COOKIE, token, cookieOptions);
   Astro.cookies.set(CSRF_COOKIE, newCsrfToken(), cookieOptions);
+  Astro.cookies.set(ACCOUNT_COOKIE, username, { ...cookieOptions, httpOnly: false });
   const next = Astro.cookies.get('__Host-next')?.value ?? '';
   Astro.cookies.delete('__Host-next', { path: '/', secure: true });
   return Astro.redirect(/^\/[a-z0-9\-\/]*$/i.test(next) && !next.startsWith('//') ? next : '/events');
