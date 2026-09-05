@@ -148,3 +148,67 @@ whole system, used for roles and nothing else.
    it says changes are left. (The choice is stored in the database; the
    `MEMBER_ROLE_ID` / `ACTIVES_ROLE_ID` vars in `wrangler.toml` are only a
    fallback and can stay empty.)
+
+## 10. Stripe (ticket payments)
+
+The association has a live Stripe account and a **sandbox** (a test copy).
+Set the site up against the sandbox first; swap to live keys when the
+account is activated. Sandbox keys on the live site are safe: nothing is
+charged.
+
+1. Open the sandbox's API keys:
+
+   ```
+   https://dashboard.stripe.com/acct_1UCKExRrdX5smNNd/test/apikeys
+   ```
+
+   **Create restricted key** → name `lahtiag.fi`, permission
+   **Checkout Sessions: Write** (everything else None) → Create. Copy the
+   key (starts with `rk_test_`).
+
+2. Add the webhook endpoint:
+
+   ```
+   https://dashboard.stripe.com/acct_1UCKExRrdX5smNNd/test/webhooks
+   ```
+
+   **Add endpoint** (or "Add destination") → endpoint URL
+   `https://lahtiag.fi/stripe/webhook` → select events:
+   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+   `checkout.session.async_payment_failed`, `checkout.session.expired`,
+   `charge.refunded`, `payment_intent.succeeded` → Add. Open the new
+   endpoint and **Reveal** the signing secret (starts with `whsec_`).
+
+3. Put both into the Worker (each command asks for the value):
+
+   ```
+   cd ~/projects/lahtiag-site
+   npx wrangler secret put STRIPE_SECRET_KEY
+   npx wrangler secret put STRIPE_WEBHOOK_SECRET
+   ```
+
+   Also into the Bitwarden note.
+
+4. Payment methods:
+
+   ```
+   https://dashboard.stripe.com/acct_1UCKExRrdX5smNNd/test/settings/payment_methods
+   ```
+
+   Turn **MobilePay** on (Stripe may ask you to activate the live account
+   first). Turn **Klarna** off unless you want instalments offered on
+   tickets. Cards, Apple Pay and Link are on already.
+
+5. Test: create an event on the site with a ticket type priced 1.00 €,
+   buy it signed in, and on Stripe's page use card `4242 4242 4242 4242`,
+   any future expiry, any CVC. You should land on your ticket with the
+   QR. In the sandbox dashboard the payment shows under Payments and the
+   webhook delivery under the endpoint. Then refund it from the Payments
+   page: the ticket turns "Refunded" on the site within seconds.
+
+6. Going live: repeat steps 1, 2 and 4 in the **live** account
+   (`https://dashboard.stripe.com/apikeys`, `/webhooks`,
+   `/settings/payment_methods`) and run step 3 again with the live values.
+   Payouts land in the Holvi account; the treasurer books Stripe's monthly
+   report. Tap to Pay at the door: install the **Stripe Dashboard** app
+   on the board member's phone and sign in with the live account.
