@@ -3105,3 +3105,15 @@ details.admin-panel[open] > summary {
 .ticket-meta .daily-mark {
   max-width: none;
 }
+
+/* Cards with a button on the right: the text shrinks, the button stays put. */
+.ticket-card > div:first-child {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.ticket-card > .btn,
+.ticket-card > form,
+.ticket-card > .entry-actions {
+  flex: none;
+  margin-left: auto;
+}

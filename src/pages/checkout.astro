@@ -353,7 +353,10 @@ Astro.response.headers.set('cache-control', 'no-store');
 <Base title="Checkout" description="Pay for your tickets and shop items.">
   <article class="prose">
     <h1>Checkout</h1>
-    {count > 0 && <p class="queue-meta">{count} {count === 1 ? 'thing' : 'things'} in your basket.</p>}
+    <p class="queue-meta">
+      {count > 0 ? `${count} ${count === 1 ? 'thing' : 'things'} in your basket. ` : ''}
+      Already bought something? <a href="/purchases">My purchases</a> · <a href="/tickets">My tickets</a>
+    </p>
   </article>
 
   {pending && (

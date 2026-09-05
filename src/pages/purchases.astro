@@ -42,7 +42,13 @@ const STATUS: Record<PurchaseRow['status'], string> = { pending: 'Not paid', pai
               <p class="ticket-event">{formatHelsinki(p.created_at)} · {p.total_cents === 0 ? 'Free' : euro(p.total_cents)} · {STATUS[p.status]}</p>
               {c.tickets.length > 0 && (
                 <p class="queue-meta">
-                  {c.tickets.length === 1 ? 'Ticket' : `${c.tickets.length} tickets`}: {c.tickets.map((t) => `${t.event_title} (${t.holder_name})`).join(', ')}
+                  {c.tickets.length === 1 ? 'Ticket' : `${c.tickets.length} tickets`}:{' '}
+                  {[...new Set(c.tickets.map((t) => t.event_title))]
+                    .map((title) => {
+                      const names = c.tickets.filter((t) => t.event_title === title).map((t) => t.holder_name);
+                      return `${title}${names.length > 1 ? ` × ${names.length}` : ''} (${names.join(', ')})`;
+                    })
+                    .join('; ')}
                 </p>
               )}
               {c.items.length > 0 && (
