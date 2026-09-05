@@ -1,6 +1,7 @@
 ---
 import { getCollection } from 'astro:content';
 import { navLinks, isCurrentNavLink, APP_PAGES } from '../lib/nav';
+import { readBasket, basketCount } from '../lib/basket';
 import '../styles/site.css';
 
 interface Props {
@@ -16,6 +17,7 @@ const { title, description, wide = false } = Astro.props;
 // The nav is built from the collection at build time, so a new Markdown
 // file with a navOrder appears in the header without touching this file.
 const links = navLinks([...(await getCollection('pages')), ...APP_PAGES]);
+const inBasket = basketCount(readBasket(Astro.cookies));
 const pathname = Astro.url.pathname;
 ---
 <!doctype html>
@@ -59,6 +61,11 @@ const pathname = Astro.url.pathname;
                 </a>
               </li>
             ))}
+            {inBasket > 0 && (
+              <li>
+                <a class="nav-basket" href="/checkout" aria-current={pathname === '/checkout' ? 'page' : undefined}>Basket ({inBasket})</a>
+              </li>
+            )}
           </ul>
         </nav>
       </div>
@@ -81,6 +88,7 @@ const pathname = Astro.url.pathname;
             <li><a href="/members">Become a member</a></li>
             <li><a href="/membership">My membership</a></li>
             <li><a href="/tickets">My tickets</a></li>
+            <li><a href="/shop">Shop</a></li>
             <li><a href="/terms">Terms of sale</a></li>
             <li><a href="/register">Member register (board)</a></li>
           </ul>

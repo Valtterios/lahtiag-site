@@ -9,10 +9,9 @@ import {
   listEventTeams,
   getBracket,
   listTicketTypes,
-  ticketOffer,
   signupAccess,
   getTicketForHolder,
-  resumableCheckout,
+  repairTicketSignups,
   salesSummary,
   listEventQuestions,
   getAnswers,
@@ -20,6 +19,8 @@ import {
   type TicketTypeWithSales,
 } from '../../../lib/db';
 import { questionOptions, answersComplete, QUESTION_KINDS } from '../../../lib/questions';
+import { purchaseOffer, pendingPurchaseFor, resumablePurchase } from '../../../lib/purchases';
+import { readBasket, basketCount } from '../../../lib/basket';
 import { stripeConfigured } from '../../../lib/stripe';
 import { formatHelsinkiRange, unixToHelsinkiInputs, formatHelsinki } from '../../../lib/time';
 
@@ -35,7 +36,7 @@ if (!event) {
 const session = await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
 
-const signups = event ? await listSignups(env.DB, event.id) : [];
+
 const eventTeams = event?.team_size != null ? await listEventTeams(env.DB, event.id) : [];
 const hasBracket = event ? (await getBracket(env.DB, event.id)).length > 0 : false;
 
@@ -47,15 +48,22 @@ const activeTypes = types.filter((t) => t.active === 1);
 // Team events sell tickets too: the paid ticket is the entry, and
 // forming a team needs one.
 const ticketed = activeTypes.length > 0;
-const offers = new Map<number, Awaited<ReturnType<typeof ticketOffer>>>();
+// A paid ticket on an account is a signup; put back any that went missing.
+if (event && ticketed) await repairTicketSignups(env.DB, event.id, nowSeconds);
+const signups = event ? await listSignups(env.DB, event.id) : [];
+const offers = new Map<number, Awaited<ReturnType<typeof purchaseOffer>>>();
 if (event && ticketed) {
-  for (const t of activeTypes) offers.set(t.id, await ticketOffer(env.DB, event, t, session?.discordId ?? null, nowSeconds));
+  for (const t of activeTypes) offers.set(t.id, await purchaseOffer(env.DB, event, t, session?.discordId ?? null, nowSeconds));
 }
 const myTicket = event && session ? await getTicketForHolder(env.DB, event.id, session.discordId) : null;
 const access = event && session ? await signupAccess(env.DB, event, session.discordId, true) : null;
 const sales = event && session?.isAdmin && types.length > 0 ? await salesSummary(env.DB, event.id) : null;
 const hasTicket = myTicket?.status === 'paid';
-const resume = resumableCheckout(myTicket, nowSeconds);
+const pendingPurchase = event && session ? await pendingPurchaseFor(env.DB, session.discordId, nowSeconds) : null;
+const resume = resumablePurchase(pendingPurchase, nowSeconds);
+const basket = readBasket(Astro.cookies);
+const inBasket = (typeId: number) => basket.find((l) => l.kind === 'ticket' && l.id === typeId)?.count ?? 0;
+const basketTotal = basketCount(basket);
 
 // Questions the board asks on this event, and what the viewer answered.
 const questions = event ? await listEventQuestions(env.DB, event.id) : [];
@@ -111,10 +119,12 @@ const FLASH: Record<string, string> = {
   cancelled_checkout: 'Payment cancelled. Nothing was charged. Continue below, or release the seat to pick another ticket.',
   answers: 'Please answer the required questions.',
   needs_ticket: 'This event needs a ticket first. Buy one above, then form or join a team.',
+  ticket_holder: 'That person holds a paid ticket, so they are going. Refund it in Stripe to remove them.',
 };
 const OK: Record<string, string> = {
   reinstated: 'The event is back on. The Discord cancellation line was removed.',
-  released: 'Seat released. Nothing was charged.',
+  released: 'Released. Nothing was charged.',
+  added: 'Added to your basket.',
   type_saved: 'Ticket type saved.',
   type_deleted: 'Ticket type removed (or retired, if tickets were sold on it).',
   question_saved: 'Questions saved.',
@@ -183,118 +193,80 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
       {ticketed && (
         <section class="tickets-box" id="buy">
           <h2 class="section-label">Tickets</h2>
-          {myTicket ? (
+          {pendingPurchase && (
             <div class="queue-card">
               <div class="queue-body">
-                <p class="queue-name">{myTicket.status === 'paid' ? 'You have a ticket' : 'Your payment is not finished'}</p>
+                <p class="queue-name">Your payment is not finished</p>
+                <p class="queue-meta">{resume ? 'Its seats are held for a while. Continue it, or release it and start over.' : 'Its payment window closed. Release it to start over.'}</p>
+              </div>
+              <div class="entry-actions">
+                {resume && <a class="btn btn-cta" href={resume}>Continue to payment</a>}
+                <form method="post" action={`/purchase/${pendingPurchase.id}/release`}>
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="next" value={`/events/${event.id}`} />
+                  <button class="btn btn-ghost" type="submit">Release</button>
+                </form>
+              </div>
+            </div>
+          )}
+          {hasTicket && myTicket && (
+            <div class="queue-card">
+              <div class="queue-body">
+                <p class="queue-name">You have a ticket</p>
                 <p class="queue-meta">{myTicket.type_name} · {myTicket.holder_name}{myTicket.checked_in_at ? ' · checked in' : ''}</p>
               </div>
-              {myTicket.status === 'pending' ? (
-                <div class="entry-actions">
-                  {resume && <a class="btn btn-cta" href={resume}>Continue to payment</a>}
-                  <form method="post" action={`/tickets/${myTicket.code}/release`}>
-                    <input type="hidden" name="csrf" value={csrf} />
-                    <input type="hidden" name="next" value={`/events/${event.id}`} />
-                    <button class="btn btn-ghost" type="submit">Release this seat</button>
-                  </form>
-                </div>
-              ) : (
-                <a class="btn btn-primary" href={`/tickets/${myTicket.code}`}>Show ticket</a>
-              )}
+              <a class="btn btn-primary" href={`/tickets/${myTicket.code}`}>Show ticket</a>
             </div>
-          ) : questions.length > 0 && session ? (
-            <form method="post" action={`/events/${event.id}/buy`} class="app-form buy-form">
-              <input type="hidden" name="csrf" value={csrf} />
-              <ul class="ticket-types">
-                {activeTypes.map((t, i) => {
-                  const offer = offers.get(t.id)!;
-                  const left = t.quantity === null ? null : Math.max(0, t.quantity - t.sold);
-                  return (
-                    <li class="ticket-type">
-                      <label class="check ticket-pick">
-                        <input type="radio" name="ticket_type_id" value={t.id} disabled={!offer.ok} checked={offer.ok && i === activeTypes.findIndex((x) => offers.get(x.id)!.ok)} />
-                        <span>
-                          <span class="ticket-type-name">{t.name}</span><br />
-                          <span class="queue-meta">
-                            {offer.ok ? (offer.amount_cents === 0 ? 'Free' : euro(offer.amount_cents)) : (FLASH[offer.reason] ?? offer.reason)}
-                            {left !== null ? ` · ${left} left` : ''}
-                          </span>
-                        </span>
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
-              {questions.map((q) => {
-                const value = myAnswers.get(q.id) ?? '';
-                return q.kind === 'checkbox' ? (
-                  <label class="check check-standalone">
-                    <input type="checkbox" name={`q${q.id}`} checked={value === 'yes'} /> <span>{q.label}{q.required ? ' *' : ''}</span>
-                  </label>
-                ) : q.kind === 'choice' ? (
-                  <label>
-                    {q.label}{q.required ? ' *' : ''}
-                    <select name={`q${q.id}`} required={q.required === 1}>
-                      <option value="" selected={value === ''}>Choose…</option>
-                      {questionOptions(q).map((o) => <option value={o} selected={value === o}>{o}</option>)}
-                    </select>
-                  </label>
-                ) : (
-                  <label>
-                    {q.label}{q.required ? ' *' : ''}
-                    <input name={`q${q.id}`} maxlength="300" value={value} required={q.required === 1} />
-                  </label>
-                );
-              })}
-              <button class="btn btn-cta" type="submit" disabled={!activeTypes.some((t) => offers.get(t.id)!.ok)}>Continue</button>
-              {!paymentsOn && activeTypes.some((t) => t.price_cents > 0) && <p class="queue-meta">Card payments aren't set up yet; paid tickets are sold at the door.</p>}
-            </form>
-          ) : (
-            <ul class="ticket-types">
-              {activeTypes.map((t) => {
-                const offer = offers.get(t.id)!;
-                const left = t.quantity === null ? null : Math.max(0, t.quantity - t.sold);
-                return (
-                  <li class="ticket-type">
-                    <div>
-                      <p class="ticket-type-name">{t.name}</p>
-                      <p class="queue-meta">
-                        {t.member_price_cents !== null && t.member_price_cents !== t.price_cents
-                          ? `${euro(t.price_cents)}, members ${euro(t.member_price_cents)}`
-                          : t.price_cents === 0 ? 'Free' : euro(t.price_cents)}
-                        {t.members_only === 1 ? ' · members only' : ''}
-                        {left !== null ? ` · ${left} left` : ''}
-                        {t.sales_close_at !== null ? ` · sales close ${formatHelsinki(t.sales_close_at)}` : ''}
-                      </p>
-                    </div>
-                    {!session ? (
-                      <div class="entry-actions">
-                        <a class="btn btn-primary" href={`/login?next=/events/${event.id}`}>Sign in to buy</a>
-                        {offer.ok && (offer.amount_cents === 0 || paymentsOn) && (
-                          <a class="btn btn-ghost" href={`/events/${event.id}/pay/${t.id}`}>Buy without Discord</a>
-                        )}
-                        {!offer.ok && offer.reason !== 'members_only' && <span class="ticket-why">{FLASH[offer.reason] ?? offer.reason}</span>}
-                      </div>
-                    ) : offer.ok ? (
-                      <form method="post" action={`/events/${event.id}/buy`}>
-                        <input type="hidden" name="csrf" value={csrf} />
-                        <input type="hidden" name="ticket_type_id" value={t.id} />
-                        <button class="btn btn-cta" type="submit" disabled={offer.amount_cents > 0 && !paymentsOn}>
-                          {offer.amount_cents === 0 ? 'Get ticket' : `Buy · ${euro(offer.amount_cents)}`}
-                        </button>
-                      </form>
-                    ) : (
-                      <span class="ticket-why">{FLASH[offer.reason] ?? offer.reason}</span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
           )}
-          {!myTicket && session && !paymentsOn && activeTypes.some((t) => t.price_cents > 0) && (
-            <p class="queue-meta">Card payments aren't set up yet; paid tickets are sold at the door.</p>
+          <ul class="ticket-types">
+            {activeTypes.map((t) => {
+              const offer = offers.get(t.id)!;
+              const left = t.quantity === null ? null : Math.max(0, t.quantity - t.sold);
+              const max = offer.ok ? (offer.own ? 1 : 0) + offer.max_extras : 0;
+              const canPay = t.price_cents === 0 || paymentsOn;
+              const have = inBasket(t.id);
+              return (
+                <li class="ticket-type">
+                  <div>
+                    <p class="ticket-type-name">{t.name}</p>
+                    <p class="queue-meta">
+                      {t.member_price_cents !== null && t.member_price_cents !== t.price_cents
+                        ? `${euro(t.price_cents)}, members ${euro(t.member_price_cents)}`
+                        : t.price_cents === 0 ? 'Free' : euro(t.price_cents)}
+                      {t.members_only === 1 ? ' · members only' : ''}
+                      {left !== null ? ` · ${left} left` : ''}
+                      {t.sales_close_at !== null ? ` · sales close ${formatHelsinki(t.sales_close_at)}` : ''}
+                    </p>
+                  </div>
+                  {offer.ok && max > 0 && canPay ? (
+                    <form method="post" action="/basket/add" class="basket-add">
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="kind" value="ticket" />
+                      <input type="hidden" name="id" value={t.id} />
+                      <input type="hidden" name="next" value={`/events/${event.id}`} />
+                      {max > 1 && (
+                        <select name="count" aria-label="How many tickets">
+                          {Array.from({ length: max }, (_, i) => i + 1).map((n) => <option value={n}>{n}</option>)}
+                        </select>
+                      )}
+                      <button class="btn btn-cta" type="submit">{have > 0 ? `In basket (${have}) · Add more` : hasTicket ? 'Add for a friend' : 'Add to basket'}</button>
+                    </form>
+                  ) : (
+                    <span class="ticket-why">{!offer.ok ? (FLASH[offer.reason] ?? offer.reason) : !canPay ? FLASH.payments_off : 'Sold out'}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {basketTotal > 0 && (
+            <p class="basket-bar"><strong>{basketTotal} in your basket.</strong> <a class="btn btn-primary btn-sm" href="/checkout">Go to checkout</a></p>
           )}
-          <p class="queue-meta">Tickets are personal and shown as a QR code{!session && '; without Discord the ticket is a link you keep'}. <a href="/terms">Terms of sale.</a></p>
+          <p class="queue-meta">
+            {session
+              ? 'Tickets are personal and shown as a QR code. You can buy tickets for friends by name at the checkout.'
+              : 'Sign in with Discord for member prices and to keep tickets on your account; without Discord, tickets are links you keep.'}{' '}
+            <a href="/terms">Terms of sale.</a>
+          </p>
         </section>
       )}
 

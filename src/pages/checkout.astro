@@ -1,0 +1,490 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../layouts/Base.astro';
+import { currentSession, ensureCsrf, checkCsrf } from '../lib/guard';
+import {
+  getEvent,
+  getTicketType,
+  listEventQuestions,
+  getAnswers,
+  saveAnswers,
+  getTicketForHolder,
+  getRegisterByDiscord,
+  upsertMember,
+  RuleError,
+  type EventRow,
+  type TicketTypeWithSales,
+} from '../lib/db';
+import { readBasket, writeBasket, basketCount, withLine, type BasketLine } from '../lib/basket';
+import {
+  getProduct,
+  getPurchase,
+  quoteLine,
+  createPurchase,
+  setPurchaseCheckout,
+  voidPurchase,
+  pendingPurchaseFor,
+  resumablePurchase,
+  MAX_PER_PURCHASE,
+  type ProductWithSales,
+  type QuotedLine,
+  type PurchaseLine,
+} from '../lib/purchases';
+import { parseAnswers, questionOptions, type AnswerErrors, type EventQuestionRow } from '../lib/questions';
+import { createCheckoutSession, stripeConfigured, type CheckoutLine } from '../lib/stripe';
+import { formatHelsinkiRange } from '../lib/time';
+
+// The checkout: everything in the basket, priced for this person, with a
+// name (and the event's questions) for every ticket, then one Stripe
+// payment. Tickets for several events and shop items go in one purchase.
+// Free purchases are issued on the spot. No account needed; signed-in
+// members get their prices and keep tickets on their account.
+
+const PENDING_COOKIE = '__Host-pending-purchase';
+const session = await currentSession(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+const now = Math.floor(Date.now() / 1000);
+const paymentsOn = stripeConfigured(env);
+const isPost = Astro.request.method === 'POST';
+const form = isPost ? await Astro.request.formData() : new FormData();
+const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
+
+// An open payment holds seats and stock: finish or release it first.
+const cookiePending = async () => {
+  const id = Astro.cookies.get(PENDING_COOKIE)?.value ?? '';
+  const purchase = /^[A-Z0-9]{10}$/.test(id) ? await getPurchase(env.DB, id) : null;
+  return purchase?.status === 'pending' ? purchase : null;
+};
+const pending = session ? await pendingPurchaseFor(env.DB, session.discordId, now) : await cookiePending();
+const resume = resumablePurchase(pending, now);
+
+// --- the basket, loaded and priced ------------------------------------------------
+
+interface Block {
+  own: boolean;
+  index: number; // extra index, for field names
+  name: string;
+  nameField: string | null;
+  prefix: string;
+  values: Map<number, string>;
+  errors: AnswerErrors;
+  nameMissing: boolean;
+}
+interface Line {
+  i: number;
+  basket: BasketLine;
+  quoted: QuotedLine;
+  questions: EventQuestionRow[];
+  blocks: Block[];
+}
+
+let basket = readBasket(Astro.cookies);
+const notes: string[] = [];
+let problem: string | null = null;
+
+// Buttons inside the form that change the basket without losing what was
+// typed: add a ticket, drop one, more or fewer pieces, remove a line.
+const adjust = String(form.get('adjust') ?? '');
+const csrfOk = isPost ? await checkCsrf(Astro.request, form) : true;
+if (isPost && !csrfOk) problem = 'csrf';
+const typedNames = new Map<string, string>();
+for (const [key, value] of form.entries()) {
+  if (/^l\d+_x\d+_name$/.test(key)) typedNames.set(key, String(value));
+}
+if (adjust && csrfOk) {
+  const [verb, a, b] = adjust.split(':');
+  const li = Number(a);
+  const line = basket[li];
+  if (line) {
+    if (verb === 'add' || verb === 'plus') basket = withLine(basket, { ...line, count: 1 });
+    if (verb === 'minus') basket = withLine(basket, { ...line, count: -1 });
+    if (verb === 'remove') basket = withLine(basket, { ...line, count: 0 }, true);
+    if (verb === 'drop') {
+      // Drop extra `b` of line `li`: later names shift down one.
+      const j = Number(b);
+      for (let k = j; k < 99; k++) {
+        const next = typedNames.get(`l${li}_x${k + 1}_name`);
+        if (next === undefined) {
+          typedNames.delete(`l${li}_x${k}_name`);
+          break;
+        }
+        typedNames.set(`l${li}_x${k}_name`, next);
+      }
+      basket = withLine(basket, { ...line, count: -1 });
+    }
+  }
+  writeBasket(Astro.cookies, basket);
+}
+
+const questionCache = new Map<number, EventQuestionRow[]>();
+const questionsFor = async (eventId: number) => {
+  if (!questionCache.has(eventId)) questionCache.set(eventId, await listEventQuestions(env.DB, eventId));
+  return questionCache.get(eventId)!;
+};
+const previousAnswers = new Map<number, Map<number, string>>();
+
+const ownTaken = new Set<number>();
+const lines: Line[] = [];
+let kept: BasketLine[] = [];
+for (const [i, entry] of basket.entries()) {
+  if (entry.kind === 'item') {
+    const product: ProductWithSales | null = await getProduct(env.DB, entry.id, now);
+    if (!product || product.active !== 1) {
+      notes.push('An item that is no longer for sale was removed from your basket.');
+      continue;
+    }
+    let count = entry.count;
+    let quoted = await quoteLine(env.DB, session, { kind: 'item', product, quantity: count }, now);
+    if (quoted.kind === 'item' && quoted.problem === 'sold_out' && quoted.max > 0 && count > quoted.max) {
+      count = quoted.max;
+      quoted = await quoteLine(env.DB, session, { kind: 'item', product, quantity: count }, now);
+      notes.push(`Only ${count} of ${product.name} left; your basket was adjusted.`);
+    }
+    if (quoted.problem === 'sold_out' || quoted.problem === 'sales_closed') {
+      notes.push(`${product.name} sold out and was removed from your basket.`);
+      continue;
+    }
+    kept.push({ ...entry, count });
+    lines.push({ i, basket: { ...entry, count }, quoted, questions: [], blocks: [] });
+    continue;
+  }
+  const type: TicketTypeWithSales | null = await getTicketType(env.DB, entry.id);
+  const event: EventRow | null = type ? await getEvent(env.DB, type.event_id) : null;
+  if (!type || !event || type.active !== 1) {
+    notes.push('A ticket that is no longer on sale was removed from your basket.');
+    continue;
+  }
+  const own = Boolean(session) && !ownTaken.has(event.id) && !(await getTicketForHolder(env.DB, event.id, session!.discordId));
+  if (own) ownTaken.add(event.id);
+  let count = Math.min(entry.count, MAX_PER_PURCHASE);
+  const names = (n: number) => Array.from({ length: n }, (_, j) => (typedNames.get(`l${i}_x${j}_name`) ?? '').replace(/\s+/g, ' ').trim().slice(0, 60));
+  let extras = names(Math.max(0, count - (own ? 1 : 0)));
+  let quoted = await quoteLine(env.DB, session, { kind: 'ticket', event, type, ownTicket: own, extras }, now);
+  if (quoted.kind === 'ticket' && (quoted.problem === 'sold_out' || quoted.problem === 'members_only') && extras.length > quoted.max_extras) {
+    const allowed = (own ? 1 : 0) + quoted.max_extras;
+    if (allowed > 0) {
+      count = allowed;
+      extras = names(quoted.max_extras);
+      quoted = await quoteLine(env.DB, session, { kind: 'ticket', event, type, ownTicket: own, extras }, now);
+      notes.push(
+        quoted.kind === 'ticket' && quoted.extra_cents === null
+          ? `${type.name} is for members only; your basket keeps just your own ticket.`
+          : `Only ${allowed} of ${type.name} left; your basket was adjusted.`,
+      );
+    }
+  }
+  if (quoted.problem && quoted.problem !== 'bad_input') {
+    const why: Record<string, string> = {
+      sold_out: 'sold out',
+      sales_closed: 'no longer on sale',
+      cancelled: 'cancelled',
+      full: 'full',
+      reserved: 'down to seats reserved for members',
+      members_only: 'for members only',
+      has_ticket: 'already yours',
+    };
+    notes.push(`${event.title}: ${type.name} is ${why[quoted.problem] ?? 'not available'} and was removed from your basket.`);
+    continue;
+  }
+  const questions = await questionsFor(event.id);
+  if (session && own && !previousAnswers.has(event.id)) {
+    previousAnswers.set(event.id, await getAnswers(env.DB, event.id, { discordId: session.discordId }));
+  }
+  const blocks: Block[] = [];
+  if (own) {
+    const prefix = `l${i}_q`;
+    const values = new Map<number, string>();
+    for (const q of questions) {
+      const typed = form.get(`${prefix}${q.id}`);
+      values.set(q.id, typed !== null ? String(typed) : (previousAnswers.get(event.id)?.get(q.id) ?? ''));
+    }
+    blocks.push({ own: true, index: -1, name: session!.username, nameField: null, prefix, values, errors: [], nameMissing: false });
+  }
+  extras.forEach((name, j) => {
+    const prefix = `l${i}_x${j}_q`;
+    const values = new Map<number, string>();
+    for (const q of questions) values.set(q.id, String(form.get(`${prefix}${q.id}`) ?? ''));
+    blocks.push({ own: false, index: j, name, nameField: `l${i}_x${j}_name`, prefix, values, errors: [], nameMissing: false });
+  });
+  kept.push({ ...entry, count });
+  lines.push({ i, basket: { ...entry, count }, quoted, questions, blocks });
+}
+if (kept.length !== basket.length || kept.some((k, n) => k.count !== basket[n]?.count)) {
+  basket = kept;
+  writeBasket(Astro.cookies, basket);
+}
+const ticketLines = lines.filter((l) => l.quoted.kind === 'ticket');
+const total = lines.reduce((sum, l) => sum + l.quoted.subtotal_cents, 0);
+let buyerName = String(form.get('buyer_name') ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
+const needsBuyerName = !session && ticketLines.length === 0 && lines.length > 0;
+
+// --- paying ---------------------------------------------------------------------
+
+let fieldErrors = false;
+if (isPost && csrfOk && !adjust && lines.length === 0) problem = 'empty';
+if (isPost && csrfOk && !adjust && lines.length > 0 && !problem) {
+  if (resume) problem = 'pending';
+  if (!problem) {
+    for (const line of lines) {
+      for (const block of line.blocks) {
+        if (!block.own && block.name === '') {
+          block.nameMissing = true;
+          fieldErrors = true;
+        }
+        const parsed = parseAnswers(line.questions, form, block.prefix);
+        if (!parsed.ok) {
+          block.errors = parsed.errors;
+          fieldErrors = true;
+        }
+      }
+    }
+    if (needsBuyerName && buyerName === '') fieldErrors = true;
+    if (fieldErrors) problem = 'fields';
+  }
+  if (!problem && total > 0 && !paymentsOn) problem = 'payments_off';
+  if (!problem) {
+    if (session) {
+      await upsertMember(env.DB, { discord_id: session.discordId, username: session.username, avatar_hash: session.avatarHash }, now);
+    }
+    const purchaseLines: PurchaseLine[] = lines.map((l) =>
+      l.quoted.kind === 'item'
+        ? { kind: 'item', product: l.quoted.product, quantity: l.quoted.quantity }
+        : { kind: 'ticket', event: l.quoted.event, type: l.quoted.type, ownTicket: l.quoted.ownTicket, extras: l.blocks.filter((b) => !b.own).map((b) => b.name) },
+    );
+    const firstName = ticketLines.flatMap((l) => l.blocks).find((b) => !b.own)?.name ?? '';
+    try {
+      const status = total === 0 ? 'paid' : 'pending';
+      const created = await createPurchase(
+        env.DB,
+        { buyer: session ? { discordId: session.discordId, username: session.username } : null, buyerName: session ? session.username : buyerName || firstName, status, lines: purchaseLines },
+        now,
+      );
+      // Answers: the buyer's own by account, everyone else's by ticket.
+      let t = 0;
+      for (const line of lines) {
+        if (line.quoted.kind !== 'ticket') continue;
+        for (const block of line.blocks) {
+          const ticket = created.tickets[t++];
+          if (line.questions.length === 0) continue;
+          const parsed = parseAnswers(line.questions, form, block.prefix);
+          if (!parsed.ok) continue;
+          await saveAnswers(env.DB, line.quoted.event.id, block.own && session ? { discordId: session.discordId } : { ticketId: ticket.id }, parsed.answers, now);
+        }
+      }
+      if (status === 'paid') {
+        writeBasket(Astro.cookies, []);
+        return Astro.redirect(`/purchase/${created.purchase.id}?ok=issued`, 303);
+      }
+      const stripeLines: CheckoutLine[] = [];
+      for (const line of lines) {
+        if (line.quoted.kind === 'item') {
+          if (line.quoted.unit_cents > 0) stripeLines.push({ name: line.quoted.product.name, amountCents: line.quoted.unit_cents, quantity: line.quoted.quantity });
+          continue;
+        }
+        const label = `${line.quoted.event.title}: ${line.quoted.type.name}`;
+        if (line.quoted.ownTicket && line.quoted.own_cents) {
+          stripeLines.push({ name: `${label} · ${session!.username}`, amountCents: line.quoted.own_cents, quantity: 1 });
+        }
+        const extras = line.blocks.filter((b) => !b.own);
+        if (extras.length > 0 && line.quoted.extra_cents) {
+          const who = extras.map((b) => b.name).join(', ');
+          stripeLines.push({ name: `${label}${extras.length > 1 ? ` × ${extras.length}` : ''} · ${who}`, amountCents: line.quoted.extra_cents, quantity: extras.length });
+        }
+      }
+      const entry = session ? await getRegisterByDiscord(env.DB, session.discordId) : null;
+      const checkout = await createCheckoutSession(env.STRIPE_SECRET_KEY!, {
+        lines: stripeLines,
+        description: ticketLines.length === 1 && ticketLines[0].quoted.kind === 'ticket' ? formatHelsinkiRange(ticketLines[0].quoted.event.starts_at, ticketLines[0].quoted.event.ends_at) : 'lahtiag.fi',
+        successUrl: `${Astro.url.origin}/purchase/${created.purchase.id}?paid=1`,
+        cancelUrl: `${Astro.url.origin}/checkout?err=cancelled_checkout`,
+        clientReferenceId: created.purchase.id,
+        metadata: {
+          purchase_id: created.purchase.id,
+          ticket_ids: created.tickets.map((k) => k.id).join(',').slice(0, 500),
+          discord_id: session?.discordId ?? '',
+          buyer_name: created.purchase.buyer_name,
+        },
+        customerEmail: entry?.email,
+      });
+      if (!checkout) {
+        await voidPurchase(env.DB, created.purchase.id);
+        problem = 'stripe_down';
+      } else {
+        await setPurchaseCheckout(env.DB, created.purchase.id, checkout.id, checkout.url);
+        writeBasket(Astro.cookies, []);
+        if (!session) {
+          Astro.cookies.set(PENDING_COOKIE, created.purchase.id, { path: '/', maxAge: 40 * 60, httpOnly: true, secure: true, sameSite: 'lax' });
+        }
+        return Astro.redirect(checkout.url, 303);
+      }
+    } catch (error) {
+      if (!(error instanceof RuleError)) throw error;
+      problem = error.code;
+    }
+  }
+}
+
+const MESSAGES: Record<string, string> = {
+  csrf: 'The form was stale. Try again.',
+  empty: 'Your basket is empty.',
+  pending: 'Finish or release your open payment first.',
+  fields: 'Fill in the marked fields.',
+  payments_off: 'Card payments are not set up yet. Free tickets work; paid ones are sold at the door.',
+  stripe_down: "The payment page didn't open. Try again in a moment.",
+  cancelled_checkout: 'Payment cancelled. Nothing was charged. Your seats are still held for a while: continue below, or release them.',
+  released: 'Released. Nothing was charged.',
+  sold_out: 'Something sold out while you were typing. Your basket was adjusted; check it and try again.',
+  reserved: 'The remaining seats are reserved for members.',
+  members_only: 'That ticket is for members only.',
+  has_ticket: 'You already have a ticket for one of these events; it was left out.',
+  full: 'That event is full.',
+  sales_closed: 'Sales have closed for something in your basket.',
+  cancelled: 'That event was cancelled.',
+  bad_input: "That didn't work. Check the basket and try again.",
+};
+const errKey = Astro.url.searchParams.get('err');
+const okKey = Astro.url.searchParams.get('ok');
+const message = MESSAGES[problem ?? errKey ?? okKey ?? ''] ?? null;
+const count = basketCount(basket);
+Astro.response.headers.set('cache-control', 'no-store');
+---
+<Base title="Checkout" description="Pay for your tickets and shop items.">
+  <article class="prose">
+    <h1>Checkout</h1>
+    {count > 0 && <p class="queue-meta">{count} {count === 1 ? 'thing' : 'things'} in your basket.</p>}
+  </article>
+
+  {pending && (
+    <div class="queue-card">
+      <div class="queue-body">
+        <p class="queue-name">You have an unfinished payment</p>
+        <p class="queue-meta">
+          {resume ? 'Its seats are held for a while. Continue it, or release it and start over.' : 'Its payment window closed. Release it to start over.'}
+        </p>
+      </div>
+      <div class="entry-actions">
+        {resume && <a class="btn btn-cta" href={resume}>Continue to payment</a>}
+        <form method="post" action={`/purchase/${pending.id}/release`}>
+          <input type="hidden" name="csrf" value={csrf} />
+          <input type="hidden" name="next" value="/checkout" />
+          <button class="btn btn-ghost" type="submit">Release</button>
+        </form>
+      </div>
+    </div>
+  )}
+
+  {notes.map((n) => <p class="flash">{n}</p>)}
+  {message && <p class={`flash${okKey === 'released' ? ' flash-good' : ''}`}>{message}</p>}
+
+  {lines.length === 0 ? (
+    <p class="app-empty">
+      Nothing here yet. Tickets are on the <a href="/events">events page</a>{' '}and other things in the <a href="/shop">shop</a>.
+    </p>
+  ) : (
+    <form method="post" action="/checkout" class="app-form checkout">
+      <input type="hidden" name="csrf" value={csrf} />
+      {lines.map((line) =>
+        line.quoted.kind === 'item' ? (
+          <section class="checkout-line">
+            <div class="checkout-head">
+              <div>
+                <p class="ticket-type-name">{line.quoted.product.name}</p>
+                <p class="queue-meta">{euro(line.quoted.unit_cents)} each{line.quoted.max < 99 && line.quoted.product.stock !== null ? ` · ${line.quoted.max} left` : ''}</p>
+              </div>
+              <p class="checkout-sub">{euro(line.quoted.subtotal_cents)}</p>
+            </div>
+            <div class="entry-actions checkout-tools">
+              <button class="btn btn-ghost btn-sm" name="adjust" value={`minus:${line.i}`} type="submit" formnovalidate>−</button>
+              <span class="checkout-qty">{line.quoted.quantity}</span>
+              <button class="btn btn-ghost btn-sm" name="adjust" value={`plus:${line.i}`} type="submit" formnovalidate disabled={line.quoted.quantity >= line.quoted.max}>+</button>
+              <button class="btn btn-ghost btn-sm" name="adjust" value={`remove:${line.i}`} type="submit" formnovalidate>Remove</button>
+            </div>
+          </section>
+        ) : (
+          <section class="checkout-line">
+            <div class="checkout-head">
+              <div>
+                <p class="ticket-type-name">{line.quoted.event.title}</p>
+                <p class="queue-meta">
+                  {formatHelsinkiRange(line.quoted.event.starts_at, line.quoted.event.ends_at)} · {line.quoted.type.name}
+                </p>
+              </div>
+              <p class="checkout-sub">{euro(line.quoted.subtotal_cents)}</p>
+            </div>
+            {line.blocks.map((block) => (
+              <fieldset class="ticket-block">
+                <legend>
+                  {block.own ? (
+                    <>Your ticket · <strong>{block.name}</strong> · {line.quoted.kind === 'ticket' && line.quoted.own_cents === 0 ? 'Free' : euro(line.quoted.kind === 'ticket' ? (line.quoted.own_cents ?? 0) : 0)}</>
+                  ) : (
+                    <>Ticket for someone else · {line.quoted.kind === 'ticket' && line.quoted.extra_cents === 0 ? 'Free' : euro(line.quoted.kind === 'ticket' ? (line.quoted.extra_cents ?? 0) : 0)}</>
+                  )}
+                </legend>
+                {!block.own && (
+                  <label>
+                    Name on the ticket *
+                    <input name={block.nameField!} maxlength="60" value={block.name} required autocomplete="off" aria-invalid={block.nameMissing ? 'true' : undefined} />
+                    {block.nameMissing && <span class="field-error">Needed.</span>}
+                  </label>
+                )}
+                {line.questions.map((q) => {
+                  const value = block.values.get(q.id) ?? '';
+                  const bad = block.errors.find((e) => e.question.id === q.id);
+                  return q.kind === 'checkbox' ? (
+                    <label class="check check-standalone">
+                      <input type="checkbox" name={`${block.prefix}${q.id}`} checked={value === 'yes' || value === 'on'} /> <span>{q.label}{q.required ? ' *' : ''}</span>
+                      {bad && <span class="field-error">Needed.</span>}
+                    </label>
+                  ) : q.kind === 'choice' ? (
+                    <label>
+                      {q.label}{q.required ? ' *' : ''}
+                      <select name={`${block.prefix}${q.id}`} required={q.required === 1}>
+                        <option value="" selected={value === ''}>Choose…</option>
+                        {questionOptions(q).map((o) => <option value={o} selected={value === o}>{o}</option>)}
+                      </select>
+                      {bad && <span class="field-error">Pick one.</span>}
+                    </label>
+                  ) : (
+                    <label>
+                      {q.label}{q.required ? ' *' : ''}
+                      <input name={`${block.prefix}${q.id}`} maxlength="300" value={value} required={q.required === 1} />
+                      {bad && <span class="field-error">Needed.</span>}
+                    </label>
+                  );
+                })}
+                {!block.own && (
+                  <p class="checkout-tools">
+                    <button class="btn btn-ghost btn-sm" name="adjust" value={`drop:${line.i}:${block.index}`} type="submit" formnovalidate>Remove this ticket</button>
+                  </p>
+                )}
+              </fieldset>
+            ))}
+            <div class="entry-actions checkout-tools">
+              {line.quoted.extra_cents !== null && line.blocks.filter((b) => !b.own).length < line.quoted.max_extras && (
+                <button class="btn btn-ghost btn-sm" name="adjust" value={`add:${line.i}`} type="submit" formnovalidate>
+                  Add a ticket for someone else{line.quoted.extra_cents > 0 ? ` · ${euro(line.quoted.extra_cents)}` : ''}
+                </button>
+              )}
+              <button class="btn btn-ghost btn-sm" name="adjust" value={`remove:${line.i}`} type="submit" formnovalidate>Remove</button>
+            </div>
+          </section>
+        ),
+      )}
+
+      {needsBuyerName && (
+        <label>
+          Your name *
+          <input name="buyer_name" maxlength="60" value={buyerName} required autocomplete="name" />
+          {problem === 'fields' && buyerName === '' && <span class="field-error">Needed.</span>}
+        </label>
+      )}
+
+      <div class="checkout-total">
+        <p><span>Total</span> <strong>{total === 0 ? 'Free' : euro(total)}</strong></p>
+        {!session && <p class="queue-meta">Not signed in: tickets are issued by name, as links you keep. <a href="/login?next=/checkout">Sign in with Discord</a> for member prices and to keep them on your account.</p>}
+        <button class="btn btn-cta" type="submit" disabled={Boolean(resume)}>{total === 0 ? 'Get tickets' : `Pay ${euro(total)}`}</button>
+        <p class="queue-meta">By paying you accept the <a href="/terms">terms of sale</a>. Card and MobilePay on Stripe's page.</p>
+      </div>
+    </form>
+  )}
+</Base>

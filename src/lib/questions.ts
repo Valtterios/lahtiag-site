@@ -25,16 +25,19 @@ export function questionOptions(q: Pick<EventQuestionRow, 'options'>): string[] 
 
 export type AnswerErrors = { question: EventQuestionRow; problem: 'required' | 'invalid' }[];
 
-// Form fields are named q<id>. Checkboxes arrive as "on" or not at all;
-// choices must be one of the options; text is trimmed and capped.
+// Form fields are named q<id>, or <prefix><id> when one form carries the
+// answers of several tickets (x1_q<id>, x2_q<id>). Checkboxes arrive as
+// "on" or not at all; choices must be one of the options; text is
+// trimmed and capped.
 export function parseAnswers(
   questions: EventQuestionRow[],
   form: FormData,
+  prefix = 'q',
 ): { ok: true; answers: Map<number, string> } | { ok: false; errors: AnswerErrors } {
   const answers = new Map<number, string>();
   const errors: AnswerErrors = [];
   for (const q of questions) {
-    const raw = form.get(`q${q.id}`);
+    const raw = form.get(`${prefix}${q.id}`);
     if (q.kind === 'checkbox') {
       const on = raw === 'on';
       if (q.required && !on) errors.push({ question: q, problem: 'required' });

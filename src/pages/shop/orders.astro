@@ -1,0 +1,86 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import { ensureCsrf, requireAdmin } from '../../lib/guard';
+import { requireBoard } from '../../lib/board';
+import { listUndeliveredItems, listDeliveredItems } from '../../lib/purchases';
+import { formatHelsinki } from '../../lib/time';
+
+// Board: paid shop items waiting to be handed over, and the recent ones
+// that were. Board role or register access.
+
+const board = await requireBoard(Astro.request, env);
+const admin = board.ok ? null : await requireAdmin(Astro.request, env);
+const allowed = board.ok || admin?.ok === true;
+Astro.response.status = allowed ? 200 : 401;
+const csrf = ensureCsrf(Astro.cookies);
+const [waiting, done] = allowed ? await Promise.all([listUndeliveredItems(env.DB), listDeliveredItems(env.DB)]) : [[], []];
+const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
+const FLASH: Record<string, string> = {
+  delivered: 'Marked as handed over.',
+  undone: 'Undone.',
+  missing: 'No such item.',
+  csrf: 'The form was stale. Try again.',
+  forbidden: 'That needs the Board role in Discord.',
+};
+const okKey = Astro.url.searchParams.get('ok');
+const flash = FLASH[okKey ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
+Astro.response.headers.set('cache-control', 'no-store');
+---
+<Base title="Items to hand over" description="Board-only list of paid shop items." wide>
+  {!allowed ? (
+    <article class="prose">
+      <h1>Items to hand over</h1>
+      <p>Board members sign in with Discord to see this.</p>
+      <p class="entry-actions"><a class="btn btn-primary" href="/login?next=/shop/orders">Sign in with Discord</a></p>
+    </article>
+  ) : (
+    <>
+      <article class="prose entry-head">
+        <p class="hero-eyebrow"><a href="/shop">Shop</a></p>
+        <h1>Items to hand over</h1>
+        <p class="queue-meta">{waiting.length} waiting. Tick each one off when the buyer collects it; they show this on their purchase page.</p>
+      </article>
+      {flash && <p class={`flash${okKey ? ' flash-good' : ''}`}>{flash}</p>}
+      {waiting.length === 0 ? (
+        <p class="app-empty">Nothing waiting.</p>
+      ) : (
+        <ul class="door-list">
+          {waiting.map((it) => (
+            <li class="door-row">
+              <div>
+                <p class="door-name">{it.buyer_name}</p>
+                <p class="queue-meta">{it.quantity} × {it.name} · {euro(it.unit_cents * it.quantity)} · paid {it.paid_at ? formatHelsinki(it.paid_at) : '–'}{it.discord_id ? '' : ' · no Discord'}</p>
+              </div>
+              <form method="post" action="/shop/deliver">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="id" value={it.id} />
+                <button class="btn btn-primary btn-sm" type="submit">Handed over</button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+      {done.length > 0 && (
+        <section class="list">
+          <h2 class="section-label">Handed over</h2>
+          <ul class="door-list">
+            {done.map((it) => (
+              <li class="door-row door-in">
+                <div>
+                  <p class="door-name">{it.buyer_name}</p>
+                  <p class="queue-meta">{it.quantity} × {it.name} · {it.delivered_at ? formatHelsinki(it.delivered_at) : ''} by {it.delivered_by}</p>
+                </div>
+                <form method="post" action="/shop/deliver">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="id" value={it.id} />
+                  <button class="btn btn-ghost btn-sm" name="undo" value="1" type="submit">Undo</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
+  )}
+</Base>

@@ -20,7 +20,7 @@ export const GET: APIRoute = async ({ request, params, redirect }) => {
   const rows = await listEventTickets(env.DB, id);
   const questions = await listEventQuestions(env.DB, id);
   const answers = await listAllAnswers(env.DB, id);
-  const lines = [['code','holder','type','amount_eur','status','source','created','paid','checked_in','discord_id','payment_intent', ...questions.map((q) => q.label)].map(csvCell).join(',')];
+  const lines = [['code','holder','type','amount_eur','status','source','created','paid','checked_in','discord_id','bought_by','purchase','payment_intent', ...questions.map((q) => q.label)].map(csvCell).join(',')];
   for (const t of rows) {
     const mine = t.discord_id ? answers.get(`u:${t.discord_id}`) : answers.get(`t:${t.id}`);
     lines.push(
@@ -35,6 +35,8 @@ export const GET: APIRoute = async ({ request, params, redirect }) => {
         t.paid_at === null ? null : formatHelsinki(t.paid_at),
         t.checked_in_at === null ? null : formatHelsinki(t.checked_in_at),
         t.discord_id,
+        t.bought_by,
+        t.purchase_id,
         t.stripe_payment_intent,
         ...questions.map((q) => mine?.get(q.id) ?? ''),
       ]

@@ -30,6 +30,7 @@ export class RuleError extends Error {
       | 'used'
       | 'payments_off'
       | 'needs_ticket'
+      | 'ticket_holder'
       | 'answers',
     message: string,
   ) {
@@ -439,6 +440,9 @@ export async function adminUpdateSignup(
     .bind(eventId, discordId)
     .first();
   if (!existing) throw new RuleError('missing', 'No such signup on this event.');
+  if (status !== 'yes' && (await hasPaidTicket(db, eventId, discordId))) {
+    throw new RuleError('ticket_holder', 'This person holds a paid ticket; they are going.');
+  }
   let teamId = eventTeamId;
   if (teamId !== null) {
     if (event.team_size === null) {
@@ -536,6 +540,8 @@ export async function adminRemoveSignup(
   eventId: number,
   discordId: string,
 ): Promise<void> {
+  // A paid ticket is the signup: leaving goes through a refund in Stripe.
+  if (await hasPaidTicket(db, eventId, discordId)) throw new RuleError('ticket_holder', 'This person holds a paid ticket.');
   await db
     .prepare('DELETE FROM signups WHERE event_id = ?1 AND discord_id = ?2')
     .bind(eventId, discordId)
@@ -1881,6 +1887,7 @@ export async function signupAccess(
   event: Pick<EventRow, 'id' | 'members_only' | 'member_slots' | 'capacity' | 'team_size'>,
   discordId: string | null,
   wantsSeat: boolean,
+  now = Math.floor(Date.now() / 1000),
 ): Promise<SeatAccess> {
   const member = discordId ? await isCurrentMember(db, discordId) : false;
   if (event.members_only === 1 && !member) {
@@ -1896,7 +1903,16 @@ export async function signupAccess(
     )
     .bind(event.id, discordId ?? '')
     .first<{ n: number }>();
-  const openSeatsLeft = Math.max(0, event.capacity! - event.member_slots! - (nonMembers?.n ?? 0));
+  // Tickets by name (no Discord account) never become signups; they are
+  // non-member seats all the same.
+  const byName = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM tickets WHERE event_id = ?1 AND discord_id IS NULL
+         AND (status = 'paid' OR (status = 'pending' AND created_at > ?2))`,
+    )
+    .bind(event.id, now - PENDING_TICKET_SECONDS)
+    .first<{ n: number }>();
+  const openSeatsLeft = Math.max(0, event.capacity! - event.member_slots! - (nonMembers?.n ?? 0) - (byName?.n ?? 0));
   if (wantsSeat && !member && openSeatsLeft === 0) {
     return { allowed: false, reason: 'reserved', member, openSeatsLeft };
   }
@@ -1958,6 +1974,8 @@ export interface TicketRow {
   paid_at: number | null;
   checked_in_at: number | null;
   checked_in_by: string | null;
+  bought_by: string | null; // a signed-in buyer's Discord id on a ticket bought for someone else
+  purchase_id: string | null; // tickets bought together
 }
 
 export interface TicketWithType extends TicketRow {
@@ -2097,7 +2115,7 @@ export async function ticketOffer(
   const closes = type.sales_close_at ?? event.starts_at;
   if (now >= closes) return { ok: false, reason: 'sales_closed' };
   if (type.quantity !== null && type.sold >= type.quantity) return { ok: false, reason: 'sold_out' };
-  const access = await signupAccess(db, event, discordId, true);
+  const access = await signupAccess(db, event, discordId, true, now);
   if (type.members_only === 1 && !access.member) return { ok: false, reason: 'members_only' };
   if (!access.allowed) return { ok: false, reason: access.reason! };
   if (event.capacity !== null && event.team_size === null) {
@@ -2115,7 +2133,7 @@ export async function ticketOffer(
   return { ok: true, amount_cents: amount, member: access.member };
 }
 
-async function countLiveTickets(db: D1Database, eventId: number, now: number): Promise<number> {
+export async function countLiveTickets(db: D1Database, eventId: number, now: number): Promise<number> {
   const row = await db
     .prepare(
       `SELECT COUNT(*) AS n FROM tickets WHERE event_id = ?1
@@ -2140,6 +2158,8 @@ export async function createTicket(
     source: 'online' | 'door' | 'comp';
     stripe_session_id?: string | null;
     stripe_payment_intent?: string | null;
+    bought_by?: string | null;
+    purchase_id?: string | null;
   },
   now: number,
 ): Promise<TicketRow> {
@@ -2150,8 +2170,8 @@ export async function createTicket(
       const row = await db
         .prepare(
           `INSERT INTO tickets (event_id, ticket_type_id, discord_id, holder_name, code, amount_cents, status, source,
-             stripe_session_id, stripe_payment_intent, created_at, paid_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) RETURNING *`,
+             stripe_session_id, stripe_payment_intent, created_at, paid_at, bought_by, purchase_id)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) RETURNING *`,
         )
         .bind(
           input.event_id,
@@ -2166,6 +2186,8 @@ export async function createTicket(
           input.stripe_payment_intent ?? null,
           now,
           input.status === 'paid' ? now : null,
+          input.bought_by ?? null,
+          input.purchase_id ?? null,
         )
         .first<TicketRow>();
       if (input.status === 'paid' && input.discord_id) await ensureYesSignup(db, input.event_id, input.discord_id, now);
@@ -2183,7 +2205,7 @@ export async function createTicket(
   throw new Error('unreachable');
 }
 
-async function ensureYesSignup(db: D1Database, eventId: number, discordId: string, now: number): Promise<void> {
+export async function ensureYesSignup(db: D1Database, eventId: number, discordId: string, now: number): Promise<void> {
   await db
     .prepare(
       `INSERT INTO signups (event_id, discord_id, status, created_at, event_team_id)
@@ -2192,6 +2214,21 @@ async function ensureYesSignup(db: D1Database, eventId: number, discordId: strin
     )
     .bind(eventId, discordId, now)
     .run();
+}
+
+// Every paid ticket on a linked account is a 'yes' signup; put back any
+// that went missing (an admin removal from before that was forbidden).
+export async function repairTicketSignups(db: D1Database, eventId: number, now: number): Promise<number> {
+  const result = await db
+    .prepare(
+      `INSERT INTO signups (event_id, discord_id, status, created_at, event_team_id)
+       SELECT k.event_id, k.discord_id, 'yes', ?2, NULL FROM tickets k
+        WHERE k.event_id = ?1 AND k.status = 'paid' AND k.discord_id IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM signups s WHERE s.event_id = k.event_id AND s.discord_id = k.discord_id)`,
+    )
+    .bind(eventId, now)
+    .run();
+  return result.meta.changes ?? 0;
 }
 
 const TICKET_SELECT = `SELECT k.*, t.name AS type_name, e.title AS event_title, e.starts_at
@@ -2211,9 +2248,27 @@ export async function getTicketByPaymentIntent(db: D1Database, paymentIntent: st
 
 export async function listMyTickets(db: D1Database, discordId: string): Promise<TicketWithType[]> {
   const { results } = await db
-    .prepare(`${TICKET_SELECT} WHERE k.discord_id = ?1 AND k.status IN ('paid','pending') ORDER BY e.starts_at DESC`)
+    .prepare(
+      `${TICKET_SELECT} WHERE (k.discord_id = ?1 OR k.bought_by = ?1) AND k.status IN ('paid','pending')
+         ORDER BY e.starts_at DESC, k.discord_id IS NULL, k.id`,
+    )
     .bind(discordId)
     .all<TicketWithType>();
+  return results;
+}
+
+export async function listTicketsBySession(db: D1Database, sessionId: string): Promise<TicketRow[]> {
+  const { results } = await db.prepare('SELECT * FROM tickets WHERE stripe_session_id = ?1 ORDER BY id').bind(sessionId).all<TicketRow>();
+  return results;
+}
+
+export async function listTicketsByPurchase(db: D1Database, purchaseId: string): Promise<TicketWithType[]> {
+  const { results } = await db.prepare(`${TICKET_SELECT} WHERE k.purchase_id = ?1 ORDER BY k.id`).bind(purchaseId).all<TicketWithType>();
+  return results;
+}
+
+export async function listTicketsByPaymentIntent(db: D1Database, paymentIntent: string): Promise<TicketRow[]> {
+  const { results } = await db.prepare('SELECT * FROM tickets WHERE stripe_payment_intent = ?1 ORDER BY id').bind(paymentIntent).all<TicketRow>();
   return results;
 }
 

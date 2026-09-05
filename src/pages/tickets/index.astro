@@ -1,17 +1,21 @@
 ---
 import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
-import { currentSession, ensureCsrf } from '../../lib/guard';
+import { currentSession } from '../../lib/guard';
 import { listMyTickets } from '../../lib/db';
-import { formatHelsinkiRange } from '../../lib/time';
+import { listMyItems, listMyPurchases, resumablePurchase } from '../../lib/purchases';
+import { formatHelsinkiRange, formatHelsinki } from '../../lib/time';
 
-// The signed-in person's tickets, newest event first.
+// The signed-in person's tickets (their own and the ones they bought for
+// others), newest event first, and the shop items they have paid for.
 
 const session = await currentSession(Astro.request, env);
-const csrf = ensureCsrf(Astro.cookies);
-void csrf;
-const tickets = session ? await listMyTickets(env.DB, session.discordId) : [];
 const now = Math.floor(Date.now() / 1000);
+const [tickets, items, purchases] = session
+  ? await Promise.all([listMyTickets(env.DB, session.discordId), listMyItems(env.DB, session.discordId), listMyPurchases(env.DB, session.discordId)])
+  : [[], [], []];
+const open = purchases.find((p) => p.status === 'pending' && resumablePurchase(p, now));
+const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
 ---
 <Base title="My tickets" description="Your tickets to LahtiAG events.">
   <article class="prose"><h1>My tickets</h1></article>
@@ -19,28 +23,54 @@ const now = Math.floor(Date.now() / 1000);
     <div class="paths">
       <section class="path-card">
         <h2>Sign in first</h2>
-        <p>Tickets belong to the Discord account that bought them.</p>
+        <p>Tickets belong to the Discord account that bought them. Bought without Discord? The link shown after payment is the way back to those.</p>
         <a class="btn btn-primary" href="/login?next=/tickets">Sign in with Discord</a>
       </section>
     </div>
-  ) : tickets.length === 0 ? (
-    <p class="app-empty">No tickets yet. Events with tickets show them on the <a href="/events">events page</a>.</p>
   ) : (
-    <ul class="ticket-list">
-      {tickets.map((t) => (
-        <li class={`ticket-card ticket-${t.status}${t.checked_in_at ? ' ticket-used' : ''}${t.starts_at < now ? ' ticket-past' : ''}`}>
-          <div>
-            <p class="ticket-event"><a href={`/events/${t.event_id}`}>{t.event_title}</a></p>
-            <p class="queue-meta">{formatHelsinkiRange(t.starts_at, null)} · {t.type_name} · {t.holder_name}</p>
-            <p class="queue-meta">
-              {t.status === 'pending' && 'Payment not completed yet.'}
-              {t.status === 'paid' && !t.checked_in_at && 'Valid.'}
-              {t.status === 'paid' && t.checked_in_at && 'Used at the door.'}
-            </p>
-          </div>
-          <a class="btn btn-primary btn-sm" href={`/tickets/${t.code}`}>Show ticket</a>
-        </li>
-      ))}
-    </ul>
+    <>
+      {open && (
+        <p class="flash">You have an unfinished payment. <a href={`/purchase/${open.id}`}>Continue or release it.</a></p>
+      )}
+      {tickets.length === 0 ? (
+        <p class="app-empty">No tickets yet. Events with tickets show them on the <a href="/events">events page</a>.</p>
+      ) : (
+        <ul class="ticket-list">
+          {tickets.map((t) => (
+            <li class={`ticket-card ticket-${t.status}${t.checked_in_at ? ' ticket-used' : ''}${t.starts_at < now ? ' ticket-past' : ''}`}>
+              <div>
+                <p class="ticket-event"><a href={`/events/${t.event_id}`}>{t.event_title}</a></p>
+                <p class="queue-meta">
+                  {formatHelsinkiRange(t.starts_at, null)} · {t.type_name} · {t.discord_id ? t.holder_name : <>for <strong>{t.holder_name}</strong></>}
+                </p>
+                <p class="queue-meta">
+                  {t.status === 'pending' && 'Payment not completed yet.'}
+                  {t.status === 'paid' && !t.checked_in_at && 'Valid.'}
+                  {t.status === 'paid' && t.checked_in_at && 'Used at the door.'}
+                </p>
+              </div>
+              <a class="btn btn-primary btn-sm" href={`/tickets/${t.code}`}>Show ticket</a>
+            </li>
+          ))}
+        </ul>
+      )}
+      {items.length > 0 && (
+        <section class="list">
+          <h2 class="section-label">Shop items</h2>
+          <ul class="ticket-list">
+            {items.map((it) => (
+              <li class={`ticket-card${it.delivered_at ? ' ticket-used' : ''}`}>
+                <div>
+                  <p class="ticket-event">{it.name}</p>
+                  <p class="queue-meta">{it.quantity} × {euro(it.unit_cents)} · paid {it.paid_at ? formatHelsinki(it.paid_at) : ''}</p>
+                  <p class="queue-meta">{it.delivered_at ? `Collected ${formatHelsinki(it.delivered_at)}.` : 'Collect it at an event or from the board.'}</p>
+                </div>
+                <a class="btn btn-ghost btn-sm" href={`/purchase/${it.purchase_id}`}>Purchase</a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
   )}
 </Base>

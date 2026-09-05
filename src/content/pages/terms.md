@@ -3,9 +3,9 @@ title: Terms of sale
 description: Terms for tickets bought on lahtiag.fi.
 ---
 
-These terms apply to tickets sold on lahtiag.fi by Lahti Association of
-Gaming LAG ry (business ID 3485167-1, Mukkulankatu 19, 15210 Lahti,
-board@lahtiag.fi).
+These terms apply to tickets and shop items sold on lahtiag.fi by Lahti
+Association of Gaming LAG ry (business ID 3485167-1, Mukkulankatu 19,
+15210 Lahti, board@lahtiag.fi).
 
 ## The ticket
 
@@ -17,7 +17,14 @@ through the link shown after payment, so keep that page open, bookmark it
 or take a screenshot.
 
 Member prices and members-only tickets need a membership linked to the
-Discord account you are signed in with.
+Discord account you are signed in with. You may buy tickets for other
+people by name at the public price; they are shown under your tickets and
+each has its own link to pass on.
+
+## Shop items
+
+Items bought in the shop are collected at an event or from the board; we
+do not ship. Your purchase page shows what is waiting to be collected.
 
 ## Payment
 
@@ -28,7 +35,8 @@ any applicable taxes. Stripe emails a receipt.
 ## Cancellation and refunds
 
 Event tickets are for a specific date and are not refundable if you change
-your mind. If the association cancels the event, every ticket is refunded
+your mind. Shop items can be returned unused within 14 days of collection
+for a refund. If the association cancels the event, every ticket is refunded
 in full to the payment method used. If the event is moved and the new date
 does not suit you, ask for a refund at board@lahtiag.fi within seven days of
 the announcement.

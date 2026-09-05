@@ -2,7 +2,8 @@
 import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
 import { currentSession, ensureCsrf } from '../../lib/guard';
-import { getTicketByCode, resumableCheckout } from '../../lib/db';
+import { getTicketByCode, listTicketsByPurchase } from '../../lib/db';
+import { getPurchase, resumablePurchase } from '../../lib/purchases';
 import { normalizeTicketCode, qrSvg, ticketUrl } from '../../lib/qr';
 import { formatHelsinkiRange } from '../../lib/time';
 
@@ -19,9 +20,11 @@ const issued = Astro.url.searchParams.get('ok') === 'issued';
 // Stripe sends the buyer back before the webhook may have landed; the
 // page says so and refreshes itself once.
 const waiting = justPaid && ticket?.status === 'pending';
-const resume = !justPaid ? resumableCheckout(ticket, Math.floor(Date.now() / 1000)) : null;
-// Anyone with the code may release a door ticket; one on an account, only that account.
-const canRelease = ticket?.status === 'pending' && !justPaid && (!ticket.discord_id || session?.discordId === ticket.discord_id);
+const purchase = ticket?.purchase_id ? await getPurchase(env.DB, ticket.purchase_id) : null;
+const siblings = purchase ? (await listTicketsByPurchase(env.DB, purchase.id)).filter((t) => t.id !== ticket!.id) : [];
+const resume = !justPaid ? resumablePurchase(purchase, Math.floor(Date.now() / 1000)) : null;
+// Whoever holds the purchase may release it; one on an account, only that account.
+const canRelease = Boolean(purchase && purchase.status === 'pending' && !justPaid && (!purchase.discord_id || session?.discordId === purchase.discord_id));
 Astro.response.headers.set('cache-control', 'no-store');
 ---
 <Base title={ticket ? `Ticket: ${ticket.event_title}` : 'Ticket'} description="LahtiAG event ticket.">
@@ -54,24 +57,29 @@ Astro.response.headers.set('cache-control', 'no-store');
           </p>
           {ticket.amount_cents > 0 && <p class="queue-meta">{(ticket.amount_cents / 100).toFixed(2)} €</p>}
           {ticket.status === 'pending' && !justPaid && !resume && (
-            <p class="queue-meta">The payment window closed. Release the seat, then buy again from the <a href={`/events/${ticket.event_id}`}>event</a>.</p>
+            <p class="queue-meta">The payment window closed. Release it, then buy again from the <a href={`/events/${ticket.event_id}`}>event</a>.</p>
           )}
-          {(resume || canRelease) && (
+          {(resume || canRelease) && purchase && (
             <div class="entry-actions">
               {resume && <a class="btn btn-cta" href={resume}>Continue to payment</a>}
               {canRelease && (
-                <form method="post" action={`/tickets/${ticket.code}/release`}>
+                <form method="post" action={`/purchase/${purchase.id}/release`}>
                   <input type="hidden" name="csrf" value={csrf} />
                   <input type="hidden" name="next" value={`/events/${ticket.event_id}`} />
-                  <button class="btn btn-ghost" type="submit">Release this seat</button>
+                  <button class="btn btn-ghost" type="submit">Release</button>
                 </form>
               )}
             </div>
           )}
         </div>
       </section>
+      {siblings.length > 0 && (
+        <p class="queue-meta">
+          Bought together with {siblings.map((t, i) => <>{i > 0 && ', '}<a href={`/tickets/${t.code}`}>{t.holder_name}</a></>)}. <a href={`/purchase/${purchase!.id}`}>The whole purchase.</a>
+        </p>
+      )}
       <p class="queue-meta">
-        {session && ticket.discord_id === session.discordId ? <a href="/tickets">All my tickets</a> : <a href={`/events/${ticket.event_id}`}>Event page</a>}
+        {session && (ticket.discord_id === session.discordId || ticket.bought_by === session.discordId) ? <a href="/tickets">All my tickets</a> : <a href={`/events/${ticket.event_id}`}>Event page</a>}
       </p>
     </>
   )}

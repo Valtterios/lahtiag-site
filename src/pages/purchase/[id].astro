@@ -1,0 +1,113 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import { currentSession, ensureCsrf } from '../../lib/guard';
+import { getPurchase, purchaseTickets, purchaseItems, resumablePurchase } from '../../lib/purchases';
+import { formatHelsinkiRange, formatHelsinki } from '../../lib/time';
+
+// One purchase: its tickets (each a link to the ticket with the QR) and
+// its shop items, and where the payment stands. Anyone holding the id
+// can open it; the id is unguessable, and the page shows names only.
+
+const id = (Astro.params.id ?? '').toUpperCase();
+const purchase = /^[A-Z0-9]{10}$/.test(id) ? await getPurchase(env.DB, id) : null;
+if (!purchase) Astro.response.status = 404;
+const session = await currentSession(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+const now = Math.floor(Date.now() / 1000);
+const [tickets, items] = purchase ? await Promise.all([purchaseTickets(env.DB, purchase.id), purchaseItems(env.DB, purchase.id)]) : [[], []];
+const justPaid = Astro.url.searchParams.get('paid') === '1';
+const issued = Astro.url.searchParams.get('ok') === 'issued';
+const waiting = justPaid && purchase?.status === 'pending';
+const resume = purchase && !justPaid ? resumablePurchase(purchase, now) : null;
+const mine = Boolean(purchase && (!purchase.discord_id || session?.discordId === purchase.discord_id));
+const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
+Astro.response.headers.set('cache-control', 'no-store');
+---
+<Base title="Your purchase" description="Tickets and items bought on lahtiag.fi.">
+  {waiting && <meta http-equiv="refresh" content="3" />}
+  {!purchase ? (
+    <article class="prose">
+      <h1>No such purchase</h1>
+      <p>That link doesn't match anything. Signed in? Your tickets are under <a href="/tickets">My tickets</a>.</p>
+    </article>
+  ) : (
+    <>
+      <article class="prose">
+        <h1>{purchase.status === 'paid' ? 'Paid' : purchase.status === 'pending' ? 'Not paid yet' : purchase.status === 'refunded' ? 'Refunded' : 'Cancelled'}</h1>
+        <p class="queue-meta">{formatHelsinki(purchase.created_at)} · {purchase.buyer_name} · {purchase.total_cents === 0 ? 'Free' : euro(purchase.total_cents)}</p>
+      </article>
+      {issued && <p class="flash flash-good">Done. {!purchase.discord_id && 'Keep this link: it is the way back to these tickets. '}Each ticket below opens its QR code.</p>}
+      {waiting && <p class="flash">Thanks, payment received. Confirming with Stripe, one moment…</p>}
+      {justPaid && purchase.status === 'paid' && <p class="flash flash-good">Paid. {!purchase.discord_id && 'Keep this link: it is the way back to these tickets. '}Each ticket below opens its QR code.</p>}
+      {purchase.status === 'pending' && !justPaid && (
+        <div class="queue-card">
+          <div class="queue-body">
+            <p class="queue-name">{resume ? 'Payment not finished' : 'The payment window closed'}</p>
+            <p class="queue-meta">{resume ? 'Continue it, or release the seats and start over.' : 'Release it, then buy again from the event.'}</p>
+          </div>
+          {mine && (
+            <div class="entry-actions">
+              {resume && <a class="btn btn-cta" href={resume}>Continue to payment</a>}
+              <form method="post" action={`/purchase/${purchase.id}/release`}>
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="next" value="/checkout" />
+                <button class="btn btn-ghost" type="submit">Release</button>
+              </form>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tickets.length > 0 && (
+        <section class="list">
+          <h2 class="section-label">Tickets</h2>
+          <ul class="ticket-list">
+            {tickets.map((t) => (
+              <li class={`ticket-card ticket-${t.status}${t.checked_in_at ? ' ticket-used' : ''}`}>
+                <div>
+                  <p class="ticket-event"><a href={`/events/${t.event_id}`}>{t.event_title}</a></p>
+                  <p class="queue-meta">{formatHelsinkiRange(t.starts_at, null)} · {t.type_name} · <strong>{t.holder_name}</strong></p>
+                  <p class="queue-meta">
+                    {t.status === 'pending' && 'Payment not completed yet.'}
+                    {t.status === 'paid' && !t.checked_in_at && 'Valid.'}
+                    {t.status === 'paid' && t.checked_in_at && 'Used at the door.'}
+                    {t.status === 'refunded' && 'Refunded.'}
+                    {t.status === 'void' && 'Cancelled.'}
+                  </p>
+                </div>
+                {t.status === 'paid' && <a class="btn btn-primary btn-sm" href={`/tickets/${t.code}`}>Show ticket</a>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {items.length > 0 && (
+        <section class="list">
+          <h2 class="section-label">Items</h2>
+          <ul class="ticket-list">
+            {items.map((it) => (
+              <li class="ticket-card">
+                <div>
+                  <p class="ticket-event">{it.name}</p>
+                  <p class="queue-meta">{it.quantity} × {euro(it.unit_cents)}</p>
+                  <p class="queue-meta">
+                    {purchase.status === 'paid' && !it.delivered_at && 'Collect it at an event or from the board; show this page.'}
+                    {purchase.status === 'paid' && it.delivered_at && `Handed over ${formatHelsinki(it.delivered_at)}.`}
+                    {purchase.status === 'pending' && 'Reserved until payment.'}
+                    {purchase.status === 'refunded' && 'Refunded.'}
+                    {purchase.status === 'void' && 'Cancelled.'}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <p class="queue-meta">
+        {session && purchase.discord_id === session.discordId ? <a href="/tickets">All my tickets</a> : <a href="/events">Events</a>}
+      </p>
+    </>
+  )}
+</Base>

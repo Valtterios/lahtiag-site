@@ -30,10 +30,15 @@ function encode(params: Record<string, string | number | boolean | null | undefi
   return body.toString();
 }
 
-export interface CheckoutInput {
+export interface CheckoutLine {
+  name: string; // "<event>: <type> · <name>": the receipt line says who it was for
   amountCents: number;
-  productName: string; // "<event>: <type> · <name>": the receipt line says who it was for
-  description?: string;
+  quantity: number;
+}
+
+export interface CheckoutInput {
+  lines: CheckoutLine[];
+  description?: string; // under each line on Stripe's page: the event's date
   successUrl: string;
   cancelUrl: string;
   metadata: Record<string, string>;
@@ -49,11 +54,6 @@ export async function createCheckoutSession(
 ): Promise<{ id: string; url: string } | null> {
   const params: Record<string, string | number | undefined> = {
     mode: 'payment',
-    'line_items[0][quantity]': 1,
-    'line_items[0][price_data][currency]': 'eur',
-    'line_items[0][price_data][unit_amount]': input.amountCents,
-    'line_items[0][price_data][product_data][name]': input.productName,
-    'line_items[0][price_data][product_data][description]': input.description,
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
     client_reference_id: input.clientReferenceId,
@@ -63,13 +63,20 @@ export async function createCheckoutSession(
     locale: 'auto',
     integration_identifier: INTEGRATION_IDENTIFIER,
   };
+  input.lines.forEach((line, i) => {
+    params[`line_items[${i}][quantity]`] = line.quantity;
+    params[`line_items[${i}][price_data][currency]`] = 'eur';
+    params[`line_items[${i}][price_data][unit_amount]`] = line.amountCents;
+    params[`line_items[${i}][price_data][product_data][name]`] = line.name.slice(0, 250);
+    params[`line_items[${i}][price_data][product_data][description]`] = input.description;
+  });
   for (const [k, v] of Object.entries(input.metadata)) {
     params[`metadata[${k}]`] = v;
     // Copied onto the PaymentIntent and its charge as well: refunds and
     // payment_intent.succeeded then identify the ticket on their own.
     params[`payment_intent_data[metadata][${k}]`] = v;
   }
-  params['payment_intent_data[description]'] = input.productName.slice(0, 200);
+  params['payment_intent_data[description]'] = input.lines.map((l) => l.name).join(' / ').slice(0, 200);
   try {
     const response = await fetch(`${API}/checkout/sessions`, {
       method: 'POST',

@@ -265,17 +265,39 @@ version:
   forming a team. Answers show on the admin roster, on the door page, in
   the tickets CSV and in "Export roster with answers". People can edit
   their own answers while signups are open.
-- **Buying without Discord**: visitors who aren't signed in see "Buy
-  without Discord" on public ticket types (never on members-only ones).
-  They type the name for the ticket, pay on Stripe (or get a free ticket
-  at once), and the ticket is a link they keep; the door scans it like any
-  other. Signed-in tickets carry the Discord name. The door QR opens the
-  same page.
-- **Release this seat**: a pending ticket (payment started, not finished)
-  holds its seat for 35 minutes and blocks the account from buying another
-  type. The buyer's own "Release this seat" button, on the event page, the
-  pay page and the ticket page, expires Stripe's page and voids the ticket
-  at once, so they can pick the right ticket. Nothing is charged.
+- **Basket and checkout**: event pages and the shop only *add to the
+  basket* (a cookie, nothing held yet). The checkout (`/checkout`, also
+  "Basket (n)" in the header) prices everything for the person, asks a
+  name and the event's questions for every ticket, and takes one Stripe
+  payment for the lot: tickets for several events and shop items together.
+  Free purchases are issued at once. A purchase page
+  (`/purchase/<id>`) lists its tickets and items; each ticket has its own
+  QR page as before.
+- **Tickets for friends**: a signed-in person's first ticket for an event
+  is their own (member price, on their account, their signup). Further
+  tickets of the same type are *by name* at the public price, at most 6
+  per type in one purchase, never on members-only types, and they count
+  as non-member seats where seats are reserved. They show under the
+  buyer's "My tickets" as "for <name>"; the friend gets the ticket link.
+  Without Discord every ticket is by name and the purchase link is the
+  way back to them. The door QR still opens the checkout with that ticket
+  in the basket.
+- **Release**: a pending purchase (payment started, not finished) holds
+  its seats and stock for 35 minutes and blocks the account from buying
+  another own ticket. "Release" on the event page, the checkout, the
+  purchase page and the ticket page expires Stripe's page and voids the
+  purchase at once. Nothing is charged.
+- **A paid ticket is a signup**: admins cannot remove a paid ticket
+  holder from the roster or set them to "maybe" (the roster says so);
+  refund in Stripe instead, and the webhook removes them. Any signup that
+  went missing earlier comes back the next time the event page loads.
+- **Shop** (`/shop`, in the header): board members add products there
+  (name, description, price, member price, stock or uncounted, on sale).
+  Buyers pay at the checkout and collect at an event or from the board;
+  there is no shipping. **Items to hand over** (`/shop/orders`, board role
+  or register access) lists paid items waiting; tick each off when
+  collected, the buyer's purchase page shows it. A full refund in Stripe
+  refunds the whole purchase, items included.
 - **Refunds**: from the Stripe dashboard; the webhook marks the ticket
   refunded and frees the seat. Cancelling an event does not refund by
   itself — refund in Stripe (all charges of that event), then cancel.

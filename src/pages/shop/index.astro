@@ -1,0 +1,126 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import { currentSession, ensureCsrf } from '../../lib/guard';
+import { listProducts, productOffer } from '../../lib/purchases';
+import { readBasket, basketCount } from '../../lib/basket';
+
+// The shop: the association's things for sale (overall patches and the
+// like), collected at an event or from the board. Board members manage
+// the products here too.
+
+const session = await currentSession(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+const now = Math.floor(Date.now() / 1000);
+const isAdmin = session?.isAdmin === true;
+const products = await listProducts(env.DB, now, isAdmin);
+const offers = new Map<number, Awaited<ReturnType<typeof productOffer>>>();
+for (const p of products) offers.set(p.id, await productOffer(env.DB, p, session?.discordId ?? null));
+const basket = readBasket(Astro.cookies);
+const inBasket = (id: number) => basket.find((l) => l.kind === 'item' && l.id === id)?.count ?? 0;
+const count = basketCount(basket);
+const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
+const editId = Number(Astro.url.searchParams.get('edit'));
+const editing = isAdmin && Number.isInteger(editId) ? products.find((p) => p.id === editId) ?? null : null;
+
+const FLASH: Record<string, string> = {
+  added: 'Added to your basket.',
+  product_saved: 'Product saved.',
+  bad_input: "That didn't save. A name is 1 to 80 characters; prices are in euros, stock a whole number or empty.",
+  missing: 'No such product.',
+  forbidden: 'That needs the Board role in Discord.',
+  csrf: 'The form was stale. Try again.',
+  sold_out: 'That one is sold out.',
+};
+const okKey = Astro.url.searchParams.get('ok');
+const flash = FLASH[okKey ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
+Astro.response.headers.set('cache-control', 'no-store');
+---
+<Base title="Shop" description="LahtiAG patches and other things, collected at events.">
+  <article class="prose">
+    <h1>Shop</h1>
+    <p>Things from the association, paid here and collected at an event or from the board. No shipping.</p>
+  </article>
+  {flash && <p class={`flash${okKey ? ' flash-good' : ''}`}>{flash}</p>}
+  {count > 0 && (
+    <p class="basket-bar"><strong>{count} in your basket.</strong> <a class="btn btn-primary btn-sm" href="/checkout">Go to checkout</a></p>
+  )}
+
+  {products.filter((p) => p.active === 1).length === 0 ? (
+    <p class="app-empty">Nothing for sale right now.</p>
+  ) : (
+    <ul class="ticket-types shop-list">
+      {products.filter((p) => p.active === 1).map((p) => {
+        const offer = offers.get(p.id)!;
+        const left = p.stock === null ? null : Math.max(0, p.stock - p.sold);
+        return (
+          <li class="ticket-type">
+            <div>
+              <p class="ticket-type-name">{p.name}</p>
+              {p.description && <p class="queue-meta">{p.description}</p>}
+              <p class="queue-meta">
+                {p.member_price_cents !== null && p.member_price_cents !== p.price_cents ? `${euro(p.price_cents)}, members ${euro(p.member_price_cents)}` : p.price_cents === 0 ? 'Free' : euro(p.price_cents)}
+                {left !== null ? ` · ${left} left` : ''}
+              </p>
+            </div>
+            {offer.ok ? (
+              <form method="post" action="/basket/add" class="basket-add">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="kind" value="item" />
+                <input type="hidden" name="id" value={p.id} />
+                <input type="hidden" name="next" value="/shop" />
+                {offer.max > 1 && (
+                  <select name="count" aria-label="How many">
+                    {Array.from({ length: offer.max }, (_, i) => i + 1).map((n) => <option value={n}>{n}</option>)}
+                  </select>
+                )}
+                <button class="btn btn-cta" type="submit">{inBasket(p.id) > 0 ? `In basket (${inBasket(p.id)}) · Add more` : 'Add to basket'}</button>
+              </form>
+            ) : (
+              <span class="ticket-why">{offer.reason === 'sold_out' ? 'Sold out' : 'Not on sale'}</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  )}
+  <p class="queue-meta">
+    {session ? 'Members get member prices automatically.' : <>Signed in members get member prices. <a href="/login?next=/shop">Sign in with Discord</a>.</>} <a href="/terms">Terms of sale.</a>
+  </p>
+
+  {isAdmin && (
+    <section class="admin-panel">
+      <h2 class="section-label">Board: products</h2>
+      <p class="queue-meta"><a href="/shop/orders">Items to hand over</a></p>
+      {products.length > 0 && (
+        <ul class="ticket-types">
+          {products.map((p) => (
+            <li class="ticket-type">
+              <div>
+                <p class="ticket-type-name">{p.name}{p.active !== 1 && ' · hidden'}</p>
+                <p class="queue-meta">{euro(p.price_cents)}{p.member_price_cents !== null ? ` / members ${euro(p.member_price_cents)}` : ''} · {p.sold} sold{p.stock !== null ? ` · stock ${p.stock}` : ''}</p>
+              </div>
+              <a class="btn btn-ghost btn-sm" href={`/shop?edit=${p.id}#product-form`}>Edit</a>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form method="post" action="/shop/products" class="app-form" id="product-form">
+        <input type="hidden" name="csrf" value={csrf} />
+        <input type="hidden" name="action" value={editing ? 'update' : 'create'} />
+        {editing && <input type="hidden" name="id" value={editing.id} />}
+        <h3>{editing ? `Edit: ${editing.name}` : 'New product'}</h3>
+        <label>Name <input name="name" required maxlength="80" value={editing?.name ?? ''} /></label>
+        <label>Description <textarea name="description" maxlength="600" rows="2">{editing?.description ?? ''}</textarea></label>
+        <label>Price (€) <input name="price" type="number" min="0" step="0.01" required value={editing ? (editing.price_cents / 100).toFixed(2) : ''} /></label>
+        <label>Member price (€), empty for none <input name="member_price" type="number" min="0" step="0.01" value={editing?.member_price_cents !== null && editing?.member_price_cents !== undefined ? (editing.member_price_cents / 100).toFixed(2) : ''} /></label>
+        <label>Stock, empty for uncounted <input name="stock" type="number" min="0" step="1" value={editing?.stock ?? ''} /></label>
+        <label class="check"><input type="checkbox" name="active" checked={editing ? editing.active === 1 : true} /> <span>On sale</span></label>
+        <div class="entry-actions">
+          <button class="btn btn-primary" type="submit">{editing ? 'Save' : 'Add product'}</button>
+          {editing && <a class="btn btn-ghost" href="/shop">Cancel</a>}
+        </div>
+      </form>
+    </section>
+  )}
+</Base>
