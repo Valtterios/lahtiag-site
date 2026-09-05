@@ -1860,10 +1860,11 @@ export async function setSetting(
 
 // --- membership gate on events ---------------------------------------------------
 
+// Reserved seats only mean something inside a capacity: an event with no
+// capacity keeps no reservation, whatever the field says.
 function checkMemberSlots(slots: number | null, capacity: number | null): number | null {
-  if (slots === null) return null;
+  if (slots === null || capacity === null) return null;
   if (!Number.isInteger(slots) || slots < 1) throw new RuleError('bad_input', 'Reserved seats must be a positive whole number.');
-  if (capacity === null) throw new RuleError('bad_input', 'Reserved seats need a capacity.');
   if (slots > capacity) throw new RuleError('bad_input', 'Reserved seats cannot exceed the capacity.');
   return slots;
 }

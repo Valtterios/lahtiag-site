@@ -113,7 +113,7 @@ const FLASH: Record<string, string> = {
   bad_time: "That date and time didn't parse.",
   signin: 'Sign in with Discord first.',
   csrf: 'The form was stale. Try again.',
-  bad_input: "That didn't work. A team name is 1 to 40 characters.",
+  bad_input: "That didn't save. Check the values: reserved seats can't exceed the capacity, a team name is 1 to 40 characters.",
   missing: 'No such team on this event.',
   forbidden: 'That needs the admin role in Discord.',
   discord_down: "Discord didn't answer while re-checking your role. Try again.",
@@ -608,7 +608,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               </label>
               <label>
                 Seats reserved for members
-                <input name="member_slots" type="number" min="1" value={event.member_slots ?? ''} placeholder="empty = none; needs a capacity" />
+                <input name="member_slots" type="number" min="1" value={event.member_slots ?? ''} placeholder="empty = none; only with a capacity" />
               </label>
               <label>Description <textarea name="description" rows="3">{event.description ?? ''}</textarea></label>
               {event.team_size !== null && (

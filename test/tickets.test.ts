@@ -125,7 +125,9 @@ describe('members-only events and reserved seats', () => {
     await person('admin', false);
     const base = { title: 'x', description: null, starts_at: NOW + 1000, capacity: 5, created_by: 'admin' };
     await expect(createEvent(db(), { ...base, member_slots: 6 }, NOW)).rejects.toMatchObject({ code: 'bad_input' });
-    await expect(createEvent(db(), { ...base, capacity: null, member_slots: 2 }, NOW)).rejects.toMatchObject({ code: 'bad_input' });
+    // no capacity: the reservation is dropped rather than refused
+    const open = await createEvent(db(), { ...base, capacity: null, member_slots: 2 }, NOW);
+    expect(await getEvent(db(), open)).toMatchObject({ capacity: null, member_slots: null });
     const id = await createEvent(db(), { ...base, member_slots: 5, members_only: true }, NOW);
     expect(await getEvent(db(), id)).toMatchObject({ members_only: 1, member_slots: 5 });
     await updateEvent(db(), id, { ...base, ends_at: null, organizers: null, link_url: null, members_only: false, member_slots: null });
