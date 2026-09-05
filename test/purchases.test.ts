@@ -39,7 +39,7 @@ import {
   listMyItems,
   MAX_PER_PURCHASE,
 } from '../src/lib/purchases';
-import { parseBasket, serializeBasket, withLine, basketCount } from '../src/lib/basket';
+import { parseBasket, serializeBasket, withLine, basketCount, writeBasket } from '../src/lib/basket';
 import { parseAnswers } from '../src/lib/questions';
 
 // Purchases (migration 0015): the basket, tickets for friends by name,
@@ -119,6 +119,19 @@ describe('the basket', () => {
     expect(withLine(lines, { kind: 'ticket', id: 3, count: -3 })).toEqual([{ kind: 'item', id: 1, count: 1 }]);
     expect(withLine(lines, { kind: 'item', id: 1, count: 0 }, true)).toEqual([{ kind: 'ticket', id: 3, count: 3 }]);
     expect(parseBasket(serializeBasket(lines))).toEqual(lines);
+  });
+
+  it('deletes the cookie the way a __Host- cookie must be deleted', () => {
+    const calls: { name: string; options: Record<string, unknown> }[] = [];
+    const jar = {
+      get: () => undefined,
+      set: (name: string, _value: string, options: Record<string, unknown>) => calls.push({ name, options }),
+      delete: (name: string, options: Record<string, unknown>) => calls.push({ name, options }),
+    };
+    writeBasket(jar, [{ kind: 'ticket', id: 1, count: 1 }]);
+    writeBasket(jar, []);
+    expect(calls).toHaveLength(2);
+    for (const call of calls) expect(call.options).toMatchObject({ path: '/', secure: true });
   });
 
   it('reads answers under a per-ticket prefix', () => {

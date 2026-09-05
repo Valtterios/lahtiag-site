@@ -48,9 +48,11 @@ export function readBasket(cookies: CookieJar): BasketLine[] {
   return parseBasket(cookies.get(BASKET_COOKIE)?.value);
 }
 
+// A __Host- cookie is only accepted (and only deleted) with Secure and
+// Path=/; a deletion without them is silently ignored by the browser.
 export function writeBasket(cookies: CookieJar, lines: BasketLine[]): void {
   if (lines.length === 0) {
-    cookies.delete(BASKET_COOKIE, { path: '/' });
+    cookies.delete(BASKET_COOKIE, { path: '/', secure: true });
     return;
   }
   cookies.set(BASKET_COOKIE, serializeBasket(lines), {

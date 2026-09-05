@@ -29,7 +29,7 @@ sign: {
   const code = Astro.url.searchParams.get('code');
   const state = Astro.url.searchParams.get('state');
   const stateCookie = Astro.cookies.get('__Host-oauth-state')?.value ?? '';
-  Astro.cookies.delete('__Host-oauth-state', { path: '/' });
+  Astro.cookies.delete('__Host-oauth-state', { path: '/', secure: true });
   const dot = stateCookie.lastIndexOf('.');
   const expectedState = dot >= 0 ? stateCookie.slice(0, dot) : stateCookie;
   const wasSilent = stateCookie.endsWith('.silent');
@@ -105,7 +105,7 @@ sign: {
   Astro.cookies.set(SESSION_COOKIE, token, cookieOptions);
   Astro.cookies.set(CSRF_COOKIE, newCsrfToken(), cookieOptions);
   const next = Astro.cookies.get('__Host-next')?.value ?? '';
-  Astro.cookies.delete('__Host-next', { path: '/' });
+  Astro.cookies.delete('__Host-next', { path: '/', secure: true });
   return Astro.redirect(/^\/[a-z0-9\-\/]*$/i.test(next) && !next.startsWith('//') ? next : '/events');
 }
 ---

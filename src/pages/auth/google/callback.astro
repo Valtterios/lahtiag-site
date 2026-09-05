@@ -25,7 +25,7 @@ sign: {
   const code = Astro.url.searchParams.get('code');
   const state = Astro.url.searchParams.get('state');
   const expected = Astro.cookies.get(BOARD_STATE_COOKIE)?.value ?? '';
-  Astro.cookies.delete(BOARD_STATE_COOKIE, { path: '/' });
+  Astro.cookies.delete(BOARD_STATE_COOKIE, { path: '/', secure: true });
   if (!code || !state || !expected || state !== expected) {
     outcome = 'expired';
     break sign;

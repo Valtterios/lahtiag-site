@@ -32,6 +32,6 @@ export const POST: APIRoute = async ({ request, params, redirect, cookies }) => 
     if (state === 'paid') return redirect(`/purchase/${purchase.id}?paid=1`, 303);
   }
   await voidPurchase(env.DB, purchase.id);
-  cookies.delete(PENDING_COOKIE, { path: '/' });
+  cookies.delete(PENDING_COOKIE, { path: '/', secure: true });
   return redirect(`${next}${join}ok=released`, 303);
 };
