@@ -1,0 +1,42 @@
+---
+// A Markdown document from docs/, rendered for the board with the site's
+// typography. Headings get GitHub-style ids so the contents lists work;
+// pictures come from public/handbook/images.
+import { Marked } from 'marked';
+
+interface Props {
+  source: string;
+  eyebrow: string;
+  title: string;
+  note: string;
+}
+const { source, eyebrow, title, note } = Astro.props;
+
+const slug = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/<[^>]+>/g, '')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+const escapeHtml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const markdown = new Marked({
+  renderer: {
+    html: ({ text }) => escapeHtml(text),
+    heading({ tokens, depth }) {
+      const text = this.parser.parseInline(tokens);
+      return `<h${depth} id="${slug(text)}">${text}</h${depth}>\n`;
+    },
+    image({ href, text }) {
+      return `<img src="${href.replace(/^images\//, '/handbook/images/')}" alt="${escapeHtml(text)}" loading="lazy" />`;
+    },
+  },
+});
+const html = markdown.parse(source.replace(/^# .*\n/, ''), { async: false }) as string;
+---
+<article class="prose handbook">
+  <p class="hero-eyebrow">{eyebrow}</p>
+  <h1>{title}</h1>
+  <p class="queue-meta">{note}</p>
+  <div set:html={html} />
+</article>

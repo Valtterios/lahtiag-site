@@ -457,9 +457,10 @@ have the item.
 
 ## Editing this handbook
 
-This file is the handbook. The board reads it rendered at
-[lahtiag.fi/handbook](https://lahtiag.fi/handbook) (Board role or
-register login) and on GitHub. Pictures go in `docs/images/…`; the site
+This file is the technical handbook. The board reads it rendered at
+[lahtiag.fi/handbook/technical](https://lahtiag.fi/handbook/technical)
+(Board role or register login) and on GitHub; the short, plain
+[board guide](BOARD-GUIDE.md) is at lahtiag.fi/handbook. Pictures go in `docs/images/…`; the site
 serves a copy from `public/handbook/images`, so after adding or changing
 one, run `cp -r docs/images public/handbook/` before pushing.
 

@@ -1,0 +1,27 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import Handbook from '../../components/Handbook.astro';
+import { requireAdmin } from '../../lib/guard';
+import { requireBoard } from '../../lib/board';
+import handbook from '../../../docs/OPERATIONS.md?raw';
+
+// The technical handbook (docs/OPERATIONS.md). Board role or register access.
+
+const board = await requireBoard(Astro.request, env);
+const admin = board.ok ? null : await requireAdmin(Astro.request, env);
+const allowed = board.ok || admin?.ok === true;
+Astro.response.status = allowed ? 200 : 401;
+Astro.response.headers.set('cache-control', 'no-store');
+---
+<Base title="Technical handbook" description="How lahtiag.fi is run." wide>
+  {!allowed ? (
+    <article class="prose">
+      <h1>Technical handbook</h1>
+      <p>Sign in with Discord (Board role) or the register login to read it.</p>
+      <p class="entry-actions"><a class="btn btn-primary" href="/login?next=/handbook/technical">Sign in with Discord</a> <a class="btn btn-ghost" href="/register">Register login</a></p>
+    </article>
+  ) : (
+    <Handbook source={handbook} eyebrow="Board" title="Running lahtiag.fi" note="The same text as docs/OPERATIONS.md in the repository; edit it there. The short board guide is at /handbook." />
+  )}
+</Base>

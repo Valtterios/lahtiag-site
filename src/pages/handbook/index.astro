@@ -1,0 +1,28 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import Handbook from '../../components/Handbook.astro';
+import { requireAdmin } from '../../lib/guard';
+import { requireBoard } from '../../lib/board';
+import guide from '../../../docs/BOARD-GUIDE.md?raw';
+
+// The board guide (docs/BOARD-GUIDE.md): the short, plain version. Board
+// role on Discord or register access.
+
+const board = await requireBoard(Astro.request, env);
+const admin = board.ok ? null : await requireAdmin(Astro.request, env);
+const allowed = board.ok || admin?.ok === true;
+Astro.response.status = allowed ? 200 : 401;
+Astro.response.headers.set('cache-control', 'no-store');
+---
+<Base title="Board guide" description="How the board uses lahtiag.fi." wide>
+  {!allowed ? (
+    <article class="prose">
+      <h1>Board guide</h1>
+      <p>The board's guide to the site. Sign in with Discord (Board role) or the register login to read it.</p>
+      <p class="entry-actions"><a class="btn btn-primary" href="/login?next=/handbook">Sign in with Discord</a> <a class="btn btn-ghost" href="/register">Register login</a></p>
+    </article>
+  ) : (
+    <Handbook source={guide} eyebrow="Board" title="Board guide to lahtiag.fi" note="The short version. The technical handbook, with settings and fixes, is at /handbook/technical." />
+  )}
+</Base>

@@ -3403,3 +3403,15 @@ details.admin-panel[open] > summary {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.handbook table:not(:has(img)) td,
+.handbook table:not(:has(img)) th {
+  display: table-cell;
+  width: auto;
+  border-bottom: 1px solid var(--line);
+  padding: 0.4rem 0.8rem 0.4rem 0;
+}
+.handbook table:not(:has(img)) th {
+  text-align: left;
+  font-weight: 700;
+}
