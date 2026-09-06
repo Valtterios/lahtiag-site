@@ -7,7 +7,6 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { getEvent, getBracket, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, memberStats, getSettings, setSetting, getEventPhoto, recordMilestone, WIN_MILESTONES, type BracketMatch, type EventRow } from './db';
-import { formatHelsinkiRange } from './time';
 import { profileCardPng } from './profile-card';
 import { syncEventRole } from './event-discord';
 import { setGuildMemberRole, postWebhookWithFile, dmUser, postWebhook } from './discord';
