@@ -289,18 +289,23 @@ if (isPost && csrfOk && !adjust && lines.length > 0 && !problem) {
       }
       const stripeLines: CheckoutLine[] = [];
       for (const line of lines) {
+        // Under each line on Stripe's page and the receipt: the event's
+        // date and place for a ticket, the product's own blurb for an item.
         if (line.quoted.kind === 'item') {
-          if (line.quoted.unit_cents > 0) stripeLines.push({ name: line.quoted.product.name, amountCents: line.quoted.unit_cents, quantity: line.quoted.quantity });
+          if (line.quoted.unit_cents > 0) {
+            stripeLines.push({ name: line.quoted.product.name, amountCents: line.quoted.unit_cents, quantity: line.quoted.quantity, description: line.quoted.product.description?.trim().slice(0, 120) || undefined });
+          }
           continue;
         }
         const label = `${line.quoted.event.title}: ${line.quoted.type.name}`;
+        const when = `${formatHelsinkiRange(line.quoted.event.starts_at, line.quoted.event.ends_at)}${line.quoted.event.location ? ` · ${line.quoted.event.location}` : ''}`;
         if (line.quoted.ownTicket && line.quoted.own_cents) {
-          stripeLines.push({ name: `${label} · ${session!.username}`, amountCents: line.quoted.own_cents, quantity: 1 });
+          stripeLines.push({ name: `${label} · ${session!.username}`, amountCents: line.quoted.own_cents, quantity: 1, description: when });
         }
         const extras = line.blocks.filter((b) => !b.own);
         if (extras.length > 0 && line.quoted.extra_cents) {
           const who = extras.map((b) => b.name).join(', ');
-          stripeLines.push({ name: `${label}${extras.length > 1 ? ` × ${extras.length}` : ''} · ${who}`, amountCents: line.quoted.extra_cents, quantity: extras.length });
+          stripeLines.push({ name: `${label}${extras.length > 1 ? ` × ${extras.length}` : ''} · ${who}`, amountCents: line.quoted.extra_cents, quantity: extras.length, description: when });
         }
       }
       const entry = session ? await getRegisterByDiscord(env.DB, session.discordId) : null;
@@ -308,12 +313,11 @@ if (isPost && csrfOk && !adjust && lines.length > 0 && !problem) {
       // goes under the first line, once, so it shows on Stripe's page and
       // on the emailed receipt.
       const purchaseUrl = `${Astro.url.origin}/purchase/${created.purchase.id}`;
-      if (!session && stripeLines.length > 0) stripeLines[0] = { ...stripeLines[0], description: `Your purchase: ${purchaseUrl}` };
+      if (!session && stripeLines.length > 0) {
+        stripeLines[0] = { ...stripeLines[0], description: [stripeLines[0].description, `Your purchase: ${purchaseUrl}`].filter(Boolean).join(' · ') };
+      }
       const checkout = await createCheckoutSession(env.STRIPE_SECRET_KEY!, {
         lines: stripeLines,
-        description: ticketLines.length === 1 && ticketLines[0].quoted.kind === 'ticket'
-          ? formatHelsinkiRange(ticketLines[0].quoted.event.starts_at, ticketLines[0].quoted.event.ends_at)
-          : 'lahtiag.fi',
         successUrl: `${Astro.url.origin}/purchase/${created.purchase.id}?paid=1`,
         cancelUrl: `${Astro.url.origin}/checkout?err=cancelled_checkout`,
         clientReferenceId: created.purchase.id,
