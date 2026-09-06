@@ -638,11 +638,11 @@ a:hover {
 .year-chart figcaption {
   font-family: var(--display);
   font-weight: 600;
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: 0.5rem;
+  padding: 0 0 0.4rem;
 }
 .year-bars {
   list-style: none;
