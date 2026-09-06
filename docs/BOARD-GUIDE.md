@@ -113,6 +113,9 @@ the bottom right lets you view a page as a member or a visitor would.
   screen messages are posted there by the bot. Board tools → Discord
   shows the state. Afterwards, Archive keeps the channels for the board
   and takes the role away; Delete everything removes them.
+- **Photos.** Board tools → Photos takes several pictures at once; the
+  page shrinks them before upload. They show on the event page and the
+  history page. Up to 40 per event.
 - **Cancel** posts a cancellation on Discord and can be undone with
   Reinstate. Delete removes the event for good. Both ask first.
 

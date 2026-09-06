@@ -401,6 +401,7 @@ export async function deleteEvent(db: D1Database, id: number): Promise<EventRow>
     db.prepare('DELETE FROM event_discord_channels WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM event_interest WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM event_waitlist WHERE event_id = ?1').bind(id),
+    db.prepare('DELETE FROM event_photos WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM waitlist_promotions WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM signups WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM event_teams WHERE event_id = ?1').bind(id),
@@ -2185,6 +2186,93 @@ export async function listEndedEventsWithRole(db: D1Database, before: number): P
     .prepare(`${EVENT_COUNTS} WHERE e.discord_role_id IS NOT NULL AND COALESCE(e.ends_at, e.starts_at) < ?1 ORDER BY e.starts_at`)
     .bind(before)
     .all<EventWithCounts>();
+  return results;
+}
+
+// --- event photos ---------------------------------------------------------------------
+// Uploaded by the board, shrunk in the browser first: a picture of at most
+// 1600 px and a thumbnail. Kept in D1 like the covers.
+
+export const PHOTO_MAX_BYTES = 900_000;
+export const PHOTOS_PER_EVENT = 40;
+
+export interface EventPhotoRow {
+  id: number;
+  event_id: number;
+  content_type: string;
+  size: number;
+  width: number | null;
+  height: number | null;
+  has_thumb: number;
+  created_at: number;
+}
+
+export async function addEventPhoto(
+  db: D1Database,
+  eventId: number,
+  contentType: string,
+  bytes: ArrayBuffer,
+  thumb: ArrayBuffer | null,
+  now: number,
+): Promise<number> {
+  if (!(COVER_TYPES as readonly string[]).includes(contentType)) throw new RuleError('bad_input', 'JPEG, PNG or WebP only.');
+  if (bytes.byteLength === 0 || bytes.byteLength > PHOTO_MAX_BYTES) throw new RuleError('bad_input', 'The picture is empty or too big; the page shrinks pictures before upload when JavaScript is on.');
+  const size = imageSize(bytes);
+  if (!size) throw new RuleError('bad_input', 'That file is not a readable image.');
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  const count = await db.prepare('SELECT COUNT(*) AS n FROM event_photos WHERE event_id = ?1').bind(eventId).first<{ n: number }>();
+  if ((count?.n ?? 0) >= PHOTOS_PER_EVENT) throw new RuleError('bad_input', `At most ${PHOTOS_PER_EVENT} photos per event.`);
+  const row = await db
+    .prepare(
+      `INSERT INTO event_photos (event_id, content_type, bytes, thumb, size, width, height, sort, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8) RETURNING id`,
+    )
+    .bind(eventId, contentType, bytes, thumb, bytes.byteLength, size.width, size.height, now)
+    .first<{ id: number }>();
+  return row!.id;
+}
+
+export async function listEventPhotos(db: D1Database, eventId: number): Promise<EventPhotoRow[]> {
+  const { results } = await db
+    .prepare('SELECT id, event_id, content_type, size, width, height, (thumb IS NOT NULL) AS has_thumb, created_at FROM event_photos WHERE event_id = ?1 ORDER BY sort, id')
+    .bind(eventId)
+    .all<EventPhotoRow>();
+  return results;
+}
+
+export async function getEventPhoto(db: D1Database, id: number, thumb: boolean): Promise<{ content_type: string; bytes: ArrayBuffer; created_at: number } | null> {
+  const row = await db
+    .prepare(`SELECT content_type, ${thumb ? 'COALESCE(thumb, bytes)' : 'bytes'} AS bytes, created_at FROM event_photos WHERE id = ?1`)
+    .bind(id)
+    .first<{ content_type: string; bytes: unknown; created_at: number }>();
+  return row ? { content_type: thumb ? 'image/jpeg' : row.content_type, bytes: blobBytes(row.bytes), created_at: row.created_at } : null;
+}
+
+export async function deleteEventPhoto(db: D1Database, eventId: number, id: number): Promise<boolean> {
+  const result = await db.prepare('DELETE FROM event_photos WHERE id = ?1 AND event_id = ?2').bind(id, eventId).run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+export interface PhotoAlbum {
+  event_id: number;
+  title: string;
+  starts_at: number;
+  photos: number;
+  first_id: number;
+}
+
+// Past events with photos, newest first, for the history page.
+export async function listPhotoAlbums(db: D1Database, limit = 30): Promise<PhotoAlbum[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT e.id AS event_id, e.title, e.starts_at, COUNT(p.id) AS photos, MIN(p.id) AS first_id
+       FROM events e JOIN event_photos p ON p.event_id = e.id
+       WHERE e.cancelled_at IS NULL AND e.published_at IS NOT NULL
+       GROUP BY e.id ORDER BY e.starts_at DESC LIMIT ?1`,
+    )
+    .bind(limit)
+    .all<PhotoAlbum>();
   return results;
 }
 

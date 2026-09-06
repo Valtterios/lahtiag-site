@@ -558,6 +558,63 @@ a:hover {
   margin: 1rem 0 0;
 }
 
+/* Event photos: a tight grid, thumbnails cropped square-ish. */
+.photo-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.5rem;
+}
+.photo-grid li {
+  position: relative;
+  margin: 0;
+}
+.photo-grid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--bg);
+}
+.photo-grid-admin {
+  margin-top: 1rem;
+}
+.photo-grid-admin .inline-form {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+}
+.album-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 1rem;
+}
+.album-grid li {
+  margin: 0;
+}
+.album-grid a {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+.album-grid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--bg);
+  margin-bottom: 0.4rem;
+}
+.album-title {
+  display: block;
+  font-weight: 600;
+}
+
 /* The leaderboard on the history page. */
 .leaderboard {
   display: grid;

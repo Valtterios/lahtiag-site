@@ -18,6 +18,7 @@ import {
   listEventQuestions,
   getAnswers,
   listAllAnswers,
+  listEventPhotos,
   isInterested,
   signupsOpen,
   listWaitlist,
@@ -81,6 +82,7 @@ const eventChannels = event && session?.isAdmin && (event.discord_category_id ||
 const teamVoiceCount = eventChannels.filter((c) => c.kind === 'team').length;
 const teamsWithoutVoice = event?.discord_category_id ? eventTeams.filter((t) => !eventChannels.some((c) => c.kind === 'team' && c.event_team_id === t.id)).length : 0;
 const archived = Boolean(event && !event.discord_role_id && (event.discord_category_id || event.discord_channel_id));
+const photos = event ? await listEventPhotos(env.DB, event.id) : [];
 const hasTicket = myTicket?.status === 'paid';
 const pendingPurchase = event && session ? await pendingPurchaseFor(env.DB, session.discordId, nowSeconds) : null;
 const resume = resumablePurchase(pendingPurchase, nowSeconds);
@@ -128,7 +130,7 @@ if (event && !draft && event.cancelled_at === null) syncInterestInBackground(Ast
 
 // Flashes from board actions open the (otherwise folded) board tools.
 const DISCORD_OPEN = new Set(['discord_created', 'discord_synced', 'discord_removed', 'discord_upgraded', 'discord_archived', 'discord_team_voice', 'discord_needs_category', 'discord_no_teams', 'discord_event_created', 'discord_event_removed', 'discord_event_skipped', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
-const ADMIN_OPEN = new Set(['cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
+const ADMIN_OPEN = new Set(['cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'photos_added', 'photo_removed', 'photo_missing', 'photo_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
 const okKey = Astro.url.searchParams.get('ok') ?? '';
 const errKey = Astro.url.searchParams.get('err') ?? '';
 const FLASH: Record<string, string> = {
@@ -157,6 +159,8 @@ const FLASH: Record<string, string> = {
   needs_ticket: 'This event needs a ticket first. Buy one above, then form or join a team.',
   cover_missing: 'Pick an image file first.',
   cover_bad: 'The cover must be a JPEG, PNG or WebP under 1.5 MB.',
+  photo_missing: 'Pick one or more pictures first.',
+  photo_bad: 'A picture was refused: JPEG, PNG or WebP, and the page shrinks them before upload when JavaScript is on. At most 40 per event.',
   ticket_holder: 'That person holds a paid ticket, so they are going. Refund it in Stripe to remove them.',
   too_few: 'A bracket needs at least two teams or players. Players without a team are grouped into teams when you generate.',
   not_open: 'Signups are not open yet. Press Interested and come back when they open.',
@@ -202,6 +206,8 @@ const OK: Record<string, string> = {
   answers_saved: 'Your details are saved.',
   cover_saved: 'Cover image saved.',
   cover_removed: 'Cover image removed.',
+  photos_added: 'Photos added.',
+  photo_removed: 'Photo removed.',
   interested: "Marked as interested. You'll see it under My events.",
   waitlisted: "You're on the waitlist. When a seat frees you're moved to Going, the event's Discord channel tells you, and it shows under My events.",
   left_waitlist: 'Taken off the waitlist.',
@@ -531,6 +537,20 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 {event.link_url && <a class="btn btn-ghost" href={event.link_url} rel="noopener">Stream / info link</a>}
               </p>
             )}
+          </section>
+        )}
+        {photos.length > 0 && (
+          <section class="event-card" id="photos">
+            <h2 class="section-label">Photos</h2>
+            <ul class="photo-grid">
+              {photos.map((p) => (
+                <li>
+                  <a href={`/events/${event.id}/photos/${p.id}`} target="_blank" rel="noopener">
+                    <img src={`/events/${event.id}/photos/${p.id}?thumb`} alt="" loading="lazy" width={p.width ?? undefined} height={p.height ?? undefined} />
+                  </a>
+                </li>
+              ))}
+            </ul>
           </section>
         )}
       {!isTeamEvent && signups.length > 0 && (
@@ -1092,6 +1112,30 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               <button class="btn btn-primary" type="submit">Add participant</button>
             </form>
           </details>
+          <details class="admin-edit" id="photos-admin" open={['photos_added', 'photo_removed'].includes(okKey) || ['photo_missing', 'photo_bad'].includes(errKey)}>
+            <summary>Photos · {photos.length === 0 ? 'none' : photos.length}</summary>
+            <form method="post" action={`/events/${event.id}/photos`} enctype="multipart/form-data" class="app-form" id="photo-form">
+              <input type="hidden" name="csrf" value={csrf} />
+              <label>Add photos <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required id="photo-input" /></label>
+              <p class="queue-meta">Pick several at once. The page shrinks them to 1600 px and makes thumbnails before uploading, so phone photos are fine. Shown on this page and on the history page; up to 40 per event.</p>
+              <button class="btn btn-primary" type="submit" id="photo-submit">Upload</button>
+            </form>
+            {photos.length > 0 && (
+              <ul class="photo-grid photo-grid-admin">
+                {photos.map((p) => (
+                  <li>
+                    <img src={`/events/${event.id}/photos/${p.id}?thumb`} alt="" loading="lazy" />
+                    <form method="post" action={`/events/${event.id}/photos`} class="inline-form">
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="action" value="remove" />
+                      <input type="hidden" name="photo_id" value={p.id} />
+                      <button class="chip-remove" type="submit" title="Remove photo" data-confirm="Remove this photo?">×</button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </details>
           <details class="admin-edit">
             <summary>Danger zone</summary>
             <p class="event-meta">
@@ -1113,6 +1157,44 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
 </Base>
 
 <script>
+  // Photos: shrink in the browser before upload, a 1600 px picture and a
+  // 480 px thumbnail each, both JPEG. The server takes them as they come
+  // when this doesn't run, up to its size limit.
+  const photoForm = document.getElementById('photo-form') as HTMLFormElement | null;
+  const photoInput = document.getElementById('photo-input') as HTMLInputElement | null;
+  if (photoForm && photoInput && 'createImageBitmap' in window) {
+    const shrink = async (file: File, max: number, quality: number): Promise<Blob> => {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      return new Promise((resolve) => canvas.toBlob((b) => resolve(b!), 'image/jpeg', quality));
+    };
+    photoForm.addEventListener('submit', async (event) => {
+      if (photoForm.dataset.ready === '1') return;
+      event.preventDefault();
+      const submit = document.getElementById('photo-submit') as HTMLButtonElement;
+      submit.disabled = true;
+      submit.textContent = 'Shrinking…';
+      const body = new FormData(photoForm);
+      body.delete('photos');
+      body.delete('thumbs');
+      for (const file of Array.from(photoInput.files ?? [])) {
+        try {
+          body.append('photos', await shrink(file, 1600, 0.85), file.name.replace(/\.[^.]+$/, '') + '.jpg');
+          body.append('thumbs', await shrink(file, 480, 0.8), 'thumb.jpg');
+        } catch {
+          body.append('photos', file, file.name);
+        }
+      }
+      submit.textContent = 'Uploading…';
+      const response = await fetch(photoForm.action, { method: 'POST', body, redirect: 'follow' });
+      location.href = response.url || location.href;
+    });
+  }
+
   // Share: the system share sheet where there is one, the clipboard
   // elsewhere. Hidden until this runs, so without JS there is no dead button.
   const share = document.getElementById('share-event') as HTMLButtonElement | null;

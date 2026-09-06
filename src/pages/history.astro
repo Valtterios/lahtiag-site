@@ -2,7 +2,7 @@
 import { env } from 'cloudflare:workers';
 import { getEntry, render } from 'astro:content';
 import Base from '../layouts/Base.astro';
-import { listResults, leaderboard, type ResultRow } from '../lib/db';
+import { listResults, leaderboard, listPhotoAlbums, type ResultRow } from '../lib/db';
 import { avatarUrl } from '../lib/discord';
 import { formatHelsinki } from '../lib/time';
 
@@ -18,9 +18,11 @@ const { Content } = await render(entry);
 
 let results: ResultRow[] = [];
 let board: Awaited<ReturnType<typeof leaderboard>> = { events: [], wins: [] };
+let albums: Awaited<ReturnType<typeof listPhotoAlbums>> = [];
 try {
   results = await listResults(env.DB);
   board = await leaderboard(env.DB, Math.floor(Date.now() / 1000));
+  albums = await listPhotoAlbums(env.DB);
 } catch {
   // archive stays empty; the stories stay up
 }
@@ -80,6 +82,23 @@ try {
             </div>
           )}
         </div>
+      </>
+    )}
+
+    {albums.length > 0 && (
+      <>
+        <h2>Photos</h2>
+        <ul class="album-grid">
+          {albums.map((a) => (
+            <li>
+              <a href={`/events/${a.event_id}#photos`}>
+                <img src={`/events/${a.event_id}/photos/${a.first_id}?thumb`} alt="" loading="lazy" />
+                <span class="album-title">{a.title}</span>
+                <span class="event-meta">{formatHelsinki(a.starts_at)} · {a.photos} {a.photos === 1 ? 'photo' : 'photos'}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
       </>
     )}
 
