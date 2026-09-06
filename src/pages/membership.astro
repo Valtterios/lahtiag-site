@@ -322,7 +322,7 @@ const MESSAGES: Record<FieldError, string> = {
       <img class="profile-card" src="/membership/card.png" alt="Your stats card" width="900" height="420" />
       <form method="post" action="/membership/leaderboard" class="app-form-row leaderboard-optin">
         <input type="hidden" name="csrf" value={csrf} />
-        <label class="check"><input type="checkbox" name="leaderboard" checked={onLeaderboard} /> <span>Show me on the public leaderboard on the history page (your Discord name, events and wins)</span></label>
+        <label class="check"><input type="checkbox" name="hide" checked={!onLeaderboard} /> <span>Hide me from the public leaderboard on the history page (it lists Discord names with events attended and wins; everyone is on it unless hidden)</span></label>
         <button class="btn btn-ghost btn-sm" type="submit">Save</button>
       </form>
     </section>

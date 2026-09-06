@@ -216,7 +216,8 @@ puts it on the page and on Discord.
 - **The old list.** The names that were on the server before the site
   took over are on the list as board names. A member who whitelists that
   same name takes it over, and from then on it follows their membership.
-  A tick there puts you on the public leaderboard on the history page.
+  Everyone is on the public leaderboard on the history page; a tick
+  there hides you.
 
 ## Where things are
 

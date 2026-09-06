@@ -202,7 +202,7 @@ export async function runHourly(db: D1Database, env: Env, origin: string, now: n
   }
 
   // Attendance milestones for events that ended in the last day, for
-  // members who chose the leaderboard; each is told once.
+  // members on the leaderboard (all but the hidden); each is told once.
   if (env.WELCOME_WEBHOOK_URL) {
     for (const event of await listEventsEndedBetween(db, now - 86400, now)) {
       for (const person of await listAttendees(db, event.id)) {

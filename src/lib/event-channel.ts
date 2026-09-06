@@ -245,7 +245,7 @@ export async function notifyCaptainJoin(db: D1Database, env: { DISCORD_BOT_TOKEN
 }
 
 // First win, fifth, tenth: told in the general channel, for members who
-// chose the leaderboard.
+// are on the leaderboard (everyone who hasn't hidden themselves).
 export async function postWinMilestones(
   db: D1Database,
   env: { WELCOME_WEBHOOK_URL?: string },
@@ -255,7 +255,7 @@ export async function postWinMilestones(
 ): Promise<void> {
   if (!env.WELCOME_WEBHOOK_URL) return;
   for (const id of winners) {
-    const member = await db.prepare('SELECT username, leaderboard FROM members WHERE discord_id = ?1').bind(id).first<{ username: string; leaderboard: number }>();
+    const member = await db.prepare('SELECT username, (leaderboard_hidden = 0) AS leaderboard FROM members WHERE discord_id = ?1').bind(id).first<{ username: string; leaderboard: number }>();
     if (!member || member.leaderboard !== 1) continue;
     const stats = await memberStats(db, id, now + 1);
     if (!WIN_MILESTONES.includes(stats.wins)) continue;

@@ -2382,7 +2382,7 @@ export async function recordMilestone(db: D1Database, discordId: string, kind: '
 export async function listAttendees(db: D1Database, eventId: number): Promise<{ discord_id: string; username: string; leaderboard: number }[]> {
   const { results } = await db
     .prepare(
-      `SELECT m.discord_id, m.username, m.leaderboard FROM members m
+      `SELECT m.discord_id, m.username, (m.leaderboard_hidden = 0) AS leaderboard FROM members m
        WHERE EXISTS (SELECT 1 FROM signups s WHERE s.event_id = ?1 AND s.discord_id = m.discord_id AND s.status = 'yes')
           OR EXISTS (SELECT 1 FROM tickets t WHERE t.event_id = ?1 AND t.discord_id = m.discord_id AND t.status = 'paid')`,
     )
@@ -2406,8 +2406,9 @@ export async function listEventsEndedBetween(db: D1Database, from: number, to: n
 }
 
 // --- the leaderboard ----------------------------------------------------------------
-// Public on the history page, opt-in per member: events attended and
-// tournament wins, from the same records as the stats card.
+// Public on the history page: events attended and tournament wins, from
+// the same records as the stats card. Every member is on it unless they
+// hide themselves on their membership page.
 
 export interface LeaderboardRow {
   discord_id: string;
@@ -2417,13 +2418,14 @@ export interface LeaderboardRow {
   wins: number;
 }
 
+// `on` = shown. Someone not in the members table yet is shown once they are.
 export async function setLeaderboardOptIn(db: D1Database, discordId: string, on: boolean): Promise<void> {
-  await db.prepare('UPDATE members SET leaderboard = ?2 WHERE discord_id = ?1').bind(discordId, on ? 1 : 0).run();
+  await db.prepare('UPDATE members SET leaderboard_hidden = ?2 WHERE discord_id = ?1').bind(discordId, on ? 0 : 1).run();
 }
 
 export async function isLeaderboardOptIn(db: D1Database, discordId: string): Promise<boolean> {
-  const row = await db.prepare('SELECT leaderboard FROM members WHERE discord_id = ?1').bind(discordId).first<{ leaderboard: number }>();
-  return row?.leaderboard === 1;
+  const row = await db.prepare('SELECT leaderboard_hidden FROM members WHERE discord_id = ?1').bind(discordId).first<{ leaderboard_hidden: number }>();
+  return row ? row.leaderboard_hidden === 0 : true;
 }
 
 export async function leaderboard(db: D1Database, now: number, limit = 10): Promise<{ events: LeaderboardRow[]; wins: LeaderboardRow[] }> {
@@ -2435,7 +2437,7 @@ export async function leaderboard(db: D1Database, now: number, limit = 10): Prom
             AND (e.starts_at < ?1 OR EXISTS (SELECT 1 FROM bracket_matches b WHERE b.event_id = e.id AND b.winner IS NOT NULL AND b.round = (SELECT MAX(round) FROM bracket_matches b2 WHERE b2.event_id = e.id)))
             AND (EXISTS (SELECT 1 FROM signups s WHERE s.event_id = e.id AND s.discord_id = m.discord_id AND s.status = 'yes')
               OR EXISTS (SELECT 1 FROM tickets t WHERE t.event_id = e.id AND t.discord_id = m.discord_id AND t.status = 'paid'))) AS attended
-       FROM members m WHERE m.leaderboard = 1`,
+       FROM members m WHERE m.leaderboard_hidden = 0`,
     )
     .bind(now)
     .all<Omit<LeaderboardRow, 'wins'>>();

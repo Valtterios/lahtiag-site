@@ -64,7 +64,10 @@ The data is stored in the site's database, hosted by
 [Cloudflare](https://www.cloudflare.com/privacypolicy/). Signup lists,
 team rosters, and tournament results are visible to signed-in members on
 event pages; names and avatars of tournament participants appear on the
-public bracket and results pages. Board members can remove signups and
+public bracket and results pages. The history page carries a public
+leaderboard of members' Discord names with the number of events attended
+and tournaments won; every member is on it, and can hide themselves on
+their membership page at any time. Board members can remove signups and
 participants.
 
 Event announcements are also posted to the association's Discord server;

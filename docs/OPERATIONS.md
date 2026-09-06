@@ -208,7 +208,8 @@ the general channel: events in the next two weeks with going and
 interested counts, last week's champion, and how many new members joined.
 Nothing is posted in a week with nothing to say.
 
-**Milestones.** For members who chose the leaderboard: their 5th, 10th,
+**Milestones.** For members on the leaderboard (everyone who hasn't
+hidden themselves on their membership page): their 5th, 10th,
 25th, 50th and 100th event attended, and their 1st, 5th and 10th
 tournament win, each cheered once in the general channel.
 
