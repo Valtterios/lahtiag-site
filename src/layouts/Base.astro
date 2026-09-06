@@ -122,8 +122,9 @@ const pathname = Astro.url.pathname;
         <p class="footer-note">
           <img src="/brand/wordmark-white.png" alt="" width="514" height="160" />
           <span>© {new Date().getFullYear()} Lahti Association of Gaming LAG ry</span>
-          <a class="footer-board" href="/handbook">Handbook</a>
-          <a class="footer-board" href="/register">Board login</a>
+          <span class="footer-board">
+            <a href="/handbook">Handbook</a> · <a href="/register">Board login</a>
+          </span>
         </p>
       </div>
     </footer>

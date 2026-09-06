@@ -3126,6 +3126,10 @@ details.admin-panel[open] > summary {
   margin-left: auto;
   font-size: 0.78rem;
   color: #b9c6ff;
+  white-space: nowrap;
+}
+.footer-board a {
+  color: inherit;
 }
 @media (max-width: 860px) {
   .site-footer .inner {
@@ -3434,10 +3438,6 @@ details.admin-panel[open] > summary {
 .handbook ul {
   padding-left: 1.2rem;
 }
-.footer-board + .footer-board {
-  margin-left: 1rem;
-}
-
 .board-links {
   max-width: 44rem;
 }
