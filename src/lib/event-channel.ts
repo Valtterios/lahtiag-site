@@ -15,6 +15,7 @@ import {
   editChannelMessageWithFile,
   deleteChannelMessage,
   pinChannelMessage,
+  isMessagePinned,
   NO_MENTIONS,
   type MessageFile,
 } from './discord';
@@ -180,7 +181,12 @@ export async function refreshLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKE
   const picture = await bracketPicture(event, matches, names, now);
   if (event.discord_bracket_message_id) {
     const edited = await editChannelMessageWithFile(token, channelId, event.discord_bracket_message_id, text, picture);
-    if (edited.ok || edited.status !== 404) return;
+    if (edited.ok) {
+      // A pin that failed earlier (or was removed) is put back.
+      if ((await isMessagePinned(token, channelId, event.discord_bracket_message_id)) === false) await pinChannelMessage(token, channelId, event.discord_bracket_message_id);
+      return;
+    }
+    if (edited.status !== 404) return;
   }
   const created = await createChannelMessageWithFile(token, channelId, text, picture);
   if (!created.ok) return;

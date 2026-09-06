@@ -422,11 +422,15 @@ async function botCall<T>(
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    if (response.status === 403) return { ok: false, reason: 'forbidden', status: 403 };
-    if (!response.ok) return { ok: false, reason: 'error', status: response.status };
+    if (!response.ok) {
+      // Into the Worker's logs, so a refusal can be read back (wrangler tail).
+      if (response.status !== 404) console.warn(`discord ${method} ${path} -> ${response.status} ${(await response.text().catch(() => '')).slice(0, 300)}`);
+      return { ok: false, reason: response.status === 403 ? 'forbidden' : 'error', status: response.status };
+    }
     if (response.status === 204) return { ok: true, value: undefined as T };
     return { ok: true, value: (await response.json()) as T };
-  } catch {
+  } catch (error) {
+    console.warn(`discord ${method} ${path} failed: ${String(error).slice(0, 200)}`);
     return { ok: false, reason: 'error' };
   }
 }
@@ -629,13 +633,18 @@ export async function deleteChannelMessage(botToken: string, channelId: string, 
   return result.ok || result.status === 404;
 }
 
-// Needs Manage Messages. Discord moved the endpoint in 2025; the old path
-// is tried when the new one is unknown to the server.
+// Needs Manage Messages. Discord moved the endpoint in 2025; both paths
+// are tried, whichever way the server answers.
 export async function pinChannelMessage(botToken: string, channelId: string, messageId: string): Promise<boolean> {
   const fresh = await botCall(botToken, 'PUT', `/channels/${channelId}/messages/pins/${messageId}`, undefined, 'lahtiag.fi live bracket');
   if (fresh.ok) return true;
-  if (fresh.status !== 404) return false;
   return (await botCall(botToken, 'PUT', `/channels/${channelId}/pins/${messageId}`, undefined, 'lahtiag.fi live bracket')).ok;
+}
+
+// Whether a message is pinned; null when it cannot be read.
+export async function isMessagePinned(botToken: string, channelId: string, messageId: string): Promise<boolean | null> {
+  const result = await botCall<{ pinned?: boolean }>(botToken, 'GET', `/channels/${channelId}/messages/${messageId}`);
+  return result.ok ? result.value.pinned === true : null;
 }
 
 export const PERM_MANAGE_MESSAGES = 1n << 13n;
@@ -662,8 +671,10 @@ async function botUpload(
     form.append('payload_json', JSON.stringify({ ...payload, attachments: [{ id: 0, filename: file.name }] }));
     form.append('files[0]', new Blob([file.bytes as BlobPart], { type: file.type }), file.name);
     const response = await fetch(`${API}${path}`, { method, headers: { authorization: `Bot ${botToken}` }, body: form });
-    if (response.status === 403) return { ok: false, reason: 'forbidden', status: 403 };
-    if (!response.ok) return { ok: false, reason: 'error', status: response.status };
+    if (!response.ok) {
+      if (response.status !== 404) console.warn(`discord ${method} ${path} (upload) -> ${response.status} ${(await response.text().catch(() => '')).slice(0, 300)}`);
+      return { ok: false, reason: response.status === 403 ? 'forbidden' : 'error', status: response.status };
+    }
     return { ok: true, value: (await response.json()) as { id: string } };
   } catch {
     return { ok: false, reason: 'error' };
