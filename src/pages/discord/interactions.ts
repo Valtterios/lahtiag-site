@@ -317,6 +317,9 @@ async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin:
   try {
     if (sub.name === 'me') {
       const p = await setOwnMinecraftName(env.DB, userId, raw, now);
+      if (p.takenFrom && env.DISCORD_BOT_TOKEN) {
+        await dmMember(env.DISCORD_BOT_TOKEN, p.takenFrom, `**${p.name}** is a member now and took their whitelist name with them. Your friend slot is free again: ${page}`);
+      }
       await reply(`✅ **${p.name}** is on the whitelist as you, on every server. ${soon}`, faceEmbed(origin, p.name, p.uuid, 'Your skin? Then it is the right account.'));
     } else if (sub.name === 'friend') {
       const p = await addMinecraftFriend(env.DB, userId, raw, now, undefined, servers);

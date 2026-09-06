@@ -217,6 +217,10 @@ puts it on the page and on Discord.
   whole table. A former member's names go off the servers on their own.
 - **Actives requests** land in the board channel the same way, with
   Approve and Decline buttons; approving gives the Actives role at once.
+- **A friend who joins.** When a friend becomes a member and whitelists
+  the same name, it moves to them, and the member who brought them gets
+  a DM that their friend slot is free. A former member's name is free
+  for others to list.
 - **The old list.** The names that were on the server before the site
   took over are on the list as board names. A member who whitelists that
   same name takes it over, and from then on it follows their membership.

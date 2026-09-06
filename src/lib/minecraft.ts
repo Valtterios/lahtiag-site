@@ -193,32 +193,44 @@ async function requireMember(db: D1Database, discordId: string): Promise<void> {
   if (!(await isCurrentMember(db, discordId))) throw new RuleError('not_member', 'Whitelisting needs a current membership.');
 }
 
-// A name the board added belongs to nobody yet: a member may claim it as
-// their own or as a friend (the server's hand-made list was seeded that
-// way). A name another member holds is taken.
-function claimable(holder: MinecraftName | null, discordId: string): boolean {
-  return holder === null || holder.discord_id === discordId || holder.kind === 'board';
+// Who may take a name that is on the list already:
+// - a board name belongs to nobody yet (the server's hand-made list was
+//   seeded that way): anyone may claim it, as their own or as a friend;
+// - a member's own claim wins over a friend listing: the friend who
+//   joined takes their name with them, and the slot frees up;
+// - a name whose holder is no longer a current member is free again.
+// A current member's own name, or another member's friend when asking
+// as a friend, is taken.
+async function claimable(db: D1Database, holder: MinecraftName | null, discordId: string, asOwn: boolean): Promise<boolean> {
+  if (holder === null || holder.discord_id === discordId || holder.kind === 'board') return true;
+  if (asOwn && holder.kind === 'friend') return true;
+  return !(await isCurrentMember(db, holder.discord_id));
 }
 
 // One own name per member: the previous one goes. A name already listed
 // as one of their friends becomes their own.
-export async function setOwnMinecraftName(db: D1Database, discordId: string, raw: string, now: number, resolve: Resolver = lookupMojang, servers?: string | null): Promise<MojangProfile> {
+export async function setOwnMinecraftName(
+  db: D1Database,
+  discordId: string,
+  raw: string,
+  now: number,
+  resolve: Resolver = lookupMojang,
+  servers?: string | null,
+): Promise<MojangProfile & { takenFrom: string | null }> {
   const on = parseServers(servers).join(',');
   const profile = await resolveName(raw, resolve);
   await requireMember(db, discordId);
-  if (!claimable(await holderOf(db, profile.name), discordId)) throw new RuleError('name_taken', 'That name is already on the list.');
+  const holder = await holderOf(db, profile.name);
+  if (!(await claimable(db, holder, discordId, true))) throw new RuleError('name_taken', 'That name is already on the list.');
+  // Whose friend slot frees up: another member who had listed this name.
+  const takenFrom = holder && holder.discord_id !== discordId && holder.kind === 'friend' ? holder.discord_id : null;
   await db.batch([
-    db
-      .prepare(
-        `DELETE FROM minecraft_names WHERE (discord_id = ?1 AND kind = 'own')
-         OR (name = ?2 COLLATE NOCASE AND (discord_id = ?1 OR kind = 'board'))`,
-      )
-      .bind(discordId, profile.name),
+    db.prepare(`DELETE FROM minecraft_names WHERE (discord_id = ?1 AND kind = 'own') OR name = ?2 COLLATE NOCASE`).bind(discordId, profile.name),
     db
       .prepare(`INSERT INTO minecraft_names (discord_id, name, kind, added_at, uuid, servers, approved_at, approved_by) VALUES (?1, ?2, 'own', ?3, ?4, ?5, ?3, ?1)`)
       .bind(discordId, profile.name, now, profile.uuid, on),
   ]);
-  return profile;
+  return { ...profile, takenFrom };
 }
 
 // A friend waits for the board's approval, unless the name was a board
@@ -228,7 +240,7 @@ export async function addMinecraftFriend(db: D1Database, discordId: string, raw:
   const profile = await resolveName(raw, resolve);
   await requireMember(db, discordId);
   const holder = await holderOf(db, profile.name);
-  if (holder && holder.kind !== 'board') throw new RuleError('name_taken', 'That name is already on the list.');
+  if (!(await claimable(db, holder, discordId, false))) throw new RuleError('name_taken', 'That name is already on the list.');
   const approved = holder?.kind === 'board';
   const friends = await db
     .prepare(`SELECT COUNT(*) AS n FROM minecraft_names WHERE discord_id = ?1 AND kind = 'friend'`)
@@ -236,7 +248,7 @@ export async function addMinecraftFriend(db: D1Database, discordId: string, raw:
     .first<{ n: number }>();
   if ((friends?.n ?? 0) >= FRIENDS_PER_MEMBER) throw new RuleError('friend_limit', `${FRIENDS_PER_MEMBER} friends per member.`);
   await db.batch([
-    db.prepare(`DELETE FROM minecraft_names WHERE name = ?1 COLLATE NOCASE AND kind = 'board'`).bind(profile.name),
+    db.prepare(`DELETE FROM minecraft_names WHERE name = ?1 COLLATE NOCASE`).bind(profile.name),
     db
       .prepare(`INSERT INTO minecraft_names (discord_id, name, kind, added_at, uuid, servers, approved_at, approved_by) VALUES (?1, ?2, 'friend', ?3, ?4, ?5, ?6, ?7)`)
       .bind(discordId, profile.name, now, profile.uuid, on, approved ? (holder?.approved_at ?? now) : null, approved ? (holder?.approved_by ?? 'board') : null),

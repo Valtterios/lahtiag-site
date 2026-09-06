@@ -150,6 +150,27 @@ describe('minecraft whitelist', () => {
     expect(friendRequestLine('Axi', 'Friend1', 'gtnh', 'https://x')).toContain('on GT:NH modpack only');
   });
 
+  it('a friend who joins takes their name with them; a lapsed member’s name is free again', async () => {
+    await setOwnMinecraftName(db(), 'm1', 'Alex', NOW, mojang);
+    await addMinecraftFriend(db(), 'm1', 'Friend1', NOW, mojang);
+    await approveMinecraftName(db(), 'Friend1', 'board', NOW);
+    // Friend1 becomes member m3 and claims the name: it moves, m1's slot frees.
+    const claim = await setOwnMinecraftName(db(), 'm3', 'friend1', NOW + 10, mojang);
+    expect(claim).toMatchObject({ name: 'Friend1', takenFrom: 'm1' });
+    expect((await listMinecraftNames(db(), 'm1')).map((n) => n.name)).toEqual(['Alex']);
+    expect((await listMinecraftNames(db(), 'm3')).map((n) => [n.name, n.kind, n.approved_at])).toEqual([['Friend1', 'own', NOW + 10]]);
+    // Another member cannot take a current member's own name, as own or as friend.
+    await expect(setOwnMinecraftName(db(), 'm2', 'Friend1', NOW, mojang)).rejects.toMatchObject({ code: 'name_taken' });
+    await expect(addMinecraftFriend(db(), 'm2', 'Alex', NOW, mojang)).rejects.toMatchObject({ code: 'name_taken' });
+    // m3 lapses: the name is off the servers, and m2 may list it as a friend.
+    await db().prepare(`UPDATE register SET status = 'former' WHERE discord_id = 'm3'`).run();
+    expect(await whitelistNames(db())).toEqual(['Alex']);
+    expect((await addMinecraftFriend(db(), 'm2', 'Friend1', NOW + 20, mojang)).approved).toBe(false);
+    expect((await listMinecraftNames(db(), 'm3')).length).toBe(0);
+    // A plain own claim with nobody holding the name reports no previous holder.
+    expect((await setOwnMinecraftName(db(), 'm2', 'Zed', NOW, mojang)).takenFrom).toBeNull();
+  });
+
   it('dashes a Mojang id', () => {
     expect(dashedUuid('069A79F444E94726A5BEFCA90E38AAF5')).toBe('069a79f4-44e9-4726-a5be-fca90e38aaf5');
   });
