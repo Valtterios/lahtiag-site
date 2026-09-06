@@ -40,6 +40,8 @@ describe('lines', () => {
     expect(text).toMatch(/^⏰ Tomorrow: \*\*Big LAN\*\*, .* · Hall A\. 12 going\.\nhttps:\/\/x\/events\/1$/);
     expect(reminderLine({ title: 'Cup', starts_at: NOW, location: null, yes_count: 9, team_size: 3, teams_count: 3 }, 'u')).toContain('3 teams in.');
     expect(openingLine({ title: 'Cup', starts_at: NOW, interest_count: 5 }, 'u')).toContain("5 people said they're interested.");
+    expect(openingLine({ title: 'Cup', starts_at: NOW, interest_count: 1 }, 'u')).toContain("1 person said they're interested.");
+    expect(reminderLine({ title: 'Cup', starts_at: NOW, location: null, yes_count: 0, team_size: null, teams_count: 0 }, 'u')).toContain('no signups yet.');
     expect(openingLine({ title: 'Cup', starts_at: NOW, interest_count: 0 }, 'u')).not.toContain('interested');
   });
 });

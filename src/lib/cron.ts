@@ -6,7 +6,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { getEvent, listUpcomingEvents, listEndedEventsWithRole, listTicketTypes, type EventWithCounts, type TicketTypeWithSales } from './db';
-import { postWebhook, NO_MENTIONS } from './discord';
+import { postWebhook, NO_MENTIONS, SUPPRESS_EMBEDS } from './discord';
 import { syncInterest, archiveEventDiscord } from './event-discord';
 import { announcePromotions, postEventLine } from './event-channel';
 import { formatHelsinki } from './time';
@@ -58,12 +58,12 @@ function safe(text: string): string {
 
 export function reminderLine(event: Pick<EventWithCounts, 'title' | 'starts_at' | 'location' | 'yes_count' | 'team_size' | 'teams_count'>, url: string): string {
   const where = event.location ? ` · ${safe(event.location)}` : '';
-  const who = event.team_size !== null ? `${event.teams_count} teams in` : `${event.yes_count} going`;
+  const who = event.team_size !== null ? `${event.teams_count} teams in` : event.yes_count > 0 ? `${event.yes_count} going` : 'no signups yet';
   return `⏰ Tomorrow: **${safe(event.title)}**, ${formatHelsinki(event.starts_at)}${where}. ${who}.\n${url}`;
 }
 
 export function openingLine(event: Pick<EventWithCounts, 'title' | 'starts_at' | 'interest_count'>, url: string): string {
-  const interest = event.interest_count > 0 ? ` ${event.interest_count} people said they're interested.` : '';
+  const interest = event.interest_count > 0 ? ` ${event.interest_count} ${event.interest_count === 1 ? 'person' : 'people'} said they're interested.` : '';
   return `🟢 Signups are open for **${safe(event.title)}** (${formatHelsinki(event.starts_at)}).${interest}\n${url}`;
 }
 
@@ -84,7 +84,7 @@ export async function runHourly(db: D1Database, env: Env, origin: string, now: n
     const url = `${origin}/events/${event.id}`;
     const line = reminderLine(event, url);
     // Into the event's channel with the role pinged; without a channel, the announcements channel, no ping.
-    const posted = event.discord_channel_id ? await postEventLine(db, env, event.id, line, true) : env.DISCORD_WEBHOOK_URL ? (await postWebhook(env.DISCORD_WEBHOOK_URL, line, NO_MENTIONS)) !== null : false;
+    const posted = event.discord_channel_id ? await postEventLine(db, env, event.id, line, true) : env.DISCORD_WEBHOOK_URL ? (await postWebhook(env.DISCORD_WEBHOOK_URL, line, NO_MENTIONS, SUPPRESS_EMBEDS)) !== null : false;
     await db.prepare('UPDATE events SET reminder_sent_at = ?2 WHERE id = ?1').bind(event.id, now).run();
     if (posted) summary.reminders++;
   }
@@ -94,7 +94,7 @@ export async function runHourly(db: D1Database, env: Env, origin: string, now: n
     if (!due) continue;
     const url = `${origin}/events/${event.id}`;
     const line = salesLine(event, due.closesAt, due.left, url);
-    if (env.DISCORD_WEBHOOK_URL) await postWebhook(env.DISCORD_WEBHOOK_URL, line, NO_MENTIONS);
+    if (env.DISCORD_WEBHOOK_URL) await postWebhook(env.DISCORD_WEBHOOK_URL, line, NO_MENTIONS, SUPPRESS_EMBEDS);
     if (event.discord_channel_id) await postEventLine(db, env, event.id, line, true);
     await db.prepare('UPDATE events SET sales_reminder_sent_at = ?2 WHERE id = ?1').bind(event.id, now).run();
     summary.sales++;
@@ -103,7 +103,7 @@ export async function runHourly(db: D1Database, env: Env, origin: string, now: n
   for (const event of dueOpenings(upcoming, now)) {
     const url = `${origin}/events/${event.id}`;
     const line = openingLine(event, url);
-    if (env.DISCORD_WEBHOOK_URL) await postWebhook(env.DISCORD_WEBHOOK_URL, line, NO_MENTIONS);
+    if (env.DISCORD_WEBHOOK_URL) await postWebhook(env.DISCORD_WEBHOOK_URL, line, NO_MENTIONS, SUPPRESS_EMBEDS);
     if (event.discord_channel_id) await postEventLine(db, env, event.id, line, true);
     await db.prepare('UPDATE events SET open_posted_at = ?2 WHERE id = ?1').bind(event.id, now).run();
     summary.openings++;
