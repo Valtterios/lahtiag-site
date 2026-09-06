@@ -173,7 +173,7 @@ export async function postChampionCards(db: D1Database, env: { DISCORD_BOT_TOKEN
     : [final.winner.slice(2)];
   const people = ids.filter((id) => /^\d{5,25}$/.test(id)).slice(0, 5);
   if (people.length === 0) return;
-  await awardChampionRole(db, env, people, now);
+  await awardChampionRole(db, env, eventId, people, now);
   await postWinMilestones(db, env as { WELCOME_WEBHOOK_URL?: string }, people, new Map(signups.map((s) => [`u:${s.discord_id}`, s.username])), now);
   const files: MessageFile[] = [];
   for (const id of people) {
@@ -268,21 +268,36 @@ export async function postWinMilestones(
 // The reigning champion role: on the latest winners, off the previous
 // holders. Which role is chosen on the register page; the holders are
 // remembered in settings so they can be cleared next time.
-export async function awardChampionRole(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, winners: string[], now: number): Promise<void> {
+function championHolders(raw: string | undefined): { event: number | null; ids: string[] } {
+  try {
+    const parsed = JSON.parse(raw ?? '[]') as string[] | { event: number; ids: string[] };
+    return Array.isArray(parsed) ? { event: null, ids: parsed } : { event: parsed.event ?? null, ids: parsed.ids ?? [] };
+  } catch {
+    return { event: null, ids: [] };
+  }
+}
+
+export async function awardChampionRole(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, winners: string[], now: number): Promise<void> {
   const token = env.DISCORD_BOT_TOKEN;
   const settings = await getSettings(db);
   const role = settings.champion_role_id;
   if (!token || !role) return;
-  const previous: string[] = (() => {
-    try {
-      return JSON.parse(settings.champion_holders ?? '[]') as string[];
-    } catch {
-      return [];
-    }
-  })();
-  for (const id of previous) if (!winners.includes(id)) await setGuildMemberRole(token, DISCORD_GUILD_ID, id, role, false);
+  const previous = championHolders(settings.champion_holders);
+  for (const id of previous.ids) if (!winners.includes(id)) await setGuildMemberRole(token, DISCORD_GUILD_ID, id, role, false);
   for (const id of winners) await setGuildMemberRole(token, DISCORD_GUILD_ID, id, role, true);
-  await setSetting(db, 'champion_holders', JSON.stringify(winners), 'bot', now);
+  await setSetting(db, 'champion_holders', JSON.stringify({ event: eventId, ids: winners }), 'bot', now);
+}
+
+// A reverted final: the holders who won it lose the role until the next
+// final is decided. Holders from another event are left alone.
+export async function revokeChampionRole(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, now: number): Promise<void> {
+  const token = env.DISCORD_BOT_TOKEN;
+  const settings = await getSettings(db);
+  const role = settings.champion_role_id;
+  const holders = championHolders(settings.champion_holders);
+  if (!token || !role || holders.event !== eventId) return;
+  for (const id of holders.ids) await setGuildMemberRole(token, DISCORD_GUILD_ID, id, role, false);
+  await setSetting(db, 'champion_holders', '', 'bot', now);
 }
 
 // "Photos are up": a few of the new pictures into the event's channel, or
@@ -434,6 +449,8 @@ export async function postRevert(db: D1Database, env: { DISCORD_BOT_TOKEN?: stri
   const names = await participantNames(db, eventId);
   const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
   await postEventLine(db, env, eventId, revertLine(round, total, nameOf(names, match.side_a), nameOf(names, match.side_b)));
+  // A reverted final takes the champion role back.
+  if (round === total) await revokeChampionRole(db, env, eventId, Math.floor(Date.now() / 1000));
   await refreshLiveBracket(db, env, eventId, origin, Math.floor(Date.now() / 1000));
 }
 
