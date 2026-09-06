@@ -20,6 +20,7 @@ revision: September 2026.
   - [Buyers with their own phone](#buyers-with-their-own-phone)
   - [Shop items on the spot](#shop-items-on-the-spot)
 - [The Minecraft whitelist](#the-minecraft-whitelist)
+- [The Discord activity listener](#the-discord-activity-listener)
 - [Editing this handbook](#editing-this-handbook)
 - [Editing the site's pages](#editing-the-sites-pages)
 - [The moving parts](#the-moving-parts)
@@ -822,6 +823,42 @@ Without the secret the API answers 404 and nothing on the site changes;
 the membership page and the command still take names, ready for when the
 server starts pulling.
 
+## The Discord activity listener
+
+For the season pass (the academic-year rewards the board is planning), the
+site counts, per member and month, the messages sent and the minutes spent
+in voice on the LahtiAG server. Counts only, never a word of content, and
+the privacy page says so. A member sees their own season on the membership
+page.
+
+**How it counts.** A small always-on process on auraserver
+(`scripts/discord-listener/listener.mjs`; container `lahtiag-listener` in
+`/opt/lahtiag-listener`; plain Node, no dependencies) signs in with the bot
+token. Messages it walks over the REST API a hundred at a time from a
+cursor per channel (text and announcement channels, voice channels' chats,
+open threads), so an outage or a restart loses nothing and the first run
+backfills the season from 1 September; bots and slash commands don't
+count. Voice it watches live on the gateway, crediting a minute at a time;
+the AFK channel doesn't count. Every minute it posts what it has to
+`https://lahtiag.fi/api/discord/activity` with the `DISCORD_ACTIVITY_TOKEN`
+secret, as a batch numbered per listener instance, and the site applies
+each batch once (a retry answers `duplicate: true`) and keeps the receipts
+a month (`src/lib/activity.ts`; tables `discord_activity` and
+`discord_activity_batches`). The listener's own state, the cursors and the
+unsent counts, lives in `/opt/lahtiag-listener/state/state.json`.
+
+**Setting it up** (done 2026-09-06): the files from
+`scripts/discord-listener` in `/opt/lahtiag-listener`, and `.env` there
+(mode 600) with `DISCORD_GUILD_ID`, `ACTIVITY_URL`, `ACTIVITY_TOKEN`
+(generated on the server; the same value is the site's secret) and the bot
+token, which `lahtiag-listener-setcreds` asks for on the terminal and then
+starts the container. The bot needs View Channel and Read Message History
+in the channels that should count (its invite has both); no privileged
+intent is involved. `docker logs -f lahtiag-listener` shows what it counts
+and pushes; "the gateway refused the token or the intents" means the token
+is wrong. To recount a season from scratch: stop the container, delete
+`state/state.json` and the rows in `discord_activity`, start it again.
+
 ## Editing this handbook
 
 This file is the technical handbook. The board reads it rendered at
@@ -887,6 +924,7 @@ no subdirectories.
 | Security headers | `public/_headers` (static assets) **and** `src/middleware.ts` (Worker responses) — keep the two CSPs identical |
 | Helsinki time handling | `src/lib/time.ts` — storage is UTC unix seconds, always |
 | Brand assets | `public/brand/`; the Canva kit is the source of truth (blue #4169e1, yellow #ffde59, ink #1e1e1e, Chakra Petch ≈ the wordmark) |
+| The Discord activity listener | `scripts/discord-listener/` (listener.mjs, compose.yaml, setcreds); on auraserver as container `lahtiag-listener` in `/opt/lahtiag-listener`; API `src/pages/api/discord/activity.ts`, counting `src/lib/activity.ts` |
 
 Secrets (set with `npx wrangler secret put NAME`, never committed):
 `SESSION_SECRET`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`,
@@ -901,6 +939,9 @@ in `wrangler.toml`). The Discord application lives
 in the [developer portal](https://discord.com/developers/applications) under
 the association's account; its custom emojis (`lag_*`, used by the panel
 buttons) live in the app's Emojis tab.
+Two more secrets are bearer tokens for machines: `MINECRAFT_WHITELIST_TOKEN`
+for the whitelist sync and `DISCORD_ACTIVITY_TOKEN` for the activity
+listener; their sections say where the other half of each lives.
 
 ## Local development
 

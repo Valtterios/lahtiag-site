@@ -36,6 +36,8 @@ type WorkerEnv = {
   STRIPE_WEBHOOK_SECRET?: string;
   // The Minecraft server's bearer token for /api/minecraft/whitelist (src/lib/minecraft.ts).
   MINECRAFT_WHITELIST_TOKEN?: string;
+  // The Discord activity listener's bearer token for /api/discord/activity (src/lib/activity.ts).
+  DISCORD_ACTIVITY_TOKEN?: string;
 };
 
 // Astro v6+ with @astrojs/cloudflare 14: request env is imported from

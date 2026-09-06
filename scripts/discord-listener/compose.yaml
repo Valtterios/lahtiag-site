@@ -1,0 +1,21 @@
+# The Discord activity listener on auraserver: /opt/lahtiag-listener.
+# `docker compose up -d` here after `lahtiag-listener-setcreds` has written
+# .env (the bot token; the rest of .env is prepared at install).
+services:
+  listener:
+    image: node:22-alpine
+    container_name: lahtiag-listener
+    restart: unless-stopped
+    working_dir: /app
+    command: ["node", "listener.mjs"]
+    env_file: .env
+    environment:
+      STATE_DIR: /state
+    volumes:
+      - ./listener.mjs:/app/listener.mjs:ro
+      - ./state:/state
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"

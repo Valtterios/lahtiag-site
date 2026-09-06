@@ -20,6 +20,7 @@ import { postBoardLine, approveButtons } from '../lib/board-channel';
 import { applyRoles, loadRoleConfig } from '../lib/roles';
 import { formatHelsinkiDate, formatHelsinkiRange } from '../lib/time';
 import { listMinecraftNames, serversLabel, narrowed, SERVERS, FRIENDS_PER_MEMBER } from '../lib/minecraft';
+import { seasonActivity, seasonLabel, voiceLabel } from '../lib/activity';
 
 // A member's own page: their status, the actives request, and every
 // detail they gave on the application, editable by them. Needs a Discord
@@ -32,6 +33,8 @@ const csrf = ensureCsrf(Astro.cookies);
 const entry = session ? await getRegisterByDiscord(env.DB, session.discordId) : null;
 const myEvents = session ? await listMyEvents(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : [];
 const stats = session ? await memberStats(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : null;
+// What the Discord activity listener has counted this season (src/lib/activity.ts); shown once there is anything.
+const activity = session ? await seasonActivity(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : null;
 const onLeaderboard = session ? await isLeaderboardOptIn(env.DB, session.discordId) : false;
 const mcNames = session ? await listMinecraftNames(env.DB, session.discordId) : [];
 const mcOwn = mcNames.find((n) => n.kind === 'own') ?? null;
@@ -201,6 +204,11 @@ const MESSAGES: Record<FieldError, string> = {
             <strong>{stats.attended}</strong> events, <strong>{stats.tournaments}</strong> tournaments, <strong>{stats.wins}</strong> wins
             {stats.last_win ? <> · last win: {stats.last_win.title}</> : null}. <code>/profile</code> in Discord posts the card for everyone.
           </p>
+          {activity && (activity.messages > 0 || activity.voice_minutes > 0) && (
+            <p class="queue-meta">
+              On Discord this season ({seasonLabel(Math.floor(Date.now() / 1000))}): <strong>{activity.messages}</strong> messages · <strong>{voiceLabel(activity.voice_minutes)}</strong> in voice.
+            </p>
+          )}
           <form method="post" action="/membership/leaderboard" class="app-form-row leaderboard-optin">
             <input type="hidden" name="csrf" value={csrf} />
             <label class="check"><input type="checkbox" name="hide" checked={!onLeaderboard} /> <span>Hide me from the public leaderboard on the <a href="/history">history page</a> (everyone is on it unless hidden)</span></label>

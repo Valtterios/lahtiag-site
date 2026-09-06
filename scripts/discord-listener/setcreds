@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+"""Put the Discord bot token into /opt/lahtiag-listener/.env, asked for on
+the terminal so it never passes through a chat or a shell history, then
+(re)start the listener. Run as root:  lahtiag-listener-setcreds
+"""
+import getpass
+import os
+import re
+import subprocess
+import sys
+
+DIR = os.environ.get('LAHTIAG_LISTENER_DIR', '/opt/lahtiag-listener')
+ENV = os.path.join(DIR, '.env')
+
+if os.geteuid() != 0:
+    sys.exit('run as root (sudo lahtiag-listener-setcreds)')
+token = getpass.getpass('Discord bot token (not shown): ').strip()
+if not token:
+    sys.exit('nothing saved')
+text = open(ENV).read() if os.path.exists(ENV) else ''
+line = f'DISCORD_BOT_TOKEN={token}'
+text, n = re.subn(r'(?m)^DISCORD_BOT_TOKEN=.*$', lambda _m: line, text)
+if n == 0:
+    text = text.rstrip('\n') + '\n' + line + '\n'
+tmp = ENV + '.tmp'
+with open(tmp, 'w') as f:
+    f.write(text)
+os.chmod(tmp, 0o600)
+os.replace(tmp, ENV)
+print(f'saved to {ENV}; starting the listener')
+subprocess.run(['docker', 'compose', 'up', '-d', '--force-recreate'], cwd=DIR, check=False)
+print('follow it with: docker logs -f lahtiag-listener')
