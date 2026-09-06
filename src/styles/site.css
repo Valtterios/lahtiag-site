@@ -982,13 +982,14 @@ a:hover {
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: stretch;
   gap: 0.35rem;
 }
 .year-bars li {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-end;
   width: 2rem;
   margin: 0;
 }
@@ -998,10 +999,14 @@ a:hover {
   line-height: 1;
   margin-bottom: 0.2rem;
 }
+/* The bars scale with the box (preserveAspectRatio="none" on the SVG):
+   the tallest year reaches the top whatever the row height. */
 .year-bar {
   display: block;
   width: 1.4rem;
   height: 4.5rem;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .year-bar rect {
   fill: var(--blue);

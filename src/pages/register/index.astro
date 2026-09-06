@@ -555,7 +555,7 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                   return (
                     <li title={`${row.year}: ${row.n}`}>
                       <span class="year-count">{row.n}</span>
-                      <svg class="year-bar" width="22" height="72" viewBox="0 0 22 72" aria-hidden="true"><rect x="0" y={72 - h} width="22" height={h} /></svg>
+                      <svg class="year-bar" width="22" height="72" viewBox="0 0 22 72" preserveAspectRatio="none" aria-hidden="true"><rect x="0" y={72 - h} width="22" height={h} /></svg>
                       <span class="year-label">{String(row.year).slice(-2)}</span>
                     </li>
                   );
