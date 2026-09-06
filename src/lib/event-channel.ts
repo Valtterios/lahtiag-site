@@ -184,7 +184,9 @@ export async function refreshLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKE
     const edited = await editChannelMessageWithFile(token, channelId, event.discord_bracket_message_id, text, picture, SUPPRESS_EMBEDS);
     if (edited.ok) {
       // A pin that failed earlier (or was removed) is put back.
-      if ((await isMessagePinned(token, channelId, event.discord_bracket_message_id)) === false) await pinChannelMessage(token, channelId, event.discord_bracket_message_id);
+      const pinned = await isMessagePinned(token, channelId, event.discord_bracket_message_id);
+      const repinned = pinned === false ? await pinChannelMessage(token, channelId, event.discord_bracket_message_id) : null;
+      console.log(`discord live bracket: event ${eventId} edited, pinned=${pinned}, repin=${repinned}`);
       return;
     }
     if (edited.status !== 404) return;
@@ -192,7 +194,8 @@ export async function refreshLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKE
   const created = await createChannelMessageWithFile(token, channelId, text, picture, NO_MENTIONS, SUPPRESS_EMBEDS);
   if (!created.ok) return;
   await db.prepare('UPDATE events SET discord_bracket_message_id = ?2 WHERE id = ?1').bind(eventId, created.value.id).run();
-  await pinChannelMessage(token, channelId, created.value.id);
+  const pinned = await pinChannelMessage(token, channelId, created.value.id);
+  console.log(`discord live bracket: event ${eventId} created ${created.value.id}, pin=${pinned}`);
 }
 
 // The bracket was deleted, or the message moves: so goes the message.
