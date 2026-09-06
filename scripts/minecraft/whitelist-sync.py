@@ -202,11 +202,13 @@ def main():
         try:
             amp.login(conf['AMP_USER'], conf['AMP_PASS'])
             state = amp.state()
-        except urllib.error.URLError:
-            amp = None  # the instance is off: no AMP process answers
-        except PermissionError as e:
-            if container_running(conf['CONTAINER']):
-                sys.exit(f'{e}; the server is up, so nothing changed')
+        except (urllib.error.URLError, PermissionError) as e:
+            # No answer, an error answer, or a refused login. With the
+            # container up the server may well be running, and its file
+            # must not be touched; only a container that is down means
+            # the file is the way in.
+            if container_running(conf['CONTAINER']) is not False:
+                sys.exit(f'AMP not usable ({e}); the server may be up, so nothing changed')
             amp = None
         else:
             if state in AMP_BUSY:
@@ -216,8 +218,8 @@ def main():
             if state != AMP_READY:
                 amp.logout()
                 amp = None
-    elif container_running(conf['CONTAINER']):
-        sys.exit('the server is up and AMP_USER/AMP_PASS are not set: nothing changed')
+    elif container_running(conf['CONTAINER']) is not False:
+        sys.exit('the server may be up and AMP_USER/AMP_PASS are not set: nothing changed')
 
     if amp:
         try:
