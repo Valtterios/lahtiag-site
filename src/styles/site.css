@@ -574,6 +574,7 @@ a:hover {
 .photo-grid img {
   display: block;
   width: 100%;
+  height: auto;
   aspect-ratio: 4 / 3;
   object-fit: cover;
   background: var(--bg);
@@ -581,10 +582,24 @@ a:hover {
 .photo-grid-admin {
   margin-top: 1rem;
 }
-.photo-grid-admin .inline-form {
+.photo-grid-admin li {
+  position: relative;
+}
+.photo-grid-admin form {
   position: absolute;
   top: 0.3rem;
   right: 0.3rem;
+  margin: 0;
+  display: block;
+}
+.photo-grid-admin .chip-remove {
+  background: var(--surface);
+  border-radius: 50%;
+  width: 1.6rem;
+  height: 1.6rem;
+  line-height: 1.6rem;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 .album-grid {
   list-style: none;

@@ -546,7 +546,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               {photos.map((p) => (
                 <li>
                   <a href={`/events/${event.id}/photos/${p.id}`} target="_blank" rel="noopener">
-                    <img src={`/events/${event.id}/photos/${p.id}?thumb`} alt="" loading="lazy" width={p.width ?? undefined} height={p.height ?? undefined} />
+                    <img src={`/events/${event.id}/photos/${p.id}?thumb`} alt="" loading="lazy" />
                   </a>
                 </li>
               ))}
