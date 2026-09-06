@@ -117,6 +117,16 @@ Winner clicks on the *website* re-verify your role against Discord each
 time; the Discord panel doesn't need to and is immune to rate limits — on
 tournament day, prefer the panel.
 
+**Replies that clear themselves.** Discord keeps no timer on any message,
+so the bot deletes its own: an error or a plain confirmation ("Signups
+closed", "Approved", "You're going") goes away about half a minute after
+the command. The panel, its pickers, listings (`/whitelist list`,
+`pending`), `/membership`, and any reply that hands you a link to carry on
+with (a created event, a drafted bracket) stay until you dismiss them. The
+delete rides on the interaction token, so it only works inside Discord's
+15 minutes and the Worker's ~30 s after the response; a slow reply is
+simply left standing (`dismissReply` in `src/lib/discord.ts`).
+
 ## Events on Discord: the event list, a role and a channel
 
 **The 15-minute job.** A Cron Trigger runs the Worker every quarter hour

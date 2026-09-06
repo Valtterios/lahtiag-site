@@ -65,7 +65,7 @@ import {
 import { postBoardLine, approveButtons, decidedLine } from '../../lib/board-channel';
 import { setActive as setRegisterActive } from '../../lib/db';
 import { applyRoles as applyRegisterRoles, loadRoleConfig as loadRegisterRoleConfig } from '../../lib/roles';
-import { editChannelMessage as editBoardMessage, dmUser as dmMember, SUPPRESS_EMBEDS as NO_EMBEDS } from '../../lib/discord';
+import { editChannelMessage as editBoardMessage, dmUser as dmMember, SUPPRESS_EMBEDS as NO_EMBEDS, dismissReply } from '../../lib/discord';
 
 // The Discord bot: an HTTP Interactions endpoint inside the same Worker
 // (spec, Discord bot). No gateway, no second host, same database.
@@ -80,6 +80,11 @@ interface Option {
 interface ModalRow {
   components: { custom_id: string; value?: string }[];
 }
+
+// What a deferred handler leaves behind: nothing (its reply clears itself
+// after a while) or 'keep' for a panel, a listing, or a link the person
+// still needs.
+type Outcome = 'keep' | undefined;
 
 interface Interaction {
   type: number;
@@ -166,13 +171,30 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
 
   if (interaction.type === 1) return json({ type: 1 }); // PING -> PONG
 
+  // Errors and confirmations clear themselves, the way a notification
+  // would (dismissReply); a handler answers 'keep' for what must stay.
+  // Immediate refusals get the same treatment.
+  const arrivedAt = Date.now();
+  const dismiss = () => dismissReply(interaction.application_id, interaction.token, arrivedAt);
+  const fleeting = async (work: Promise<Outcome | void>): Promise<void> => {
+    let outcome: Outcome | void;
+    try {
+      outcome = await work;
+    } catch (error) {
+      await dismiss();
+      throw error;
+    }
+    if (outcome !== 'keep') await dismiss();
+  };
+  const refuse = (content: string) => {
+    locals.cfContext.waitUntil(dismiss());
+    return json({ type: 4, data: { content, flags: 64 } });
+  };
+
   // Only the LahtiAG guild: an interaction Discord signed but that arrives
   // from any other server (or a DM) is refused before any role check.
   if (interaction.guild_id !== DISCORD_GUILD_ID) {
-    return json({
-      type: 4,
-      data: { content: 'This app only works inside the LahtiAG server.', flags: 64 },
-    });
+    return refuse('This app only works inside the LahtiAG server.');
   }
 
   const isAdmin = hasAdminRole(interaction.member?.roles ?? [], env.ADMIN_ROLE_ID);
@@ -191,21 +213,21 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
 
   // Fun and info commands: public answers, no role needed.
   if (interaction.type === 2 && interaction.data?.name && FUN_COMMANDS.has(interaction.data.name)) {
-    locals.cfContext.waitUntil(handleFun(env, interaction, url.origin));
+    locals.cfContext.waitUntil(fleeting(handleFun(env, interaction, url.origin)));
     return json({ type: 5 });
   }
 
   // /whitelist: the Minecraft server's list. Private answers; the board
   // subcommands check the role themselves.
   if (interaction.type === 2 && interaction.data?.name === 'whitelist') {
-    locals.cfContext.waitUntil(handleWhitelist(env, interaction, url.origin, isAdmin));
+    locals.cfContext.waitUntil(fleeting(handleWhitelist(env, interaction, url.origin, isAdmin)));
     return json({ type: 5, data: { flags: 64 } });
   }
 
   // /profile: anyone's stats card, for everyone to see. Deferred without
   // the ephemeral flag, then the picture is attached.
   if (interaction.type === 2 && interaction.data?.name === 'profile') {
-    locals.cfContext.waitUntil(handleProfile(env, interaction));
+    locals.cfContext.waitUntil(fleeting(handleProfile(env, interaction)));
     return json({ type: 5 });
   }
 
@@ -213,7 +235,7 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   // it responds directly instead of deferring.
   if (interaction.type === 2 && interaction.data?.name === 'tournament') {
     if (!isAdmin) {
-      return json({ type: 4, data: { content: 'This needs the admin role.', flags: 64 } });
+      return refuse('This needs the admin role.');
     }
     return json({ type: 4, data: { flags: 64, ...controlPanel(url.origin) } });
   }
@@ -221,7 +243,7 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   // Announcement buttons (e:go, e:maybe, e:heart): anyone in the server.
   // Deferred privately, then the answer is only theirs to see.
   if (interaction.type === 3 && interaction.data?.custom_id?.startsWith('e:')) {
-    locals.cfContext.waitUntil(handleEventButton(env, interaction, url.origin, locals.cfContext));
+    locals.cfContext.waitUntil(fleeting(handleEventButton(env, interaction, url.origin, locals.cfContext)));
     return json({ type: 5, data: { flags: 64 } });
   }
 
@@ -229,7 +251,7 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   // request): any board member. The line itself is rewritten, no reply.
   if (interaction.type === 3 && interaction.data?.custom_id && /^[wa]:(ok|no):/.test(interaction.data.custom_id)) {
     if (!isAdmin) {
-      return json({ type: 4, data: { content: 'This needs the admin role.', flags: 64 } });
+      return refuse('This needs the admin role.');
     }
     locals.cfContext.waitUntil(handleBoardButton(env, interaction, url.origin));
     return json({ type: 6 });
@@ -240,7 +262,7 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   // message once the work is done.
   if (interaction.type === 3 && interaction.data?.custom_id) {
     if (!isAdmin) {
-      return json({ type: 4, data: { content: 'This needs the admin role.', flags: 64 } });
+      return refuse('This needs the admin role.');
     }
     if (interaction.data.custom_id === 't:create') {
       return json(createEventModal());
@@ -251,34 +273,36 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     if (interaction.data.custom_id === 't:do:screen') {
       return json(screenModal(String(interaction.data.values?.[0])));
     }
-    locals.cfContext.waitUntil(handleComponent(env, interaction, url.origin));
+    locals.cfContext.waitUntil(fleeting(handleComponent(env, interaction, url.origin)));
     return json({ type: 6 });
   }
 
   // Modal submits (type 5): defer, create, then edit the reply.
   if (interaction.type === 5 && interaction.data?.custom_id?.startsWith('t:modal:')) {
     if (!isAdmin) {
-      return json({ type: 4, data: { content: 'This needs the admin role.', flags: 64 } });
+      return refuse('This needs the admin role.');
     }
     const modalId = interaction.data.custom_id;
     locals.cfContext.waitUntil(
-      modalId === 't:modal:create'
-        ? handleCreateModal(env, interaction, url.origin)
-        : modalId.startsWith('t:modal:screen:')
-          ? handleScreenModal(env, interaction)
-          : handleAnnounceModal(env, interaction, url.origin),
+      fleeting(
+        modalId === 't:modal:create'
+          ? handleCreateModal(env, interaction, url.origin)
+          : modalId.startsWith('t:modal:screen:')
+            ? handleScreenModal(env, interaction)
+            : handleAnnounceModal(env, interaction, url.origin),
+      ),
     );
     return json({ type: 5, data: { flags: 64 } });
   }
 
   if (interaction.type !== 2 || !interaction.data) {
-    return json({ type: 4, data: { content: 'Unsupported interaction.', flags: 64 } });
+    return refuse('Unsupported interaction.');
   }
 
   // Acknowledge inside Discord's 3-second budget, do the database work in
   // the background, then edit the reply (spec: otherwise "The application
   // did not respond" even when the write succeeded).
-  locals.cfContext.waitUntil(handleCommand(env, interaction, url.origin));
+  locals.cfContext.waitUntil(fleeting(handleCommand(env, interaction, url.origin)));
   return json({ type: 5, data: { flags: 64 } }); // deferred, ephemeral
 };
 
@@ -298,7 +322,7 @@ function faceEmbed(origin: string, name: string, uuid: string, note: string): un
   return [{ title: name, description: note, thumbnail: { url: faceUrl(origin, uuid) }, color: 0x2b5cff }];
 }
 
-async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin: string, isAdmin: boolean): Promise<void> {
+async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin: string, isAdmin: boolean): Promise<Outcome> {
   const reply = (content: string, embeds: unknown[] = []) => editInteractionReply(interaction.application_id, interaction.token, content, [], embeds);
   const sub = interaction.data?.options?.[0];
   const userId = interaction.member?.user?.id;
@@ -342,6 +366,7 @@ async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin:
           : `No names yet. \`/whitelist me <name>\` puts yours on the list, members only. ${page}`,
         own ? faceEmbed(origin, own.name, own.uuid!, 'Your skin.') : [],
       );
+      return 'keep';
     } else if (['add', 'drop', 'pending', 'approve', 'decline'].includes(sub.name)) {
       if (!isAdmin) {
         await reply('This needs the admin role.');
@@ -360,6 +385,7 @@ async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin:
             ? `${rows.map((r) => `• **${r.name}** for ${narrowed(r.servers) ? `${serversLabel(r.servers)} only` : 'every server'}, brought by ${r.by_name ?? r.discord_id}`).join('\n')}\n\`/whitelist approve <name>\` or ${origin}/whitelist`
             : `Nothing waiting. ${origin}/whitelist`,
         );
+        return 'keep';
       } else if (sub.name === 'approve') {
         const row = await approveMinecraftName(env.DB, raw, userId, now);
         if (!row) {
@@ -463,7 +489,7 @@ export function pickOne(text: string): string | null {
   return options[random[0] % options.length];
 }
 
-async function handleFun(env: WorkerEnv, interaction: Interaction, origin: string): Promise<void> {
+async function handleFun(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
   const reply = (content: string) => editInteractionReply(interaction.application_id, interaction.token, content);
   const name = interaction.data!.name!;
   const opts = optionMap(interaction.data!.options);
@@ -480,12 +506,16 @@ async function handleFun(env: WorkerEnv, interaction: Interaction, origin: strin
     await reply(`🪙 ${clean(who)} flipped… **${random[0] % 2 === 0 ? 'Heads' : 'Tails'}**!`);
   } else if (name === 'pick') {
     const picked = pickOne(String(opts.get('options') ?? ''));
-    await reply(picked ? `🎯 ${clean(who)} asked me to choose: **${clean(picked)}**` : 'Give me at least two options, separated by commas.');
+    if (!picked) {
+      await reply('Give me at least two options, separated by commas.');
+      return;
+    }
+    await reply(`🎯 ${clean(who)} asked me to choose: **${clean(picked)}**`);
   } else if (name === 'next') {
     const events = (await listUpcomingEvents(env.DB, Math.floor(Date.now() / 1000), false)).slice(0, 3);
     if (events.length === 0) {
       await reply(`Nothing on the calendar yet. ${origin}/events`);
-      return;
+      return 'keep';
     }
     await reply(
       ['📅 **Coming up**', ...events.map((e) => `• ${formatHelsinki(e.starts_at)} · **${clean(e.title)}** · ${e.team_size !== null ? `${e.teams_count} teams` : `${e.yes_count} going`}${e.interest_count > 0 ? ` · ♡ ${e.interest_count}` : ''} · ${origin}/events/${e.id}`)].join('\n'),
@@ -494,6 +524,7 @@ async function handleFun(env: WorkerEnv, interaction: Interaction, origin: strin
     const latest = (await listResults(env.DB, 1))[0];
     await reply(latest ? `🏆 Reigning champion: **${clean(latest.champion_name)}**, from **${clean(latest.title)}** (${formatHelsinki(latest.starts_at)}). ${origin}/history` : 'No tournament has been decided yet. Be the first!');
   }
+  return 'keep';
 }
 
 // --- announcement buttons ------------------------------------------------------
@@ -550,7 +581,7 @@ async function handleEventButton(env: WorkerEnv, interaction: Interaction, origi
 
 // --- /profile ------------------------------------------------------------------
 
-async function handleProfile(env: WorkerEnv, interaction: Interaction): Promise<void> {
+async function handleProfile(env: WorkerEnv, interaction: Interaction): Promise<Outcome> {
   const invoker = interaction.member?.user;
   const picked = interaction.data?.options?.find((o) => o.name === 'user')?.value;
   const targetId = typeof picked === 'string' ? picked : invoker?.id;
@@ -567,7 +598,11 @@ async function handleProfile(env: WorkerEnv, interaction: Interaction): Promise<
   const stats = await memberStats(env.DB, targetId, now);
   const png = await profileCardPng(name, stats);
   const ok = await editInteractionReplyWithFile(interaction.application_id, interaction.token, '', { name: 'profile.png', bytes: png, type: 'image/png' });
-  if (!ok) await editInteractionReply(interaction.application_id, interaction.token, 'The card could not be posted. Try again in a moment.');
+  if (!ok) {
+    await editInteractionReply(interaction.application_id, interaction.token, 'The card could not be posted. Try again in a moment.');
+    return;
+  }
+  return 'keep';
 }
 
 async function memberName(env: WorkerEnv, discordId: string): Promise<string | null> {
@@ -717,7 +752,7 @@ function createEventModal() {
   };
 }
 
-async function handleComponent(env: WorkerEnv, interaction: Interaction, origin: string): Promise<void> {
+async function handleComponent(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
   const edit = (content: string, components: unknown[] = []) =>
     editInteractionReply(interaction.application_id, interaction.token, content, components);
   const customId = interaction.data!.custom_id!;
@@ -730,6 +765,7 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
       const category = customId.slice('t:cat:'.length);
       const panel = category === 'home' ? controlPanel(origin) : categoryPanel(category, origin);
       await edit(panel.content, panel.components);
+      return 'keep';
     } else if (customId.startsWith('t:pick:')) {
       // Step 2: choose which event the action applies to.
       const action = customId.slice('t:pick:'.length);
@@ -756,6 +792,7 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
           ],
         },
       ]);
+      return 'keep';
     } else if (customId.startsWith('t:do:')) {
       const action = customId.slice('t:do:'.length);
       const eventId = Number(interaction.data!.values?.[0]);
@@ -779,6 +816,7 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
         await generateBracket(env.DB, eventId);
         if (redraw) await dropLiveBracket(env.DB, env, eventId);
         await edit(`Bracket drafted; only the board sees it. Check the seeding on the site, then **Go live**: ${origin}/events/${eventId}/bracket`);
+        return 'keep';
       } else if (action === 'live') {
         const fresh = await goLiveBracket(env.DB, eventId, now);
         if (fresh) await postBracketOut(env.DB, env, eventId, origin, false);
@@ -804,6 +842,7 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
         await edit('Who won their match?', [
           { type: 1, components: [{ type: 3, custom_id: `t:win:${eventId}`, options }] },
         ]);
+        return 'keep';
       } else if (action === 'undo') {
         // Step 3: every recorded (non-bye) result can be reverted.
         const names = await participantNames(env.DB, eventId);
@@ -824,6 +863,7 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
         await edit('Which result should be reverted?', [
           { type: 1, components: [{ type: 3, custom_id: `t:undo:${eventId}`, options }] },
         ]);
+        return 'keep';
       }
     } else if (customId.startsWith('t:undo:')) {
       const eventId = Number(customId.slice('t:undo:'.length));
@@ -851,7 +891,7 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
   }
 }
 
-async function handleCreateModal(env: WorkerEnv, interaction: Interaction, origin: string): Promise<void> {
+async function handleCreateModal(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
   const reply = (content: string) =>
     editInteractionReply(interaction.application_id, interaction.token, content);
   try {
@@ -907,6 +947,7 @@ async function handleCreateModal(env: WorkerEnv, interaction: Interaction, origi
     await syncScheduledEvent(env.DB, env, id, origin, now);
     await setUpEventDiscord(env.DB, env, id, origin, invoker.id, now);
     await reply(`Created event #${id}: **${title.trim()}**\n${origin}/events/${id}`);
+    return 'keep';
   } catch (error) {
     await reply(error instanceof RuleError ? error.message : 'Something went wrong.');
   }
@@ -974,7 +1015,7 @@ async function handleAnnounceModal(env: WorkerEnv, interaction: Interaction, ori
   }
 }
 
-async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: string): Promise<void> {
+async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
   const reply = (content: string) =>
     editInteractionReply(interaction.application_id, interaction.token, content);
 
@@ -1040,6 +1081,7 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
       await syncScheduledEvent(env.DB, env, id, origin, now);
       await setUpEventDiscord(env.DB, env, id, origin, invoker.id, now);
       await reply(`Created event #${id}: **${title.trim()}**, ${formatHelsinki(startsAt)}\n${origin}/events/${id}`);
+      return 'keep';
     } else if (name === 'event cancel') {
       const id = Number(opts.get('id'));
       const event = await cancelEvent(env.DB, id, now);
@@ -1064,6 +1106,7 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
       await generateBracket(env.DB, id);
       if (redraw) await dropLiveBracket(env.DB, env, id);
       await reply(`Bracket drafted; only the board sees it. Check the seeding on the site, then Go live (panel or site): ${origin}/events/${id}/bracket`);
+      return 'keep';
     } else if (name === 'bracket win') {
       const id = Number(opts.get('event'));
       const who = String(opts.get('name') ?? '').trim().toLowerCase();

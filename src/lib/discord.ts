@@ -301,6 +301,32 @@ export async function editInteractionReply(
   }).catch(() => {});
 }
 
+// Errors and confirmations clear themselves, the way a notification would.
+// Discord keeps no timer of its own, so the bot deletes its reply through
+// the interaction token (valid 15 minutes). A Worker may run about 30 s
+// past its response, so the reply goes DISMISS_AFTER_MS after the
+// interaction arrived, and never sooner than DISMISS_FLOOR_MS after the
+// handler wrote it; a slow handler that overshoots the budget simply leaves
+// the reply for the person to dismiss.
+export const DISMISS_AFTER_MS = 25_000;
+export const DISMISS_FLOOR_MS = 10_000;
+
+export function dismissDelay(arrivedAt: number, now = Date.now()): number {
+  return Math.max(DISMISS_FLOOR_MS, arrivedAt + DISMISS_AFTER_MS - now);
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+export async function dismissReply(
+  applicationId: string,
+  interactionToken: string,
+  arrivedAt: number,
+  wait: (ms: number) => Promise<void> = sleep,
+): Promise<void> {
+  await wait(dismissDelay(arrivedAt));
+  await fetch(`${API}/webhooks/${applicationId}/${interactionToken}/messages/@original`, { method: 'DELETE' }).catch(() => {});
+}
+
 // --- bot: roles ------------------------------------------------------------------
 // The one thing a bot token is needed for (spec relaxed 2026-09-05 with the
 // user's go-ahead): giving members the Member and Actives roles. The token

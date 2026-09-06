@@ -196,6 +196,9 @@ puts it on the page and on Discord.
   waitlist. Mondays at nine the bot posts the week's digest in general;
   winners get the champion role; `/next`, `/champion`, `/roll`, `/coin`
   and `/pick` are there for fun.
+  Its "only you can see this" errors and confirmations clear themselves
+  after about half a minute; panels, lists and anything with a link you
+  still need stay until you dismiss them.
 - **Your stats.** The membership page shows your events, tournaments and
   wins, with a card; `/profile` in Discord posts the card for everyone.
 
