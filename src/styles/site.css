@@ -675,10 +675,10 @@ a:hover {
   border: 1px solid var(--line);
 }
 
-/* The team founder's tag. */
+/* The team founder's tag: the member mark in brand blue. */
 .captain-mark {
-  background: var(--yellow);
-  color: var(--ink);
+  color: var(--blue);
+  border-color: var(--blue);
 }
 
 /* The Interested heart on an event page: a ghost button, blue when on. */
