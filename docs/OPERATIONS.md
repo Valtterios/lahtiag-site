@@ -192,8 +192,8 @@ to the winner or the winning team and takes it off the previous holders.
 **Private messages.** The bot messages team founders when someone joins
 their team, and people directly when they are put
 in a team by its captain or the board (also when loose players are
-grouped), and when a waitlist seat frees; when their DMs are closed it
-mentions them in the event's channel instead.
+grouped), and when a waitlist seat frees; only when their DMs are closed
+does it mention them in the event's channel instead.
 
 **The Monday digest.** Every Monday at nine (Helsinki) the bot posts to
 the general channel: events in the next two weeks with going and

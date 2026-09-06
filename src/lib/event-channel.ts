@@ -434,14 +434,16 @@ export async function announcePromotions(db: D1Database, env: { DISCORD_BOT_TOKE
   for (const [eventId, group] of byEvent) {
     const event = await getEvent(db, eventId);
     if (event && env.DISCORD_BOT_TOKEN) {
-      // A private message first; the event's channel gets a mention as well.
+      // A private message; only those it cannot reach get a mention in the event's channel.
+      const unreached: string[] = [];
       for (const row of group) {
-        await dmUser(env.DISCORD_BOT_TOKEN, row.discord_id, `🎟️ A seat opened up: you're in for **${safe(event.title)}** (${formatHelsinkiRange(event.starts_at, event.ends_at)}). See you there!`);
+        const sent = await dmUser(env.DISCORD_BOT_TOKEN, row.discord_id, `🎟️ A seat opened up: you're in for **${safe(event.title)}** (${formatHelsinkiRange(event.starts_at, event.ends_at)}). See you there!`);
+        if (!sent) unreached.push(row.discord_id);
       }
-      if (event.discord_channel_id) {
-        const mentions = group.map((r) => `<@${r.discord_id}>`).join(' ');
-        const line = `🎟️ A seat opened up: ${mentions}, you're in for **${safe(event.title)}**! ${group.length === 1 ? 'You are' : 'You are all'} on the going list now.`;
-        await postChannelMessage(env.DISCORD_BOT_TOKEN, event.discord_channel_id, line, { parse: [], users: group.map((r) => r.discord_id) }, SUPPRESS_EMBEDS);
+      if (unreached.length > 0 && event.discord_channel_id) {
+        const mentions = unreached.map((id) => `<@${id}>`).join(' ');
+        const line = `🎟️ A seat opened up: ${mentions}, you're in for **${safe(event.title)}**! ${unreached.length === 1 ? 'You are' : 'You are all'} on the going list now.`;
+        await postChannelMessage(env.DISCORD_BOT_TOKEN, event.discord_channel_id, line, { parse: [], users: unreached }, SUPPRESS_EMBEDS);
       }
     }
     await markPromotionsAnnounced(db, group.map((r) => r.id), now);
