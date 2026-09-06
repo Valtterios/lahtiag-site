@@ -83,9 +83,11 @@ the bottom right lets you view a page as a member or a visitor would.
   Interviews voice channels, plus a voice channel per team that follows
   the teams as they form.
   The role follows the roster on its own: sign up and you have it, leave
-  and it's gone. Edits and cancellations carry over. Board tools →
-  Discord shows the state. Afterwards, Archive keeps the channels for
-  the board and takes the role away; Delete everything removes them.
+  and it's gone. Edits and cancellations carry over, and the tournament
+  talks in the channel: the bracket, every result, the champion and the
+  screen messages are posted there by the bot. Board tools → Discord
+  shows the state. Afterwards, Archive keeps the channels for the board
+  and takes the role away; Delete everything removes them.
 - **Cancel** posts a cancellation on Discord and can be undone with
   Reinstate. Delete removes the event for good. Both ask first.
 

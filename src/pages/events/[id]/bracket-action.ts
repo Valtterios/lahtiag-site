@@ -7,10 +7,12 @@ import {
   setBracketWinner,
   clearBracketWinner,
   RuleError,
+  getBracket,
 } from '../../../lib/db';
 import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
+import { later, postBracketOut, postResult, postRevert } from '../../../lib/event-channel';
 
-export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
+export const POST: APIRoute = async ({ request, params, redirect, locals, url }) => {
   const id = Number(params.id);
   const back = `/events/${id}/bracket`;
 
@@ -29,16 +31,20 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
 
   try {
     if (action === 'generate' || action === 'regenerate') {
+      const redraw = (await getBracket(env.DB, id)).length > 0;
       await generateBracket(env.DB, id);
       // Generating groups loose players into teams; a big event's voice channels follow.
       syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, Math.floor(Date.now() / 1000));
+      later(locals.cfContext, postBracketOut(env.DB, env, id, url.origin, redraw));
     } else if (action === 'delete') {
       await deleteBracket(env.DB, id);
       return redirect(`/events/${id}`, 303);
     } else if (action === 'winner') {
       await setBracketWinner(env.DB, id, round, slot, String(form.get('winner') ?? ''));
+      later(locals.cfContext, postResult(env.DB, env, id, url.origin, round, slot));
     } else if (action === 'undo') {
       await clearBracketWinner(env.DB, id, round, slot);
+      later(locals.cfContext, postRevert(env.DB, env, id, round, slot));
     } else {
       return redirect(`${back}?err=csrf`, 303);
     }

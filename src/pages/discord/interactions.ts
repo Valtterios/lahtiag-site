@@ -29,6 +29,7 @@ import {
 } from '../../lib/db';
 import { formatHelsinki, formatHelsinkiDate, helsinkiToUnix } from '../../lib/time';
 import { syncScheduledEvent, setUpEventDiscord } from '../../lib/event-discord';
+import { participantNames, postSignups, postBracketOut, postResult, postRevert, postEventLine, cancelLine, screenLine } from '../../lib/event-channel';
 import { MEMBER_TYPE_LABELS } from '../../lib/register';
 import { DISCORD_GUILD_ID } from '../../lib/config';
 
@@ -340,17 +341,6 @@ function createEventModal() {
   };
 }
 
-async function participantNames(env: WorkerEnv, eventId: number): Promise<Map<string, string>> {
-  const names = new Map<string, string>();
-  for (const signup of await listSignups(env.DB, eventId)) {
-    names.set(`u:${signup.discord_id}`, signup.username);
-  }
-  for (const team of await listEventTeams(env.DB, eventId)) {
-    names.set(`t:${team.id}`, team.name);
-  }
-  return names;
-}
-
 async function handleComponent(env: WorkerEnv, interaction: Interaction, origin: string): Promise<void> {
   const edit = (content: string, components: unknown[] = []) =>
     editInteractionReply(interaction.application_id, interaction.token, content, components);
@@ -395,6 +385,7 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
       const eventId = Number(interaction.data!.values?.[0]);
       if (action === 'close' || action === 'reopen') {
         await setSignupsClosed(env.DB, eventId, action === 'close', now);
+        await postSignups(env.DB, env, eventId, action === 'close');
         await edit(action === 'close' ? `Signups closed for event #${eventId}.` : `Signups reopened for event #${eventId}.`);
       } else if (action === 'cancel') {
         const event = await cancelEvent(env.DB, eventId, now);
@@ -404,13 +395,17 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
             `❌ Cancelled: **${event.title}** (was ${formatHelsinki(event.starts_at)})`,
           );
         }
+        await syncScheduledEvent(env.DB, env, eventId, origin, now);
+        await postEventLine(env.DB, env, eventId, cancelLine(event, true), true);
         await edit(`Cancelled event #${eventId}: **${event.title}**.`);
       } else if (action === 'bracket') {
+        const redraw = (await getBracket(env.DB, eventId)).length > 0;
         await generateBracket(env.DB, eventId);
+        await postBracketOut(env.DB, env, eventId, origin, redraw);
         await edit(`Bracket generated: ${origin}/events/${eventId}/bracket`);
       } else if (action === 'winner') {
         // Step 3: every ready, undecided match offers both possible winners.
-        const names = await participantNames(env, eventId);
+        const names = await participantNames(env.DB, eventId);
         const nameOf = (key: string) => names.get(key) ?? 'Unknown';
         const options = (await getBracket(env.DB, eventId))
           .filter((m) => m.winner === null && m.side_a !== null && m.side_b !== null)
@@ -431,7 +426,7 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
         ]);
       } else if (action === 'undo') {
         // Step 3: every recorded (non-bye) result can be reverted.
-        const names = await participantNames(env, eventId);
+        const names = await participantNames(env.DB, eventId);
         const nameOf = (key: string) => names.get(key) ?? 'Unknown';
         const options = (await getBracket(env.DB, eventId))
           .filter((m) => m.winner !== null && m.side_a !== null && m.side_b !== null)
@@ -454,6 +449,7 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
       const eventId = Number(customId.slice('t:undo:'.length));
       const [round, slot] = String(interaction.data!.values?.[0]).split(':').map(Number);
       await clearBracketWinner(env.DB, eventId, round, slot);
+      await postRevert(env.DB, env, eventId, round, slot);
       await edit(
         `Reverted: the round ${round} match is undecided again, and everything that followed from it was cleared. ${origin}/events/${eventId}/bracket`,
       );
@@ -462,7 +458,8 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
       const [round, slot, ...keyParts] = String(interaction.data!.values?.[0]).split(':');
       const key = keyParts.join(':');
       await setBracketWinner(env.DB, eventId, Number(round), Number(slot), key);
-      const names = await participantNames(env, eventId);
+      await postResult(env.DB, env, eventId, origin, Number(round), Number(slot));
+      const names = await participantNames(env.DB, eventId);
       await edit(
         `Recorded: **${names.get(key) ?? key}** wins round ${round}. ${origin}/events/${eventId}/bracket`,
       );
@@ -553,6 +550,8 @@ async function handleScreenModal(env: WorkerEnv, interaction: Interaction): Prom
       }
     }
     await setDisplayNote(env.DB, eventId, text.trim() || null);
+    // The venue screen's line goes to the event's channel too, with a ping.
+    if (text.trim()) await postEventLine(env.DB, env, eventId, screenLine(text.trim()), true);
     await reply(
       text.trim()
         ? `On screen within ten seconds: "${text.trim()}"`
@@ -690,15 +689,19 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
         );
       }
       await syncScheduledEvent(env.DB, env, id, origin, now);
+      await postEventLine(env.DB, env, id, cancelLine(event, true), true);
       await reply(`Cancelled event #${id}: **${event.title}**.`);
     } else if (name === 'event close' || name === 'event reopen') {
       const id = Number(opts.get('id'));
       const closing = name === 'event close';
       await setSignupsClosed(env.DB, id, closing, now);
+      await postSignups(env.DB, env, id, closing);
       await reply(closing ? `Signups closed for event #${id}.` : `Signups reopened for event #${id}.`);
     } else if (name === 'bracket generate') {
       const id = Number(opts.get('event'));
+      const redraw = (await getBracket(env.DB, id)).length > 0;
       await generateBracket(env.DB, id);
+      await postBracketOut(env.DB, env, id, origin, redraw);
       await reply(`Bracket generated: ${origin}/events/${id}/bracket`);
     } else if (name === 'bracket win') {
       const id = Number(opts.get('event'));
@@ -727,6 +730,7 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
         return;
       }
       await setBracketWinner(env.DB, id, match.round, match.slot, key);
+      await postResult(env.DB, env, id, origin, match.round, match.slot);
       await reply(`Recorded: **${opts.get('name')}** wins round ${match.round}. ${origin}/events/${id}/bracket`);
     } else if (name === 'announce') {
       const text = String(opts.get('text') ?? '');

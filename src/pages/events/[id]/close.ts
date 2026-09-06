@@ -2,8 +2,9 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { setSignupsClosed, RuleError } from '../../../lib/db';
+import { later, postSignups } from '../../../lib/event-channel';
 
-export const POST: APIRoute = async ({ request, params, redirect }) => {
+export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   const id = Number(params.id);
   const back = `/events/${id}`;
 
@@ -13,13 +14,11 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   const form = await request.formData();
   if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf`, 303);
 
+  const closing = String(form.get('action')) === 'close';
   try {
-    await setSignupsClosed(
-      env.DB,
-      id,
-      String(form.get('action')) === 'close',
-      Math.floor(Date.now() / 1000),
-    );
+    await setSignupsClosed(env.DB, id, closing, Math.floor(Date.now() / 1000));
+    // The event's own channel hears about it.
+    later(locals.cfContext, postSignups(env.DB, env, id, closing));
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
     throw error;

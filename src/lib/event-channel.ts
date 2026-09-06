@@ -1,0 +1,165 @@
+// The tournament talks in its own channel: every move the board makes on
+// an event (signups closed, bracket out, a result, a revert, the champion,
+// a screen message, a cancellation, a new time or place) is also posted by
+// the bot into the event's discussion channel, when it has one. The lines
+// are built here, pure, so both the site's routes and the Discord panel
+// say the same thing; posting is best effort and never blocks a response.
+
+import type { D1Database } from '@cloudflare/workers-types';
+import { getEvent, getBracket, listSignups, listEventTeams, type BracketMatch, type EventRow } from './db';
+import { postChannelMessage, NO_MENTIONS } from './discord';
+import { formatHelsinki, formatHelsinkiRange } from './time';
+
+// Participant keys ('u:<discord id>' / 't:<team id>') to display names.
+export async function participantNames(db: D1Database, eventId: number): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  for (const signup of await listSignups(db, eventId)) names.set(`u:${signup.discord_id}`, signup.username);
+  for (const team of await listEventTeams(db, eventId)) names.set(`t:${team.id}`, team.name);
+  return names;
+}
+
+// Names are typed by members: no markdown, no masked links, no pings.
+function safe(name: string): string {
+  return name.replace(/[`*_~|>\[\]()@#]/g, '').replace(/\s+/g, ' ').trim() || 'Unknown';
+}
+
+export function nameOf(names: Map<string, string>, key: string | null): string {
+  return key === null ? 'Unknown' : safe(names.get(key) ?? 'Unknown');
+}
+
+export function roundLabel(round: number, totalRounds: number): string {
+  const fromEnd = totalRounds - round;
+  if (fromEnd === 0) return 'Final';
+  if (fromEnd === 1) return 'Semifinal';
+  if (fromEnd === 2) return 'Quarterfinal';
+  return `Round ${round}`;
+}
+
+export function signupsLine(closed: boolean, counts: { teams: number | null; players: number }): string {
+  const who = counts.teams !== null ? `${counts.teams} teams, ${counts.players} players in` : `${counts.players} going`;
+  return closed ? `🔒 Signups are closed: ${who}.` : `🔓 Signups are open again: ${who}.`;
+}
+
+export function bracketLine(matches: BracketMatch[], names: Map<string, string>, url: string, regenerated: boolean): string {
+  const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
+  const first = matches.filter((m) => m.round === 1);
+  const pairs = first.filter((m) => m.side_a !== null && m.side_b !== null).map((m) => `${nameOf(names, m.side_a)} vs ${nameOf(names, m.side_b)}`);
+  const byes = first.filter((m) => m.side_a !== null && m.side_b === null).map((m) => nameOf(names, m.side_a));
+  const entrants = first.reduce((n, m) => n + (m.side_a ? 1 : 0) + (m.side_b ? 1 : 0), 0);
+  const head = `🎲 ${regenerated ? 'The bracket was redrawn' : 'The bracket is out'}: ${entrants} ${matches.some((m) => m.side_a?.startsWith('t:') || m.side_b?.startsWith('t:')) ? 'teams' : 'players'}, ${total} ${total === 1 ? 'round' : 'rounds'}.`;
+  const lines = [head];
+  if (pairs.length > 0) lines.push(`${roundLabel(1, total)}: ${pairs.join(' · ')}.`);
+  if (byes.length > 0) lines.push(`${byes.join(', ')} ${byes.length === 1 ? 'skips' : 'skip'} straight to ${roundLabel(2, total).toLowerCase()}.`);
+  lines.push(url);
+  return lines.join('\n');
+}
+
+export interface ResultStory {
+  round: number;
+  totalRounds: number;
+  winner: string;
+  loser: string;
+  next: { a: string; b: string } | null; // the winner's next match, when both sides are known
+}
+
+// What a recorded result means, read back from the bracket after the
+// update: who beat whom, and the winner's next opponent if known. Null
+// when the match doesn't exist or is undecided (nothing to say).
+export function describeResult(matches: BracketMatch[], round: number, slot: number, names: Map<string, string>): ResultStory | null {
+  const match = matches.find((m) => m.round === round && m.slot === slot);
+  if (!match?.winner || match.side_a === null || match.side_b === null) return null;
+  const totalRounds = matches.reduce((max, m) => Math.max(max, m.round), 0);
+  const loserKey = match.winner === match.side_a ? match.side_b : match.side_a;
+  const upcoming = matches.find((m) => m.round === round + 1 && m.slot === Math.floor(slot / 2));
+  const next = upcoming && upcoming.side_a !== null && upcoming.side_b !== null ? { a: nameOf(names, upcoming.side_a), b: nameOf(names, upcoming.side_b) } : null;
+  return { round, totalRounds, winner: nameOf(names, match.winner), loser: nameOf(names, loserKey), next };
+}
+
+export function resultLine(story: ResultStory, url: string): string {
+  if (story.round === story.totalRounds) return `🥇 Champion: **${story.winner}**! They beat ${story.loser} in the final.\n${url}`;
+  const label = roundLabel(story.round, story.totalRounds);
+  const next = story.next ? ` Next up: ${story.next.a} vs ${story.next.b}.` : '';
+  return `🏆 ${label}: ${story.winner} beat ${story.loser}.${next}`;
+}
+
+export function revertLine(round: number, totalRounds: number, a: string, b: string): string {
+  return `↩️ ${roundLabel(round, totalRounds)}: ${a} vs ${b} is undecided again.`;
+}
+
+export function screenLine(note: string): string {
+  return `📺 ${safe(note)}`;
+}
+
+export function cancelLine(event: Pick<EventRow, 'title' | 'starts_at'>, cancelled: boolean): string {
+  return cancelled
+    ? `❌ **${safe(event.title)}** is cancelled (was ${formatHelsinki(event.starts_at)}).`
+    : `✅ **${safe(event.title)}** is back on: ${formatHelsinki(event.starts_at)}.`;
+}
+
+// Only a new time or place is worth a line; other edits stay quiet.
+export function changeLine(
+  before: Pick<EventRow, 'starts_at' | 'ends_at' | 'location'>,
+  after: Pick<EventRow, 'starts_at' | 'ends_at' | 'location'>,
+): string | null {
+  const parts: string[] = [];
+  if (before.starts_at !== after.starts_at || before.ends_at !== after.ends_at) parts.push(`new time: ${formatHelsinkiRange(after.starts_at, after.ends_at)}`);
+  if ((before.location ?? '') !== (after.location ?? '')) parts.push(after.location ? `new place: ${safe(after.location)}` : 'the place was removed');
+  if (parts.length === 0) return null;
+  return `✏️ ${parts.join('; ')}.`;
+}
+
+// Post into the event's discussion channel, if it has one. `ping` puts
+// the event role in front, for the lines everyone should see now.
+export async function postEventLine(
+  db: D1Database,
+  env: { DISCORD_BOT_TOKEN?: string },
+  eventId: number,
+  content: string,
+  ping = false,
+): Promise<boolean> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return false;
+  const event = await getEvent(db, eventId);
+  if (!event?.discord_channel_id) return false;
+  const role = ping && event.discord_role_id ? event.discord_role_id : null;
+  return postChannelMessage(
+    token,
+    event.discord_channel_id,
+    role ? `<@&${role}> ${content}` : content,
+    role ? { parse: [], roles: [role] } : NO_MENTIONS,
+  );
+}
+
+// The lines that need the bracket read back after a change.
+export async function postBracketOut(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, regenerated: boolean): Promise<void> {
+  const matches = await getBracket(db, eventId);
+  if (matches.length === 0) return;
+  await postEventLine(db, env, eventId, bracketLine(matches, await participantNames(db, eventId), `${origin}/events/${eventId}/bracket`, regenerated), true);
+}
+
+export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, round: number, slot: number): Promise<void> {
+  const story = describeResult(await getBracket(db, eventId), round, slot, await participantNames(db, eventId));
+  if (!story) return;
+  await postEventLine(db, env, eventId, resultLine(story, `${origin}/events/${eventId}/bracket`), story.round === story.totalRounds);
+}
+
+export async function postRevert(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, round: number, slot: number): Promise<void> {
+  const matches = await getBracket(db, eventId);
+  const match = matches.find((m) => m.round === round && m.slot === slot);
+  if (!match || match.side_a === null || match.side_b === null) return;
+  const names = await participantNames(db, eventId);
+  const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
+  await postEventLine(db, env, eventId, revertLine(round, total, nameOf(names, match.side_a), nameOf(names, match.side_b)));
+}
+
+export async function postSignups(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, closed: boolean): Promise<void> {
+  const event = await getEvent(db, eventId);
+  if (!event?.discord_channel_id) return;
+  const teams = event.team_size !== null ? (await listEventTeams(db, eventId)).length : null;
+  await postEventLine(db, env, eventId, signupsLine(closed, { teams, players: event.yes_count }));
+}
+
+// Fire and forget from a route: the response goes out, the line follows.
+export function later(ctx: { waitUntil(promise: Promise<unknown>): void } | undefined, work: Promise<unknown>): void {
+  ctx?.waitUntil(work.catch(() => {}));
+}

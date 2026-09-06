@@ -150,6 +150,15 @@ participants a link to the channel. Walk-ins added by name have no Discord
 account and are skipped, and so is anyone who signed up but hasn't joined
 the server yet (they get the role at the next sync after they join).
 
+**The tournament talks in its channel.** Whatever the board does to the
+event, from the site or from `/tournament`, the bot also says in the
+event's discussion channel: signups closed or reopened (with the count),
+the bracket drawn (first-round pairings and who skips ahead, with a ping),
+each recorded result with the winner's next opponent, a reverted result,
+the champion (with a ping), the venue-screen message (with a ping), a
+cancellation or a reinstatement, and a new time or place. Other edits stay
+quiet. Events without a channel get none of this.
+
 The panel shows how many participants hold the role. **Sync now** repairs
 drift (someone who joined the server after signing up, a change Discord
 refused) and does at most 40 changes per click. Afterwards, a one-channel

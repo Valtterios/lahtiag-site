@@ -5,12 +5,13 @@ import { cancelEvent, uncancelEvent, setCancelMessageId, RuleError } from '../..
 import { postWebhook, deleteWebhookMessage } from '../../../lib/discord';
 import { formatHelsinki } from '../../../lib/time';
 import { syncScheduledEvent } from '../../../lib/event-discord';
+import { later, postEventLine, cancelLine } from '../../../lib/event-channel';
 
 // Cancel an event, or put a cancelled one back. Cancelling posts a line
 // to the announcements channel and remembers it; reinstating removes that
 // line and posts that the event is on again.
 
-export const POST: APIRoute = async ({ request, params, redirect, url }) => {
+export const POST: APIRoute = async ({ request, params, redirect, url, locals }) => {
   const id = Number(params.id);
   const back = `/events/${id}`;
 
@@ -30,6 +31,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
       }
       await setCancelMessageId(env.DB, id, null);
       await syncScheduledEvent(env.DB, env, id, url.origin, Math.floor(Date.now() / 1000));
+      later(locals.cfContext, postEventLine(env.DB, env, id, cancelLine(event, false), true));
       return redirect(`${back}?ok=reinstated`, 303);
     }
     const event = await cancelEvent(env.DB, id, Math.floor(Date.now() / 1000));
@@ -40,8 +42,9 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
       );
       if (messageId) await setCancelMessageId(env.DB, id, messageId);
     }
-    // Discord's scheduled event goes with the cancellation.
+    // Discord's scheduled event goes with the cancellation; the event's channel hears too.
     await syncScheduledEvent(env.DB, env, id, url.origin, Math.floor(Date.now() / 1000));
+    later(locals.cfContext, postEventLine(env.DB, env, id, cancelLine(event, true), true));
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
     throw error;
