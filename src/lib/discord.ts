@@ -408,7 +408,7 @@ export type BotResult<T> = { ok: true; value: T } | { ok: false; reason: 'forbid
 
 async function botCall<T>(
   botToken: string,
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
   reason?: string,
@@ -607,3 +607,35 @@ export async function deleteScheduledEvent(botToken: string, guildId: string, ev
   const result = await botCall(botToken, 'DELETE', `/guilds/${guildId}/scheduled-events/${eventId}`, undefined, reason);
   return result.ok || result.status === 404;
 }
+
+// --- bot: messages the bot keeps editing --------------------------------------
+// The live bracket: posted once, pinned, then edited after every result.
+
+export async function createChannelMessage(
+  botToken: string,
+  channelId: string,
+  content: string,
+  allowedMentions: { parse: string[]; roles?: string[] } = NO_MENTIONS,
+): Promise<BotResult<{ id: string }>> {
+  return botCall<{ id: string }>(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions });
+}
+
+export async function editChannelMessage(botToken: string, channelId: string, messageId: string, content: string): Promise<BotResult<unknown> & { status?: number }> {
+  return botCall(botToken, 'PATCH', `/channels/${channelId}/messages/${messageId}`, { content, allowed_mentions: NO_MENTIONS });
+}
+
+export async function deleteChannelMessage(botToken: string, channelId: string, messageId: string): Promise<boolean> {
+  const result = await botCall(botToken, 'DELETE', `/channels/${channelId}/messages/${messageId}`);
+  return result.ok || result.status === 404;
+}
+
+// Needs Manage Messages. Discord moved the endpoint in 2025; the old path
+// is tried when the new one is unknown to the server.
+export async function pinChannelMessage(botToken: string, channelId: string, messageId: string): Promise<boolean> {
+  const fresh = await botCall(botToken, 'PUT', `/channels/${channelId}/messages/pins/${messageId}`, undefined, 'lahtiag.fi live bracket');
+  if (fresh.ok) return true;
+  if (fresh.status !== 404) return false;
+  return (await botCall(botToken, 'PUT', `/channels/${channelId}/pins/${messageId}`, undefined, 'lahtiag.fi live bracket')).ok;
+}
+
+export const PERM_MANAGE_MESSAGES = 1n << 13n;

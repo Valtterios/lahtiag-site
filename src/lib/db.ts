@@ -72,6 +72,7 @@ export interface EventRow {
   discord_channel_id: string | null; // its private channel
   discord_event_id: string | null; // Discord's scheduled event, made on publish
   discord_category_id: string | null; // a big event's own category; null = one channel under the shared Events category
+  discord_bracket_message_id: string | null; // the pinned live bracket in the channel, edited after every result
 }
 
 export interface EventWithCounts extends EventRow {

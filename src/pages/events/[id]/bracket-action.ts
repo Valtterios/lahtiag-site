@@ -10,7 +10,7 @@ import {
   getBracket,
 } from '../../../lib/db';
 import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
-import { later, postBracketOut, postResult, postRevert } from '../../../lib/event-channel';
+import { later, postBracketOut, postResult, postRevert, dropLiveBracket } from '../../../lib/event-channel';
 
 export const POST: APIRoute = async ({ request, params, redirect, locals, url }) => {
   const id = Number(params.id);
@@ -38,13 +38,14 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
       later(locals.cfContext, postBracketOut(env.DB, env, id, url.origin, redraw));
     } else if (action === 'delete') {
       await deleteBracket(env.DB, id);
+      later(locals.cfContext, dropLiveBracket(env.DB, env, id));
       return redirect(`/events/${id}`, 303);
     } else if (action === 'winner') {
       await setBracketWinner(env.DB, id, round, slot, String(form.get('winner') ?? ''));
       later(locals.cfContext, postResult(env.DB, env, id, url.origin, round, slot));
     } else if (action === 'undo') {
       await clearBracketWinner(env.DB, id, round, slot);
-      later(locals.cfContext, postRevert(env.DB, env, id, round, slot));
+      later(locals.cfContext, postRevert(env.DB, env, id, url.origin, round, slot));
     } else {
       return redirect(`${back}?err=csrf`, 303);
     }

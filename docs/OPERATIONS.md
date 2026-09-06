@@ -157,7 +157,10 @@ the bracket drawn (first-round pairings and who skips ahead, with a ping),
 each recorded result with the winner's next opponent, a reverted result,
 the champion (with a ping), the venue-screen message (with a ping), a
 cancellation or a reinstatement, and a new time or place. Other edits stay
-quiet. Events without a channel get none of this.
+quiet. Events without a channel get none of this. The bot also keeps a
+**pinned live bracket** in the channel: posted when the bracket is drawn,
+edited after every result and revert, with the winners ticked and the
+champion on top, so latecomers see the standings without scrolling.
 
 The panel shows how many participants hold the role. **Sync now** repairs
 drift (someone who joined the server after signing up, a change Discord
@@ -172,11 +175,12 @@ or channel.
 
 The bot needs, on its own role (Server Settings → Roles → the role named
 after the application): **View Channels**, **Manage Roles**, **Manage
-Channels**, **Create Events**, **Manage Events** and **Send Messages**.
-Create Events and Manage Events are separate: the first makes entries on
-the event list, the second edits and removes them. Re-inviting it with
-those permissions ticked does the same in one go:
-`https://discord.com/oauth2/authorize?client_id=1544746714135793756&scope=bot&permissions=17601044483088`.
+Channels**, **Create Events**, **Manage Events**, **Send Messages** and
+**Manage Messages** (for pinning the live bracket). Create Events and
+Manage Events are separate: the first makes entries on the event list,
+the second edits and removes them. Re-inviting it with those permissions
+ticked does the same in one go:
+`https://discord.com/oauth2/authorize?client_id=1544746714135793756&scope=bot&permissions=17601044491280`.
 If Discord refuses ("the bot's role needs Manage Roles, Manage Channels,
 Create Events and Manage Events"), one of those is missing. New roles land at the bottom
 of the list, below the bot's, so the order takes care of itself.

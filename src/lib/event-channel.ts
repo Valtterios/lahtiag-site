@@ -7,7 +7,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { getEvent, getBracket, listSignups, listEventTeams, type BracketMatch, type EventRow } from './db';
-import { postChannelMessage, NO_MENTIONS } from './discord';
+import { postChannelMessage, createChannelMessage, editChannelMessage, deleteChannelMessage, pinChannelMessage, NO_MENTIONS } from './discord';
 import { formatHelsinki, formatHelsinkiRange } from './time';
 
 // Participant keys ('u:<discord id>' / 't:<team id>') to display names.
@@ -108,6 +108,63 @@ export function changeLine(
   return `✏️ ${parts.join('; ')}.`;
 }
 
+// --- the pinned live bracket ------------------------------------------------------
+
+const MESSAGE_MAX = 1900; // Discord allows 2000; leave room for the link
+
+// The whole bracket as text: every round, winners ticked, byes named,
+// unknown sides as a dash, the champion on top once decided. Earliest
+// rounds are dropped first when it would not fit in one message.
+export function liveBracketText(matches: BracketMatch[], names: Map<string, string>, url: string, now: number): string {
+  const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
+  const side = (key: string | null, winner: string | null) => (key === null ? '—' : `${nameOf(names, key)}${winner !== null && winner === key ? ' ✅' : ''}`);
+  const rounds: string[] = [];
+  for (let round = 1; round <= total; round++) {
+    const lines = matches
+      .filter((m) => m.round === round)
+      .map((m) => (m.side_a !== null && m.side_b === null && m.winner === m.side_a ? `${nameOf(names, m.side_a)} advances (bye)` : `${side(m.side_a, m.winner)} vs ${side(m.side_b, m.winner)}`));
+    const label = roundLabel(round, total);
+    rounds.push(`**${label === 'Final' || label.startsWith('Round') ? label : `${label}s`}**\n${lines.join('\n')}`);
+  }
+  const final = matches.find((m) => m.round === total && m.slot === 0);
+  const head = [`📋 **Live bracket** · updated ${formatHelsinki(now)}`];
+  if (final?.winner) head.push(`🥇 Champion: **${nameOf(names, final.winner)}**`);
+  let body = rounds;
+  while (body.length > 1 && [...head, ...body].join('\n\n').length > MESSAGE_MAX) body = ['… earlier rounds on the site', ...body.slice(2)];
+  return [...head, ...body, url].join('\n\n');
+}
+
+// Create or update the pinned message; a message deleted on Discord's
+// side is made again. Nothing to show when there is no bracket.
+export async function refreshLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, now: number): Promise<void> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return;
+  const event = await getEvent(db, eventId);
+  if (!event?.discord_channel_id) return;
+  const matches = await getBracket(db, eventId);
+  if (matches.length === 0) {
+    await dropLiveBracket(db, env, eventId);
+    return;
+  }
+  const text = liveBracketText(matches, await participantNames(db, eventId), `${origin}/events/${eventId}/bracket`, now);
+  if (event.discord_bracket_message_id) {
+    const edited = await editChannelMessage(token, event.discord_channel_id, event.discord_bracket_message_id, text);
+    if (edited.ok || edited.status !== 404) return;
+  }
+  const created = await createChannelMessage(token, event.discord_channel_id, text);
+  if (!created.ok) return;
+  await db.prepare('UPDATE events SET discord_bracket_message_id = ?2 WHERE id = ?1').bind(eventId, created.value.id).run();
+  await pinChannelMessage(token, event.discord_channel_id, created.value.id);
+}
+
+// The bracket was deleted: so is its message.
+export async function dropLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number): Promise<void> {
+  const event = await getEvent(db, eventId);
+  if (!event?.discord_bracket_message_id) return;
+  if (env.DISCORD_BOT_TOKEN && event.discord_channel_id) await deleteChannelMessage(env.DISCORD_BOT_TOKEN, event.discord_channel_id, event.discord_bracket_message_id);
+  await db.prepare('UPDATE events SET discord_bracket_message_id = NULL WHERE id = ?1').bind(eventId).run();
+}
+
 // Post into the event's discussion channel, if it has one. `ping` puts
 // the event role in front, for the lines everyone should see now.
 export async function postEventLine(
@@ -135,21 +192,24 @@ export async function postBracketOut(db: D1Database, env: { DISCORD_BOT_TOKEN?: 
   const matches = await getBracket(db, eventId);
   if (matches.length === 0) return;
   await postEventLine(db, env, eventId, bracketLine(matches, await participantNames(db, eventId), `${origin}/events/${eventId}/bracket`, regenerated), true);
+  await refreshLiveBracket(db, env, eventId, origin, Math.floor(Date.now() / 1000));
 }
 
 export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, round: number, slot: number): Promise<void> {
   const story = describeResult(await getBracket(db, eventId), round, slot, await participantNames(db, eventId));
   if (!story) return;
   await postEventLine(db, env, eventId, resultLine(story, `${origin}/events/${eventId}/bracket`), story.round === story.totalRounds);
+  await refreshLiveBracket(db, env, eventId, origin, Math.floor(Date.now() / 1000));
 }
 
-export async function postRevert(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, round: number, slot: number): Promise<void> {
+export async function postRevert(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, round: number, slot: number): Promise<void> {
   const matches = await getBracket(db, eventId);
   const match = matches.find((m) => m.round === round && m.slot === slot);
   if (!match || match.side_a === null || match.side_b === null) return;
   const names = await participantNames(db, eventId);
   const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
   await postEventLine(db, env, eventId, revertLine(round, total, nameOf(names, match.side_a), nameOf(names, match.side_b)));
+  await refreshLiveBracket(db, env, eventId, origin, Math.floor(Date.now() / 1000));
 }
 
 export async function postSignups(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, closed: boolean): Promise<void> {

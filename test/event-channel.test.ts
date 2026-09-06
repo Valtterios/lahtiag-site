@@ -14,6 +14,7 @@ import {
   cancelLine,
   changeLine,
   postEventLine,
+  liveBracketText,
 } from '../src/lib/event-channel';
 
 // The lines the bot posts into an event's channel, and the bracket
@@ -63,6 +64,33 @@ describe('lines', () => {
     const done = [...matches.slice(0, 2), m(2, 0, 't:1', 't:3', 't:3')];
     expect(resultLine(describeResult(done, 2, 0, names)!, 'https://x')).toBe('🥇 Champion: **Charlie**! They beat Alpha in the final.\nhttps://x');
     expect(revertLine(1, 2, 'Alpha', 'Bravo')).toBe('↩️ Semifinal: Alpha vs Bravo is undecided again.');
+  });
+
+  it('renders the live bracket with ticks, byes, dashes and the champion, and never past one message', () => {
+    const matches = [m(1, 0, 't:1', 't:2', 't:1'), m(1, 1, 't:3', 't:4'), m(1, 2, 't:5', null, 't:5'), m(1, 3, null, null), m(2, 0, 't:1', null), m(2, 1, 't:5', null), m(3, 0, null, null)];
+    const text = liveBracketText(matches, names, 'https://x/b', NOW);
+    expect(text).toContain('📋 **Live bracket** · updated ');
+    expect(text).toContain('**Quarterfinals**\nAlpha ✅ vs Bravo\nCharlie vs Delta\nEcho advances (bye)\n— vs —');
+    expect(text).toContain('**Semifinals**\nAlpha vs —\nEcho vs —');
+    expect(text).toContain('**Final**\n— vs —');
+    expect(text).not.toContain('Champion');
+    expect(text.endsWith('https://x/b')).toBe(true);
+    const done = [m(1, 0, 't:1', 't:2', 't:2')];
+    expect(liveBracketText(done, names, 'u', NOW)).toContain('🥇 Champion: **Bravo**');
+
+    // 64 long names in round one: the earliest rounds give way.
+    const big: BracketMatch[] = [];
+    const wide = new Map<string, string>();
+    for (let i = 0; i < 32; i++) {
+      wide.set(`u:${i}a`, `Player with a long name ${i}A`);
+      wide.set(`u:${i}b`, `Player with a long name ${i}B`);
+      big.push(m(1, i, `u:${i}a`, `u:${i}b`));
+    }
+    for (let r = 2; r <= 6; r++) for (let s = 0; s < 64 / 2 ** r; s++) big.push(m(r, s, null, null));
+    const long = liveBracketText(big, wide, 'https://x/b', NOW);
+    expect(long.length).toBeLessThanOrEqual(2000);
+    expect(long).toContain('… earlier rounds on the site');
+    expect(long).toContain('**Final**');
   });
 
   it('keeps screen messages and titles free of markdown, and speaks only of a new time or place', () => {

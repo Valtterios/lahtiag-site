@@ -449,7 +449,7 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
       const eventId = Number(customId.slice('t:undo:'.length));
       const [round, slot] = String(interaction.data!.values?.[0]).split(':').map(Number);
       await clearBracketWinner(env.DB, eventId, round, slot);
-      await postRevert(env.DB, env, eventId, round, slot);
+      await postRevert(env.DB, env, eventId, origin, round, slot);
       await edit(
         `Reverted: the round ${round} match is undecided again, and everything that followed from it was cleared. ${origin}/events/${eventId}/bracket`,
       );
