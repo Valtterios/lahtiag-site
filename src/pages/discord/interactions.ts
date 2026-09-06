@@ -57,6 +57,7 @@ import {
   approveMinecraftName,
   declineMinecraftName,
   friendRequestLine,
+  linkBoardName,
   faceUrl,
   serversLabel,
   narrowed,
@@ -66,6 +67,7 @@ import { postBoardLine, approveButtons, decidedLine } from '../../lib/board-chan
 import { setActive as setRegisterActive } from '../../lib/db';
 import { applyRoles as applyRegisterRoles, loadRoleConfig as loadRegisterRoleConfig } from '../../lib/roles';
 import { editChannelMessage as editBoardMessage, dmUser as dmMember, SUPPRESS_EMBEDS as NO_EMBEDS, dismissReply } from '../../lib/discord';
+import { seasonSummary, seasonLines } from '../../lib/season';
 
 // The Discord bot: an HTTP Interactions endpoint inside the same Worker
 // (spec, Discord bot). No gateway, no second host, same database.
@@ -217,6 +219,12 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     return json({ type: 5 });
   }
 
+  // /season: the person's own season so far, privately. A listing, so it stays.
+  if (interaction.type === 2 && interaction.data?.name === 'season') {
+    locals.cfContext.waitUntil(fleeting(handleSeason(env, interaction, url.origin)));
+    return json({ type: 5, data: { flags: 64 } });
+  }
+
   // /whitelist: the Minecraft server's list. Private answers; the board
   // subcommands check the role themselves.
   if (interaction.type === 2 && interaction.data?.name === 'whitelist') {
@@ -312,6 +320,8 @@ const WHITELIST_ERRORS: Record<string, string> = {
   bad_name: 'A Minecraft name is 3 to 16 letters, digits or underscores.',
   name_taken: 'That name is already on the list.',
   not_member: 'The whitelist needs a current membership. `/join` gets you one, or links your account.',
+  missing: 'That is not a board name on the list.',
+  has_name: 'That member has an own name already; take it off first.',
   friend_limit: `${FRIENDS_PER_MEMBER} friends per member. Take one off first with \`/whitelist remove\`.`,
   no_account: 'No Minecraft account has that name. Check the spelling (Java edition name).',
   mojang_down: "Mojang didn't answer. Try again in a minute.",
@@ -320,6 +330,14 @@ const WHITELIST_ERRORS: Record<string, string> = {
 // The skin's face beside the answer, so people see it's their account.
 function faceEmbed(origin: string, name: string, uuid: string, note: string): unknown[] {
   return [{ title: name, description: note, thumbnail: { url: faceUrl(origin, uuid) }, color: 0x2b5cff }];
+}
+
+async function handleSeason(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
+  const userId = interaction.member?.user?.id;
+  if (!userId) return;
+  const summary = await seasonSummary(env.DB, userId, Math.floor(Date.now() / 1000));
+  await editInteractionReply(interaction.application_id, interaction.token, seasonLines(summary, origin));
+  return 'keep';
 }
 
 async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin: string, isAdmin: boolean): Promise<Outcome> {
@@ -367,7 +385,7 @@ async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin:
         own ? faceEmbed(origin, own.name, own.uuid!, 'Your skin.') : [],
       );
       return 'keep';
-    } else if (['add', 'drop', 'pending', 'approve', 'decline'].includes(sub.name)) {
+    } else if (['add', 'drop', 'pending', 'approve', 'decline', 'link'].includes(sub.name)) {
       if (!isAdmin) {
         await reply('This needs the admin role.');
         return;
@@ -375,6 +393,12 @@ async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin:
       if (sub.name === 'add') {
         const p = await addBoardMinecraftName(env.DB, userId, raw, now, undefined, servers);
         await reply(`✅ **${p.name}** is on the whitelist for ${where}, added by the board. ${soon}`, faceEmbed(origin, p.name, p.uuid, 'The account behind that name.'));
+      } else if (sub.name === 'link') {
+        const memberId = String(opts.get('member') ?? '');
+        const row = await linkBoardName(env.DB, raw, memberId, userId, now);
+        if (env.DISCORD_BOT_TOKEN) await dmMember(env.DISCORD_BOT_TOKEN, memberId, `⛏️ The board linked the Minecraft name **${row.name}** to you: it is on the whitelist as yours, on every server, and follows your membership. ${page}`);
+        await postBoardLine(env.DB, env, `⛏️ Whitelist: **${row.name}** linked to <@${memberId}> by ${interaction.member?.nick ?? interaction.member?.user?.global_name ?? interaction.member?.user?.username ?? 'the board'}.`);
+        await reply(`✅ **${row.name}** is <@${memberId}>'s own name now, on every server. They got a DM.`, row.uuid ? faceEmbed(origin, row.name, row.uuid, 'The account behind that name.') : []);
       } else if (sub.name === 'drop') {
         const gone = await dropMinecraftName(env.DB, raw);
         await reply(gone ? `Dropped **${gone.name}** (${gone.kind === 'own' ? 'a member' : gone.kind === 'friend' ? "a member's friend" : 'board'}). The server removes it within a few minutes.` : `**${shown}** is not on the list.`);

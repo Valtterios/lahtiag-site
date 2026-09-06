@@ -22,6 +22,8 @@ import {
   dashedUuid,
   FRIENDS_PER_MEMBER,
   type Resolver,
+  linkBoardName,
+  suggestLink,
 } from '../src/lib/minecraft';
 
 // The Minecraft whitelist: a member's own name and friends, board names,
@@ -188,5 +190,34 @@ describe('minecraft whitelist', () => {
     expect(tokenMatches(null, 'secret')).toBe(false);
     expect(tokenMatches('secret', undefined)).toBe(false);
     expect(tokenMatches('', '')).toBe(false);
+  });
+});
+
+describe('linking a board name to its member', () => {
+  it('hands a board name to a member, once, and only to a current member', async () => {
+    await registered('A1', 'member');
+    await registered('F1', 'former');
+    await addBoardMinecraftName(db(), 'B0', 'Seeded', NOW, mojang);
+    await addBoardMinecraftName(db(), 'B0', 'Seeded2', NOW, mojang);
+    await expect(linkBoardName(db(), 'Seeded', 'F1', 'B0', NOW)).rejects.toMatchObject({ code: 'not_member' });
+    await expect(linkBoardName(db(), 'Nope', 'A1', 'B0', NOW)).rejects.toMatchObject({ code: 'missing' });
+    const row = await linkBoardName(db(), 'seeded', 'A1', 'B0', NOW);
+    expect(row.kind).toBe('own');
+    expect(row.discord_id).toBe('A1');
+    expect(row.servers).toBe('smp,gtnh');
+    expect((await listMinecraftNames(db(), 'A1')).map((n) => n.name)).toEqual(['Seeded']);
+    await expect(linkBoardName(db(), 'Seeded2', 'A1', 'B0', NOW)).rejects.toMatchObject({ code: 'has_name' });
+    await expect(linkBoardName(db(), 'Seeded', 'A1', 'B0', NOW)).rejects.toMatchObject({ code: 'missing' }); // no longer a board name
+  });
+
+  it('guesses the member from the name, or stays quiet', () => {
+    const members = [
+      { discord_id: '1', full_name: 'Mikko Lahtinen', username: 'Mikko', discord_name: 'mikko_l', own_names: 0 },
+      { discord_id: '2', full_name: 'Aino Virtanen', username: 'Aino', discord_name: 'aino.v', own_names: 0 },
+    ];
+    expect(suggestLink('Mikko_L', members)?.discord_id).toBe('1');
+    expect(suggestLink('AinoV', members)?.discord_id).toBe('2');
+    expect(suggestLink('xX_Lasse_Xx', members)).toBeNull();
+    expect(suggestLink('ai', members)).toBeNull();
   });
 });

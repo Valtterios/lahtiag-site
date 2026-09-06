@@ -20,8 +20,8 @@ import { postBoardLine, approveButtons } from '../lib/board-channel';
 import { applyRoles, loadRoleConfig } from '../lib/roles';
 import { formatHelsinkiDate, formatHelsinkiRange } from '../lib/time';
 import { listMinecraftNames, serversLabel, narrowed, SERVERS, FRIENDS_PER_MEMBER } from '../lib/minecraft';
-import { seasonActivity, seasonLabel, voiceLabel, activityChannels } from '../lib/activity';
-import { seasonPlaytime } from '../lib/playtime';
+import { seasonLabel, voiceLabel } from '../lib/activity';
+import { seasonSummary, minecraftLine } from '../lib/season';
 
 // A member's own page: their status, the actives request, and every
 // detail they gave on the application, editable by them. Needs a Discord
@@ -34,12 +34,9 @@ const csrf = ensureCsrf(Astro.cookies);
 const entry = session ? await getRegisterByDiscord(env.DB, session.discordId) : null;
 const myEvents = session ? await listMyEvents(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : [];
 const stats = session ? await memberStats(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : null;
-// What the Discord activity listener has counted this season (src/lib/activity.ts); shown once there is anything.
-const activity = session ? await seasonActivity(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : null;
-// The list of counted channels is the board's check, not something every member needs to scroll past.
-const playtime = session ? await seasonPlaytime(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : [];
-const countedChannels = session?.isAdmin && activity && (activity.messages > 0 || activity.voice_minutes > 0) ? await activityChannels(env.DB) : [];
-const channelNames = (kind: 'text' | 'voice') => countedChannels.filter((c) => c.kind === kind).map((c) => c.name).sort((a, b) => a.localeCompare(b));
+// The season so far (src/lib/season.ts): Discord activity from the listener, Minecraft play time from the servers.
+const season = session ? await seasonSummary(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : null;
+const isMember = entry?.status === 'member';
 const onLeaderboard = session ? await isLeaderboardOptIn(env.DB, session.discordId) : false;
 const mcNames = session ? await listMinecraftNames(env.DB, session.discordId) : [];
 const mcOwn = mcNames.find((n) => n.kind === 'own') ?? null;
@@ -209,21 +206,15 @@ const MESSAGES: Record<FieldError, string> = {
             <strong>{stats.attended}</strong> events, <strong>{stats.tournaments}</strong> tournaments, <strong>{stats.wins}</strong> wins
             {stats.last_win ? <> · last win: {stats.last_win.title}</> : null}. <code>/profile</code> in Discord posts the card for everyone.
           </p>
-          {activity && (activity.messages > 0 || activity.voice_minutes > 0) && (
+          {season && (season.messages > 0 || season.voice_minutes > 0) && (
             <p class="queue-meta">
-              On Discord this season ({seasonLabel(Math.floor(Date.now() / 1000))}): <strong>{activity.messages}</strong> messages · <strong>{voiceLabel(activity.voice_minutes)}</strong> in voice.
+              On Discord this season ({seasonLabel(Math.floor(Date.now() / 1000))}): <strong>{season.messages}</strong> messages · <strong>{voiceLabel(season.voice_minutes)}</strong> in voice.
               {' '}Counted only in channels every member can see.
             </p>
           )}
-          {playtime.some((p) => p.minutes > 0) && (
+          {season && isMember && (
             <p class="queue-meta">
-              Minecraft this season: {playtime.filter((p) => p.minutes > 0).map((p) => `${p.label} ${voiceLabel(p.minutes)}`).join(' · ')}, under your own whitelisted name.
-            </p>
-          )}
-          {countedChannels.length > 0 && (
-            <p class="queue-meta">
-              Board: the counted channels are {channelNames('text').map((n) => `#${n}`).join(', ')}
-              {channelNames('voice').length > 0 && <>, and in voice {channelNames('voice').join(', ')}</>}.
+              Minecraft this season: {minecraftLine(season, 'Put it in under Minecraft below.')} <code>/season</code> in Discord shows the same.
             </p>
           )}
           <form method="post" action="/membership/leaderboard" class="app-form-row leaderboard-optin">

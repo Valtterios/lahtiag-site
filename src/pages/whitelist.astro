@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import Base from '../layouts/Base.astro';
 import SessionBox from '../components/SessionBox.astro';
 import { currentSession, ensureCsrf } from '../lib/guard';
-import { listPendingFriends, listAllMinecraftNames, serversLabel, narrowed, SERVERS, type MinecraftNameRow } from '../lib/minecraft';
+import { listPendingFriends, listAllMinecraftNames, listLinkableMembers, suggestLink, serversLabel, narrowed, SERVERS, type MinecraftNameRow } from '../lib/minecraft';
 import { formatHelsinki } from '../lib/time';
 
 // The board's whitelist table: friend requests waiting for a decision at
@@ -15,6 +15,9 @@ const csrf = ensureCsrf(Astro.cookies);
 const isBoard = session?.isAdmin === true;
 const pending: MinecraftNameRow[] = isBoard ? await listPendingFriends(env.DB) : [];
 const names: MinecraftNameRow[] = isBoard ? await listAllMinecraftNames(env.DB) : [];
+// Board names can be handed to the member they belong to; the picker offers current members without an own name.
+const linkable = isBoard && names.some((n) => n.kind === 'board') ? (await listLinkableMembers(env.DB)).filter((m) => m.own_names === 0) : [];
+const memberLabel = (m: (typeof linkable)[number]) => `${m.full_name}${m.username || m.discord_name ? ` (${m.username ?? m.discord_name})` : ''}`;
 
 const FLASH: Record<string, string> = {
   forbidden: 'That needs the admin role in Discord.',
@@ -22,12 +25,15 @@ const FLASH: Record<string, string> = {
   discord_down: "Discord didn't answer while re-checking your role. Try again.",
   csrf: 'The form was stale. Try again.',
   missing: 'That name is not waiting, or not on the list.',
+  not_member: 'That person is not a current member.',
+  has_name: 'That member has an own name already; take it off first.',
   bad_input: "That didn't work.",
 };
 const OK: Record<string, string> = {
   approved: 'Approved. The servers pick it up within a few minutes, and the member got a DM.',
   declined: 'Declined, and the member got a DM.',
   dropped: 'Dropped. The servers remove it within a few minutes.',
+  linked: 'Linked. The name is the member\'s own now, on every server, and they got a DM.',
 };
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
 const kindLabel = (n: MinecraftNameRow) => (n.kind === 'own' ? 'member' : n.kind === 'friend' ? 'friend' : 'board');
@@ -106,6 +112,20 @@ const status = (n: MinecraftNameRow) => (n.approved_at === null ? 'waiting' : n.
                   <td>{status(n)}</td>
                   <td>{formatHelsinki(n.added_at)}</td>
                   <td class="wl-actions">
+                    {n.kind === 'board' && linkable.length > 0 && (
+                      <form method="post" action="/whitelist/act" class="inline-form wl-link">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="link" />
+                        <input type="hidden" name="name" value={n.name} />
+                        <select name="discord_id" aria-label={`Whose name is ${n.name}`}>
+                          <option value="">Link to a member…</option>
+                          {linkable.map((m) => (
+                            <option value={m.discord_id} selected={suggestLink(n.name, linkable)?.discord_id === m.discord_id}>{memberLabel(m)}</option>
+                          ))}
+                        </select>
+                        <button class="btn btn-ghost btn-sm" type="submit">Link</button>
+                      </form>
+                    )}
                     <form method="post" action="/whitelist/act" class="inline-form">
                       <input type="hidden" name="csrf" value={csrf} />
                       <input type="hidden" name="action" value="drop" />

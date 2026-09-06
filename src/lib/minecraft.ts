@@ -332,6 +332,62 @@ export async function addBoardMinecraftName(db: D1Database, byDiscordId: string,
   return profile;
 }
 
+// A current member with a linked Discord account, for the board to link a
+// board name to; own_names says whether they already have one.
+export interface LinkableMember {
+  discord_id: string;
+  full_name: string;
+  username: string | null;
+  discord_name: string | null;
+  own_names: number;
+}
+
+export async function listLinkableMembers(db: D1Database): Promise<LinkableMember[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT r.discord_id, r.full_name, m.username, r.discord_name,
+              (SELECT COUNT(*) FROM minecraft_names n WHERE n.discord_id = r.discord_id AND n.kind = 'own') AS own_names
+       FROM register r LEFT JOIN members m ON m.discord_id = r.discord_id
+       WHERE r.status = 'member' AND r.discord_id IS NOT NULL
+       ORDER BY r.full_name COLLATE NOCASE`,
+    )
+    .all<LinkableMember>();
+  return results;
+}
+
+// The member a board name most likely belongs to, by resemblance between
+// the Minecraft name and their Discord names or first name; null when
+// nothing resembles it. A hint for the board's picker, never a decision.
+export function suggestLink(name: string, members: LinkableMember[]): LinkableMember | null {
+  const fold = (v: string | null | undefined) => (v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const wanted = fold(name);
+  if (wanted.length < 3) return null;
+  const resembles = (v: string | null | undefined) => {
+    const f = fold(v);
+    return f.length >= 3 && (f === wanted || (f.length >= 4 && wanted.includes(f)) || (wanted.length >= 4 && f.includes(wanted)));
+  };
+  return members.find((m) => resembles(m.username) || resembles(m.discord_name)) ?? members.find((m) => resembles(m.full_name.split(/\s+/)[0])) ?? null;
+}
+
+// The board hands a board name to the member it belongs to: it becomes
+// their own name, on every server, and follows their membership from then
+// on. Only board names, only to current members without an own name.
+export async function linkBoardName(db: D1Database, raw: string, discordId: string, by: string, now: number): Promise<MinecraftName> {
+  const name = raw.trim();
+  if (!MC_NAME.test(name)) throw new RuleError('bad_name', 'A Minecraft name is 3 to 16 letters, digits or underscores.');
+  const holder = await holderOf(db, name);
+  if (!holder || holder.kind !== 'board') throw new RuleError('missing', 'That is not a board name on the list.');
+  await requireMember(db, discordId);
+  const own = await db.prepare(`SELECT 1 AS x FROM minecraft_names WHERE discord_id = ?1 AND kind = 'own'`).bind(discordId).first();
+  if (own) throw new RuleError('has_name', 'That member has an own name already; take it off first.');
+  const servers = ALL_SERVERS.join(',');
+  await db
+    .prepare(`UPDATE minecraft_names SET discord_id = ?2, kind = 'own', servers = ?3, approved_at = COALESCE(approved_at, ?4), approved_by = ?5 WHERE id = ?1`)
+    .bind(holder.id, discordId, servers, now, by)
+    .run();
+  return { ...holder, discord_id: discordId, kind: 'own', servers, approved_at: holder.approved_at ?? now, approved_by: by };
+}
+
 export async function dropMinecraftName(db: D1Database, raw: string): Promise<MinecraftName | null> {
   const name = raw.trim();
   if (!MC_NAME.test(name)) return null;

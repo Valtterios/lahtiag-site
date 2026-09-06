@@ -387,8 +387,9 @@ puts it on the page and on Discord.
 - **Activity counts.** For the coming season pass the bot counts, per
   member and month, messages sent and minutes in voice, only in channels
   every member can see. Nothing about content is kept. The membership
-  page shows a member their counts; a board member also sees which
-  channels count.
+  page shows a member their counts, and `/season` in Discord shows their
+  season so far: events, Discord activity, Minecraft play time. Both
+  warn when no Minecraft name is linked to them.
 - **Your stats.** The membership page shows your events, tournaments and
   wins, with a card; `/profile` in Discord posts the card for everyone.
 
@@ -436,6 +437,10 @@ puts it on the page and on Discord.
 - **The old list.** The names that were on the server before the site
   took over are on the list as board names. A member who whitelists that
   same name takes it over, and from then on it follows their membership.
+  The board can do it for them: **Link** next to a board name on
+  lahtiag.fi/whitelist (the picker guesses the member from the name), or
+  `/whitelist link <name> @member`. The member gets a DM. Play time only
+  counts for a member through their own linked name, so link the regulars.
   Everyone is on the public leaderboard on the history page; a tick
   there hides you.
 

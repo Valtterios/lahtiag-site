@@ -15,6 +15,7 @@ if (!clientId || !clientSecret) {
 
 const STRING = 3;
 const INTEGER = 4;
+const USER = 6;
 
 const SUB_COMMAND = 1;
 
@@ -120,6 +121,7 @@ const commands = [
     name: 'join',
     description: 'Become a LahtiAG member, or link your Discord to your membership',
   },
+  { name: 'season', description: 'Your season so far: events, Discord activity, Minecraft play time' },
   {
     name: 'whitelist',
     description: 'The LahtiAG Minecraft servers\' whitelist',
@@ -148,6 +150,15 @@ const commands = [
         name: 'add',
         description: 'Board: whitelist any name, membership or not',
         options: [{ type: STRING, name: 'name', description: 'The Java edition name', required: true }, SERVER_CHOICE],
+      },
+      {
+        type: SUB_COMMAND,
+        name: 'link',
+        description: 'Board: hand a board name to the member it belongs to',
+        options: [
+          { type: STRING, name: 'name', description: 'The Java edition name, one of the board names', required: true },
+          { type: USER, name: 'member', description: 'Whose name it is', required: true },
+        ],
       },
       {
         type: SUB_COMMAND,

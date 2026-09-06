@@ -1,12 +1,14 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
-import { approveMinecraftName, declineMinecraftName, dropMinecraftName } from '../../lib/minecraft';
+import { approveMinecraftName, declineMinecraftName, dropMinecraftName, linkBoardName } from '../../lib/minecraft';
+import { RuleError } from '../../lib/db';
 import { dmUser } from '../../lib/discord';
 import { postBoardLine } from '../../lib/board-channel';
 
 // The board's decisions on the whitelist table: approve or decline a
-// friend, or drop any name. The member who brought the friend hears by DM.
+// friend, drop any name, or link a board name to the member it belongs
+// to. The member concerned hears by DM.
 
 export const POST: APIRoute = async ({ request, redirect, url, locals }) => {
   const admin = await requireAdmin(request, env);
@@ -35,6 +37,19 @@ export const POST: APIRoute = async ({ request, redirect, url, locals }) => {
   if (action === 'drop') {
     const gone = await dropMinecraftName(env.DB, name);
     return redirect(gone ? '/whitelist?ok=dropped' : '/whitelist?err=missing', 303);
+  }
+  if (action === 'link') {
+    const discordId = String(form.get('discord_id') ?? '');
+    if (!/^\d{17,20}$/.test(discordId)) return redirect('/whitelist?err=bad_input', 303);
+    try {
+      const row = await linkBoardName(env.DB, name, discordId, admin.session.discordId, now);
+      if (token) await dmUser(token, discordId, `⛏️ The board linked the Minecraft name **${row.name}** to you: it is on the whitelist as yours, on every server, and follows your membership. ${url.origin}/membership#minecraft`);
+      locals.cfContext.waitUntil(postBoardLine(env.DB, env, `⛏️ Whitelist: **${row.name}** linked to <@${discordId}> by ${admin.session.username}.`));
+      return redirect('/whitelist?ok=linked', 303);
+    } catch (error) {
+      if (error instanceof RuleError) return redirect(`/whitelist?err=${error.code}`, 303);
+      throw error;
+    }
   }
   return redirect('/whitelist?err=bad_input', 303);
 };

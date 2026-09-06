@@ -823,6 +823,23 @@ Without the secret the API answers 404 and nothing on the site changes;
 the membership page and the command still take names, ready for when the
 server starts pulling.
 
+**Linking the old names.** The names seeded from the server's own list
+are board names, which belong to nobody, so their play time counts for no
+member until the name is theirs. Besides the member claiming it with
+`/whitelist me`, the board links it: **Link** on the table row (the picker
+offers current members without an own name, the likely one preselected by
+resemblance to their Discord name) or `/whitelist link <name> @member`
+(`linkBoardName` in `src/lib/minecraft.ts`). The row becomes the member's
+own name on every server, the member gets a DM, the board channel a line.
+
+**The season so far.** `src/lib/season.ts` adds a member's season up:
+events attended (going or a paid ticket, started, since 1 September),
+Discord messages and voice, Minecraft play time under their own name, for
+the membership page and the `/season` command in Discord. Both say
+plainly when no Minecraft name is linked to the member, since play under
+a name that isn't theirs counts for nobody. The pass's XP and levels will
+be computed from the same numbers once the board has set the rules.
+
 **Play time.** For the season pass, `scripts/minecraft/playtime-sync.py`
 (installed as `/usr/local/bin/lahtiag-playtime-sync.py`, run by
 `lahtiag-playtime@smp.timer` and `@gtnh.timer` every five minutes, same
@@ -878,8 +895,9 @@ channels; voice minutes likewise only in voice channels every member can
 see. So the board channel, the actives channel, an event's channels and
 team voice channels never count. `COUNT_CHANNELS=all` in `.env` turns the
 filter off. The listener logs "counting in …" whenever the set changes
-and sends the list with every batch; a board member sees it under the
-season line on their own membership page, members only the rule.
+(`docker logs lahtiag-listener`) and sends the list with every batch, kept
+in the settings table under `activity_channels`; the site shows members
+the rule, not the list.
 
 **Setting it up** (done 2026-09-06): the files from
 `scripts/discord-listener` in `/opt/lahtiag-listener`, and `.env` there
