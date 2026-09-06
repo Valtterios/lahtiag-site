@@ -70,7 +70,7 @@ and tournaments won; every member is on it, and can hide themselves on
 their membership page at any time. Board members can remove signups and
 participants.
 
-The association's Discord bot also counts, per member and calendar month,
+The association's Discord bot also counts, per member and day,
 how many messages you send and how long you spend in voice channels on
 the LahtiAG server, in the channels every member can see, for the
 activity rewards of the academic year. Only the counts are kept; the bot

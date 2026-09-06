@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // The Discord activity listener for lahtiag.fi. Counts, per member and
-// month, the messages sent and the minutes spent in voice on the LahtiAG
-// server, and posts the counts to the site (POST /api/discord/activity) in
-// batches the site applies exactly once. Never stores or forwards a word
+// day (and per channel and day, for statistics), the messages sent and the
+// minutes spent in voice on the LahtiAG server, and posts the counts to
+// the site (POST /api/discord/activity) in batches the site applies
+// exactly once. Never stores or forwards a word
 // of content. Two sources:
 //   - messages are walked over the REST API, 100 per request, from a
 //     cursor per channel (the first run starts at the season's 1 September),
@@ -48,12 +49,12 @@ function need(name) {
 const log = (...args) => console.log(new Date().toISOString(), ...args);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// --- months and snowflakes --------------------------------------------------------
-const monthFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Helsinki', year: 'numeric', month: '2-digit' });
-const monthOf = (date) => monthFormat.format(date); // 'YYYY-MM'
+// --- days and snowflakes ------------------------------------------------------------
+const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Helsinki', year: 'numeric', month: '2-digit', day: '2-digit' });
+const dayOf = (date) => dayFormat.format(date); // 'YYYY-MM-DD' in Helsinki
 function seasonStart() {
   if (SEASON_START) return new Date(SEASON_START);
-  const [y, m] = monthOf(new Date()).split('-').map(Number);
+  const [y, m] = dayOf(new Date()).split('-').map(Number);
   return new Date(Date.UTC(m >= 9 ? y : y - 1, 8, 1) - 3 * 3600 * 1000); // 1 Sept 00:00 Helsinki summer time
 }
 const DISCORD_EPOCH = 1420070400000n;
@@ -71,7 +72,7 @@ function loadState() {
       log('state unreadable, starting fresh:', error.message);
     }
   }
-  return { instance: randomBytes(8).toString('hex'), seq: 1, cursors: {}, pending: {} };
+  return { instance: randomBytes(8).toString('hex'), seq: 1, cursors: {}, pending: {}, channelPending: {} };
 }
 let saveTimer = null;
 function flush() {
@@ -84,10 +85,19 @@ function flush() {
 function save() {
   if (!saveTimer) saveTimer = setTimeout(flush, 1000);
 }
-function add(userId, month, field, n) {
+function add(userId, day, field, n) {
   if (n <= 0) return;
-  const key = `${userId}|${month}`;
+  const key = `${userId}|${day}`;
   const row = (state.pending[key] ??= { messages: 0, voice_minutes: 0 });
+  row[field] += n;
+  save();
+}
+// The same count on the channel's side, for the statistics.
+function addChannel(channelId, name, day, field, n) {
+  if (n <= 0) return;
+  const key = `${channelId}|${day}`;
+  const row = ((state.channelPending ??= {})[key] ??= { name, messages: 0, voice_minutes: 0 });
+  row.name = name;
   row[field] += n;
   save();
 }
@@ -162,14 +172,14 @@ async function writableChannels() {
     return [];
   }
   applyChannels(await channels.json(), roles.ok ? await roles.json() : null);
-  const out = [...counted.text, ...counted.voice].map(([id, name]) => ({ id, name }));
+  const out = [...counted.text, ...counted.voice].map(([id, name]) => ({ id, name, statsId: id, statsName: name }));
   const threads = await rest(`/guilds/${GUILD}/threads/active`);
   if (threads.ok) {
     const data = await threads.json();
     for (const t of data.threads ?? []) {
       if (t.type === 12) continue; // private threads stay private
       const parent = counted.text.get(t.parent_id) ?? counted.voice.get(t.parent_id);
-      if (parent) out.push({ id: t.id, name: `${parent} › ${t.name}` });
+      if (parent) out.push({ id: t.id, name: `${parent} › ${t.name}`, statsId: t.parent_id, statsName: parent }); // a thread counts for its channel
     }
   }
   return out;
@@ -199,7 +209,9 @@ async function scanMessages() {
         messages.sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
         for (const m of messages) {
           if (m.author?.bot || !COUNTED_TYPES.has(m.type)) continue;
-          add(m.author.id, monthOf(new Date(m.timestamp)), 'messages', 1);
+          const day = dayOf(new Date(m.timestamp));
+          add(m.author.id, day, 'messages', 1);
+          addChannel(channel.statsId, channel.statsName, day, 'messages', 1);
           counted++;
         }
         after = messages[messages.length - 1].id;
@@ -226,7 +238,7 @@ let acked = true;
 let backoff = 1000;
 let afkChannel = null;
 const bots = new Set();
-const voice = new Map(); // userId -> { credited: ms since epoch up to which minutes were counted }
+const voice = new Map(); // userId -> { channel, credited: ms since epoch up to which minutes were counted }
 
 function connect(resume) {
   const base = resume && resumeUrl ? resumeUrl : 'wss://gateway.discord.gg';
@@ -313,7 +325,11 @@ function dispatch(type, d) {
       for (const v of d.voice_states ?? []) {
         if (!countsForVoice(v.channel_id)) continue;
         present.add(v.user_id);
-        if (!voice.has(v.user_id)) voice.set(v.user_id, { credited: now });
+        const session = voice.get(v.user_id);
+        if (session && session.channel !== v.channel_id) {
+          creditVoice(v.user_id, now);
+          session.channel = v.channel_id;
+        } else if (!session) voice.set(v.user_id, { channel: v.channel_id, credited: now });
       }
       for (const id of [...voice.keys()]) {
         if (present.has(id)) continue;
@@ -331,8 +347,12 @@ function dispatch(type, d) {
         break;
       }
       const inVoice = countsForVoice(d.channel_id);
-      if (inVoice && !voice.has(id)) voice.set(id, { credited: now });
-      else if (!inVoice && voice.has(id)) {
+      const session = voice.get(id);
+      if (inVoice && !session) voice.set(id, { channel: d.channel_id, credited: now });
+      else if (inVoice && session.channel !== d.channel_id) {
+        creditVoice(id, now); // the minutes so far go to the room they were spent in
+        session.channel = d.channel_id;
+      } else if (!inVoice && session) {
         creditVoice(id, now);
         voice.delete(id);
       }
@@ -349,7 +369,9 @@ function creditVoice(id, now) {
   if (!session || bots.has(id)) return;
   const minutes = Math.floor((now - session.credited) / 60_000);
   if (minutes <= 0) return;
-  add(id, monthOf(new Date(now)), 'voice_minutes', minutes);
+  const day = dayOf(new Date(now));
+  add(id, day, 'voice_minutes', minutes);
+  addChannel(session.channel, counted.voice.get(session.channel) ?? 'voice', day, 'voice_minutes', minutes);
   session.credited += minutes * 60_000;
 }
 function creditEveryone() {
@@ -367,10 +389,17 @@ async function push() {
       .filter(([, d]) => d.messages > 0 || d.voice_minutes > 0)
       .slice(0, 5000)
       .map(([key, d]) => {
-        const [discord_id, month] = key.split('|');
-        return { key, discord_id, month, messages: d.messages, voice_minutes: d.voice_minutes };
+        const [discord_id, day] = key.split('|');
+        return { key, discord_id, day, messages: d.messages, voice_minutes: d.voice_minutes };
       });
-    if (rows.length === 0) return;
+    const channelRows = Object.entries(state.channelPending ?? {})
+      .filter(([, d]) => d.messages > 0 || d.voice_minutes > 0)
+      .slice(0, 5000)
+      .map(([key, d]) => {
+        const [channel_id, day] = key.split('|');
+        return { key, channel_id, name: d.name, day, messages: d.messages, voice_minutes: d.voice_minutes };
+      });
+    if (rows.length === 0 && channelRows.length === 0) return;
     const seq = state.seq;
     const response = await fetch(ACTIVITY_URL, {
       method: 'POST',
@@ -379,6 +408,7 @@ async function push() {
         instance: state.instance,
         seq,
         deltas: rows.map(({ key, ...delta }) => delta),
+        channel_deltas: channelRows.map(({ key, ...delta }) => delta),
         channels: [
           ...[...counted.text].map(([id, name]) => ({ id, name, kind: 'text' })),
           ...[...counted.voice].map(([id, name]) => ({ id, name, kind: 'voice' })),
@@ -399,9 +429,16 @@ async function push() {
       d.voice_minutes -= row.voice_minutes;
       if (d.messages <= 0 && d.voice_minutes <= 0) delete state.pending[row.key];
     }
+    for (const row of channelRows) {
+      const d = state.channelPending[row.key];
+      if (!d) continue;
+      d.messages -= row.messages;
+      d.voice_minutes -= row.voice_minutes;
+      if (d.messages <= 0 && d.voice_minutes <= 0) delete state.channelPending[row.key];
+    }
     state.seq = seq + 1;
     flush();
-    log('pushed', rows.length, 'rows as batch', seq, body.duplicate ? '(the site had it already)' : '');
+    log('pushed', rows.length, 'member rows and', channelRows.length, 'channel rows as batch', seq, body.duplicate ? '(the site had it already)' : '');
   } catch (error) {
     log('push failed:', error.message);
   } finally {
@@ -410,8 +447,7 @@ async function push() {
 }
 
 // --- run -------------------------------------------------------------------------------
-const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Helsinki', year: 'numeric', month: '2-digit', day: '2-digit' });
-log('listener', state.instance, 'season from', dayFormat.format(seasonStart()), 'pending rows', Object.keys(state.pending).length);
+log('listener', state.instance, 'season from', dayOf(seasonStart()), 'pending rows', Object.keys(state.pending).length);
 connect(false);
 scanMessages();
 setInterval(scanMessages, SCAN_EVERY);

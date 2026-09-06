@@ -826,10 +826,13 @@ server starts pulling.
 ## The Discord activity listener
 
 For the season pass (the academic-year rewards the board is planning), the
-site counts, per member and month, the messages sent and the minutes spent
-in voice on the LahtiAG server. Counts only, never a word of content, and
-the privacy page says so. A member sees their own season on the membership
-page.
+site counts, per member and day, the messages sent and the minutes spent
+in voice on the LahtiAG server, and the same per channel and day for
+statistics. Counts only, never a word of content, and the privacy page
+says so. A member sees their own season on the membership page. Per day
+is what makes weekly and monthly rules, streaks and "active days" possible
+later: a monthly rule looks at each month's sum, nothing ever resets, and
+the season is the sum of it all.
 
 **How it counts.** A small always-on process on auraserver
 (`scripts/discord-listener/listener.mjs`; container `lahtiag-listener` in
@@ -843,8 +846,9 @@ the AFK channel doesn't count. Every minute it posts what it has to
 `https://lahtiag.fi/api/discord/activity` with the `DISCORD_ACTIVITY_TOKEN`
 secret, as a batch numbered per listener instance, and the site applies
 each batch once (a retry answers `duplicate: true`) and keeps the receipts
-a month (`src/lib/activity.ts`; tables `discord_activity` and
-`discord_activity_batches`). The listener's own state, the cursors and the
+a month (`src/lib/activity.ts`; tables `discord_activity` per member and
+day, `discord_channel_activity` per channel and day with a thread counted
+for its channel, and `discord_activity_batches`). The listener's own state, the cursors and the
 unsent counts, lives in `/opt/lahtiag-listener/state/state.json`.
 
 **Which channels count.** Only the channels every member can see: those
@@ -869,7 +873,9 @@ in the channels that should count (its invite has both); no privileged
 intent is involved. `docker logs -f lahtiag-listener` shows what it counts
 and pushes; "the gateway refused the token or the intents" means the token
 is wrong. To recount a season from scratch: stop the container, delete
-`state/state.json` and the rows in `discord_activity`, start it again.
+`state/state.json` and the rows in `discord_activity`,
+`discord_channel_activity` and `discord_activity_batches`, then
+`docker compose up -d --force-recreate`.
 
 ## Editing this handbook
 
