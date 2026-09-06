@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""Put the AMP user and password for the whitelist sync into
+/etc/lahtiag-whitelist.conf, asked for on the terminal so they never pass
+through a chat or a shell history. Run as root:  lahtiag-whitelist-setcreds
+"""
+import getpass
+import os
+import re
+import sys
+
+CONF = os.environ.get('LAHTIAG_WHITELIST_CONF', '/etc/lahtiag-whitelist.conf')
+
+if os.geteuid() != 0:
+    sys.exit('run as root (sudo lahtiag-whitelist-setcreds)')
+user = input('AMP user: ').strip()
+password = getpass.getpass('AMP password (not shown): ')
+if not user or not password:
+    sys.exit('nothing saved: both are needed')
+text = open(CONF).read()
+for key, value in (('AMP_USER', user), ('AMP_PASS', password)):
+    line = f'{key}={value}'
+    text, n = re.subn(rf'(?m)^{key}=.*$', lambda _m: line, text)
+    if n == 0:
+        text = text.rstrip('\n') + '\n' + line + '\n'
+tmp = CONF + '.tmp'
+with open(tmp, 'w') as f:
+    f.write(text)
+os.chmod(tmp, 0o600)
+os.replace(tmp, CONF)
+print(f'saved to {CONF}; the next sync run (within five minutes) uses them')

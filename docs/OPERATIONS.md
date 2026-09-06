@@ -705,7 +705,11 @@ Setting it up, once:
 2. In AMP, create a user (say `whitelist`) with console access to the
    Minecraft instance, nothing more. This is only needed to change a
    running server; leave the two lines empty until then and the script
-   updates the file whenever the server is off.
+   updates the file whenever the server is off. To fill them in without
+   typing a password into a chat or a shell history, run
+   `lahtiag-whitelist-setcreds` on the server as root (from
+   `scripts/minecraft/`): it asks for the user and the password on the
+   terminal and writes them into the config.
 3. On the server: copy `scripts/minecraft/whitelist-sync.py` to
    `/usr/local/bin/lahtiag-whitelist-sync.py` (executable), the
    `.service` and `.timer` to `/etc/systemd/system/`, and
