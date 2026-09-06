@@ -962,8 +962,10 @@ quick look at the result.
 Add or edit Markdown in `src/content/pages/`, push to `main`, done. A page
 `<name>.md` is served at `/<name>`. Frontmatter: `title` (required),
 `description`, and `navOrder` (leave out to keep the page off the nav).
-Two reserved names: `home.md` is the front page, `history.md` gets the
-tournament Hall of Fame prepended. Files must sit directly in the folder —
+Two reserved names: `home.md` is the front page, and `history.md` is only
+the intro of the history page, which is otherwise built from the database:
+the Hall of Fame, the leaderboard, and a tile per past event with its
+cover or first photo, its champion and its pictures. Files must sit directly in the folder —
 no subdirectories.
 
 ## The moving parts
