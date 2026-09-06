@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dueReminders, dueOpenings, dueSalesReminder, reminderLine, openingLine, salesLine, REMINDER_WINDOW } from '../src/lib/cron';
+import { dueReminders, dueOpenings, dueSalesReminder, reminderLine, openingLine, salesLine, digestText, milestoneLine, helsinkiClock, REMINDER_WINDOW } from '../src/lib/cron';
 
 // The hourly job's choices, as pure functions.
 
@@ -61,5 +61,30 @@ describe('dueSalesReminder', () => {
     expect(salesLine({ title: 'Cup' }, NOW + 3600, 6, 'u')).toMatch(/^🎟️ Ticket sales for \*\*Cup\*\* close .*\. 6 left\.\nu$/);
     expect(salesLine({ title: 'Cup' }, NOW + 3600, 0, 'u')).toContain('Sold out.');
     expect(salesLine({ title: 'Cup' }, NOW + 3600, null, 'u')).not.toContain('left');
+  });
+});
+
+describe('digest and milestones', () => {
+  it('reads the Helsinki clock', () => {
+    // 2026-09-07 06:00 UTC is Monday 09:00 in Helsinki (EEST).
+    expect(helsinkiClock(Date.UTC(2026, 8, 7, 6, 0) / 1000)).toEqual({ weekday: 1, hour: 9 });
+    expect(helsinkiClock(Date.UTC(2026, 8, 6, 22, 30) / 1000)).toEqual({ weekday: 1, hour: 1 });
+  });
+
+  it('writes the digest only when there is something to say', () => {
+    expect(digestText([], [], 0, 'u')).toBeNull();
+    const text = digestText(
+      [{ id: 1, title: 'LAN **x**', starts_at: NOW, yes_count: 12, interest_count: 3, team_size: null, teams_count: 0 }],
+      [{ champion_name: 'Alpha', title: 'Cup' }],
+      2,
+      'https://x',
+    )!;
+    expect(text).toContain('📬 **This week at LahtiAG**');
+    expect(text).toContain('**LAN x** · 12 going · ♡ 3 · https://x/events/1');
+    expect(text).toContain("🏆 Last week's champion: **Alpha** (Cup)");
+    expect(text).toContain('👋 2 new members joined last week.');
+    expect(digestText([], [], 1, 'u')).toContain('1 new member joined');
+    expect(milestoneLine('Axi', 10)).toBe('🎉 **Axi** just attended their 10th LahtiAG event!');
+    expect(milestoneLine('Axi', 25)).toContain('25th');
   });
 });

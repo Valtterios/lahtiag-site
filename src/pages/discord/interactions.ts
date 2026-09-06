@@ -33,6 +33,7 @@ import {
   getEvent,
   setSignup,
   listEventQuestions,
+  listResults,
   type RegisterRow,
 } from '../../lib/db';
 import { formatHelsinki, formatHelsinkiDate, helsinkiToUnix } from '../../lib/time';
@@ -165,6 +166,12 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     });
   }
 
+  // Fun and info commands: public answers, no role needed.
+  if (interaction.type === 2 && interaction.data?.name && FUN_COMMANDS.has(interaction.data.name)) {
+    locals.cfContext.waitUntil(handleFun(env, interaction, url.origin));
+    return json({ type: 5 });
+  }
+
   // /profile: anyone's stats card, for everyone to see. Deferred without
   // the ephemeral flag, then the picture is attached.
   if (interaction.type === 2 && interaction.data?.name === 'profile') {
@@ -234,6 +241,61 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   locals.cfContext.waitUntil(handleCommand(env, interaction, url.origin));
   return json({ type: 5, data: { flags: 64 } }); // deferred, ephemeral
 };
+
+// --- fun and info commands ----------------------------------------------------------
+
+const FUN_COMMANDS = new Set(['roll', 'coin', 'pick', 'next', 'champion']);
+
+export function rollDice(sides: number, count: number): number[] {
+  const s = Math.min(1000, Math.max(2, Math.floor(sides) || 6));
+  const n = Math.min(10, Math.max(1, Math.floor(count) || 1));
+  const out: number[] = [];
+  const random = new Uint32Array(n);
+  crypto.getRandomValues(random);
+  for (let i = 0; i < n; i++) out.push((random[i] % s) + 1);
+  return out;
+}
+
+export function pickOne(text: string): string | null {
+  const options = text.split(/[,;\n]|\s+or\s+/i).map((o) => o.trim()).filter(Boolean);
+  if (options.length < 2) return null;
+  const random = new Uint32Array(1);
+  crypto.getRandomValues(random);
+  return options[random[0] % options.length];
+}
+
+async function handleFun(env: WorkerEnv, interaction: Interaction, origin: string): Promise<void> {
+  const reply = (content: string) => editInteractionReply(interaction.application_id, interaction.token, content);
+  const name = interaction.data!.name!;
+  const opts = optionMap(interaction.data!.options);
+  const who = interaction.member?.nick ?? interaction.member?.user?.global_name ?? interaction.member?.user?.username ?? 'Someone';
+  const clean = (s: string) => s.replace(/[`*_~|>\[\]()@#]/g, '').trim();
+  if (name === 'roll') {
+    const sides = Number(opts.get('sides') ?? 6);
+    const count = Number(opts.get('count') ?? 1);
+    const rolls = rollDice(sides, count);
+    await reply(rolls.length === 1 ? `🎲 ${clean(who)} rolled **${rolls[0]}** (d${Math.min(1000, Math.max(2, Math.floor(sides) || 6))})` : `🎲 ${clean(who)} rolled ${rolls.join(', ')} (sum **${rolls.reduce((a, b) => a + b, 0)}**)`);
+  } else if (name === 'coin') {
+    const random = new Uint32Array(1);
+    crypto.getRandomValues(random);
+    await reply(`🪙 ${clean(who)} flipped… **${random[0] % 2 === 0 ? 'Heads' : 'Tails'}**!`);
+  } else if (name === 'pick') {
+    const picked = pickOne(String(opts.get('options') ?? ''));
+    await reply(picked ? `🎯 ${clean(who)} asked me to choose: **${clean(picked)}**` : 'Give me at least two options, separated by commas.');
+  } else if (name === 'next') {
+    const events = (await listUpcomingEvents(env.DB, Math.floor(Date.now() / 1000), false)).slice(0, 3);
+    if (events.length === 0) {
+      await reply(`Nothing on the calendar yet. ${origin}/events`);
+      return;
+    }
+    await reply(
+      ['📅 **Coming up**', ...events.map((e) => `• ${formatHelsinki(e.starts_at)} · **${clean(e.title)}** · ${e.team_size !== null ? `${e.teams_count} teams` : `${e.yes_count} going`}${e.interest_count > 0 ? ` · ♡ ${e.interest_count}` : ''} · ${origin}/events/${e.id}`)].join('\n'),
+    );
+  } else if (name === 'champion') {
+    const latest = (await listResults(env.DB, 1))[0];
+    await reply(latest ? `🏆 Reigning champion: **${clean(latest.champion_name)}**, from **${clean(latest.title)}** (${formatHelsinki(latest.starts_at)}). ${origin}/history` : 'No tournament has been decided yet. Be the first!');
+  }
+}
 
 // --- announcement buttons ------------------------------------------------------
 

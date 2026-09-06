@@ -3,10 +3,11 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession } from '../../../lib/guard';
 import { captainAddToTeam, captainRemoveFromTeam, RuleError } from '../../../lib/db';
 import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
+import { later, notifyTeamPlacement } from '../../../lib/event-channel';
 
 // A team's founder adds a loose player to it or takes a member out.
 
-export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
+export const POST: APIRoute = async ({ request, params, redirect, locals, url }) => {
   const id = Number(params.id);
   const back = `/events/${id}`;
   const session = await currentSession(request, env);
@@ -25,5 +26,6 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
     throw error;
   }
   syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, now);
+  if (form.get('action') !== 'kick') later(locals.cfContext, notifyTeamPlacement(env.DB, env, id, [{ discordId: target, teamId }], url.origin));
   return redirect(`${back}?ok=${form.get('action') === 'kick' ? 'team_kicked' : 'team_added'}`, 303);
 };

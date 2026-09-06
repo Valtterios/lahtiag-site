@@ -2298,6 +2298,47 @@ export async function listPhotoAlbums(db: D1Database, limit = 30): Promise<Photo
   return results;
 }
 
+// --- milestones -----------------------------------------------------------------------
+
+export const EVENT_MILESTONES = [5, 10, 25, 50, 100];
+export const WIN_MILESTONES = [1, 5, 10];
+
+// True when this call recorded the milestone (so it is told once).
+export async function recordMilestone(db: D1Database, discordId: string, kind: 'events' | 'wins', value: number, now: number): Promise<boolean> {
+  const result = await db
+    .prepare('INSERT OR IGNORE INTO milestones (discord_id, kind, value, sent_at) VALUES (?1, ?2, ?3, ?4)')
+    .bind(discordId, kind, value, now)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+// Everyone who was at an event: going, or a paid ticket on their account.
+export async function listAttendees(db: D1Database, eventId: number): Promise<{ discord_id: string; username: string; leaderboard: number }[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT m.discord_id, m.username, m.leaderboard FROM members m
+       WHERE EXISTS (SELECT 1 FROM signups s WHERE s.event_id = ?1 AND s.discord_id = m.discord_id AND s.status = 'yes')
+          OR EXISTS (SELECT 1 FROM tickets t WHERE t.event_id = ?1 AND t.discord_id = m.discord_id AND t.status = 'paid')`,
+    )
+    .bind(eventId)
+    .all<{ discord_id: string; username: string; leaderboard: number }>();
+  return results;
+}
+
+export async function countNewMembers(db: D1Database, since: number): Promise<number> {
+  const row = await db.prepare(`SELECT COUNT(*) AS n FROM register WHERE status = 'member' AND decided_at >= ?1`).bind(since).first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+// Events that ended within a window, for the milestone check.
+export async function listEventsEndedBetween(db: D1Database, from: number, to: number): Promise<EventWithCounts[]> {
+  const { results } = await db
+    .prepare(`${EVENT_COUNTS} WHERE e.cancelled_at IS NULL AND e.published_at IS NOT NULL AND COALESCE(e.ends_at, e.starts_at) > ?1 AND COALESCE(e.ends_at, e.starts_at) <= ?2`)
+    .bind(from, to)
+    .all<EventWithCounts>();
+  return results;
+}
+
 // --- the leaderboard ----------------------------------------------------------------
 // Public on the history page, opt-in per member: events attended and
 // tournament wins, from the same records as the stats card.

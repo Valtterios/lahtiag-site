@@ -805,3 +805,11 @@ export async function editInteractionReplyWithFile(
     return false;
   }
 }
+
+// A private message from the bot. Fails quietly when the person has DMs
+// from server members switched off; callers fall back to a mention.
+export async function dmUser(botToken: string, userId: string, content: string): Promise<boolean> {
+  const channel = await botCall<{ id: string }>(botToken, 'POST', '/users/@me/channels', { recipient_id: userId });
+  if (!channel.ok) return false;
+  return (await botCall(botToken, 'POST', `/channels/${channel.value.id}/messages`, { content, allowed_mentions: NO_MENTIONS, flags: SUPPRESS_EMBEDS })).ok;
+}

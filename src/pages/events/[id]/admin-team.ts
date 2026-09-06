@@ -1,9 +1,9 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { adminCreateTeam, autoTeamLoosePlayers, renameEventTeam, RuleError } from '../../../lib/db';
+import { adminCreateTeam, autoTeamLoosePlayers, renameEventTeam, listSignups, RuleError } from '../../../lib/db';
 import { syncTeamVoiceChannelsInBackground, renameTeamVoiceChannel } from '../../../lib/event-discord';
-import { later, refreshLiveBracket } from '../../../lib/event-channel';
+import { later, refreshLiveBracket, notifyTeamPlacement } from '../../../lib/event-channel';
 
 // Board: make an empty team to assign people to, or group everyone
 // without a team into teams of the event's size.
@@ -28,8 +28,12 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
       return redirect(`${back}?ok=team_renamed`, 303);
     }
     if (form.get('action') === 'auto') {
+      const loose = (await listSignups(env.DB, id)).filter((s) => s.status === 'yes' && s.event_team_id === null).map((s) => s.discord_id);
       await autoTeamLoosePlayers(env.DB, id, now);
       syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, now);
+      // Everyone just grouped hears which team they landed in.
+      const placed = (await listSignups(env.DB, id)).filter((s) => loose.includes(s.discord_id) && s.event_team_id !== null).map((s) => ({ discordId: s.discord_id, teamId: s.event_team_id! }));
+      later(locals.cfContext, notifyTeamPlacement(env.DB, env, id, placed, url.origin));
       return redirect(`${back}?ok=grouped`, 303);
     }
     await adminCreateTeam(env.DB, id, String(form.get('name') ?? ''), admin.session.discordId, now);

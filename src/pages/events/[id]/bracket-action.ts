@@ -8,12 +8,13 @@ import {
   clearBracketWinner,
   RuleError,
   getBracket,
+  listSignups,
   goLiveBracket,
   setBracketSeeding,
   replaceBracketParticipant,
 } from '../../../lib/db';
 import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
-import { later, postBracketOut, postResult, postRevert, dropLiveBracket, refreshLiveBracket } from '../../../lib/event-channel';
+import { later, postBracketOut, postResult, postRevert, dropLiveBracket, refreshLiveBracket, notifyTeamPlacement } from '../../../lib/event-channel';
 
 export const POST: APIRoute = async ({ request, params, redirect, locals, url }) => {
   const id = Number(params.id);
@@ -35,9 +36,12 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   try {
     if (action === 'generate' || action === 'regenerate') {
       const redraw = (await getBracket(env.DB, id)).length > 0;
+      const loose = (await listSignups(env.DB, id)).filter((s) => s.status === 'yes' && s.event_team_id === null).map((s) => s.discord_id);
       await generateBracket(env.DB, id);
-      // Generating groups loose players into teams; a big event's voice channels follow.
+      // Generating groups loose players into teams; a big event's voice channels follow, and the grouped hear about it.
       syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, Math.floor(Date.now() / 1000));
+      const placed = (await listSignups(env.DB, id)).filter((s) => loose.includes(s.discord_id) && s.event_team_id !== null).map((s) => ({ discordId: s.discord_id, teamId: s.event_team_id! }));
+      later(locals.cfContext, notifyTeamPlacement(env.DB, env, id, placed, url.origin));
       // A redraw of a live bracket takes the pinned one down until it goes live again.
       if (redraw) later(locals.cfContext, dropLiveBracket(env.DB, env, id));
       return redirect(`${back}?ok=drafted`, 303);

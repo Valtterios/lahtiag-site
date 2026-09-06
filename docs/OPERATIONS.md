@@ -185,6 +185,24 @@ out, buttons excluded. A new cover swaps the picture on the post.
 "Reigning champion" pick: when a final is recorded the bot gives that role
 to the winner or the winning team and takes it off the previous holders.
 
+**Private messages.** The bot messages people directly when they are put
+in a team by its captain or the board (also when loose players are
+grouped), and when a waitlist seat frees; when their DMs are closed it
+mentions them in the event's channel instead.
+
+**The Monday digest.** Every Monday at nine (Helsinki) the bot posts to
+the general channel: events in the next two weeks with going and
+interested counts, last week's champion, and how many new members joined.
+Nothing is posted in a week with nothing to say.
+
+**Milestones.** For members who chose the leaderboard: their 5th, 10th,
+25th, 50th and 100th event attended, and their 1st, 5th and 10th
+tournament win, each cheered once in the general channel.
+
+**Fun commands.** `/roll [sides] [count]`, `/coin`, `/pick options`,
+`/next` (the coming events) and `/champion` (the latest title holder)
+answer in public. Register new commands with `scripts/register-commands.mjs`.
+
 **Photos posted.** When photos are added, the bot posts up to four of
 them with a link to the rest into the event's channel, or into the general
 channel (the welcome webhook) when the event has none. Never into the

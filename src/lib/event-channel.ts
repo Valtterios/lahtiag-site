@@ -6,10 +6,11 @@
 // say the same thing; posting is best effort and never blocks a response.
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { getEvent, getBracket, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, memberStats, getSettings, setSetting, getEventPhoto, type BracketMatch, type EventRow } from './db';
+import { getEvent, getBracket, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, memberStats, getSettings, setSetting, getEventPhoto, recordMilestone, WIN_MILESTONES, type BracketMatch, type EventRow } from './db';
+import { formatHelsinkiRange } from './time';
 import { profileCardPng } from './profile-card';
 import { syncEventRole } from './event-discord';
-import { setGuildMemberRole, postWebhookWithFile } from './discord';
+import { setGuildMemberRole, postWebhookWithFile, dmUser, postWebhook } from './discord';
 import { DISCORD_GUILD_ID } from './config';
 import {
   postChannelMessage,
@@ -173,6 +174,7 @@ export async function postChampionCards(db: D1Database, env: { DISCORD_BOT_TOKEN
   const people = ids.filter((id) => /^\d{5,25}$/.test(id)).slice(0, 5);
   if (people.length === 0) return;
   await awardChampionRole(db, env, people, now);
+  await postWinMilestones(db, env as { WELCOME_WEBHOOK_URL?: string }, people, new Map(signups.map((s) => [`u:${s.discord_id}`, s.username])), now);
   const files: MessageFile[] = [];
   for (const id of people) {
     const name = signups.find((s) => s.discord_id === id)?.username ?? 'Champion';
@@ -180,6 +182,53 @@ export async function postChampionCards(db: D1Database, env: { DISCORD_BOT_TOKEN
   }
   const line = people.length === 1 ? `🏅 The champion's card.` : `🏅 The champions' cards.`;
   await createChannelMessageWithFile(token, event.discord_channel_id, line, files, NO_MENTIONS, SUPPRESS_EMBEDS);
+}
+
+// Someone was put in a team by its captain or the board: a private
+// message, or a mention in the event's channel when DMs are closed.
+export async function notifyTeamPlacement(
+  db: D1Database,
+  env: { DISCORD_BOT_TOKEN?: string },
+  eventId: number,
+  placements: { discordId: string; teamId: number }[],
+  origin: string,
+): Promise<void> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token || placements.length === 0) return;
+  const event = await getEvent(db, eventId);
+  if (!event) return;
+  const teams = new Map((await listEventTeams(db, eventId)).map((t) => [t.id, t.name]));
+  for (const { discordId, teamId } of placements) {
+    if (!/^\d{5,25}$/.test(discordId)) continue;
+    const team = teams.get(teamId);
+    if (!team) continue;
+    const line = `🎮 You're in team **${safe(team)}** for **${safe(event.title)}** (${formatHelsinkiRange(event.starts_at, event.ends_at)}). ${origin}/events/${eventId}`;
+    if (await dmUser(token, discordId, line)) continue;
+    if (event.discord_channel_id) {
+      await postChannelMessage(token, event.discord_channel_id, `<@${discordId}> ${line}`, { parse: [], users: [discordId] }, SUPPRESS_EMBEDS);
+    }
+  }
+}
+
+// First win, fifth, tenth: told in the general channel, for members who
+// chose the leaderboard.
+export async function postWinMilestones(
+  db: D1Database,
+  env: { WELCOME_WEBHOOK_URL?: string },
+  winners: string[],
+  names: Map<string, string>,
+  now: number,
+): Promise<void> {
+  if (!env.WELCOME_WEBHOOK_URL) return;
+  for (const id of winners) {
+    const member = await db.prepare('SELECT username, leaderboard FROM members WHERE discord_id = ?1').bind(id).first<{ username: string; leaderboard: number }>();
+    if (!member || member.leaderboard !== 1) continue;
+    const stats = await memberStats(db, id, now + 1);
+    if (!WIN_MILESTONES.includes(stats.wins)) continue;
+    if (!(await recordMilestone(db, id, 'wins', stats.wins, now))) continue;
+    const what = stats.wins === 1 ? 'their first tournament win' : `their ${stats.wins}th tournament win`;
+    await postWebhook(env.WELCOME_WEBHOOK_URL, `🏆 **${safe(names.get(`u:${id}`) ?? member.username)}** just took ${what}!`, NO_MENTIONS, SUPPRESS_EMBEDS);
+  }
 }
 
 // The reigning champion role: on the latest winners, off the previous
@@ -371,10 +420,16 @@ export async function announcePromotions(db: D1Database, env: { DISCORD_BOT_TOKE
   for (const row of rows) byEvent.set(row.event_id, [...(byEvent.get(row.event_id) ?? []), row]);
   for (const [eventId, group] of byEvent) {
     const event = await getEvent(db, eventId);
-    if (event?.discord_channel_id && env.DISCORD_BOT_TOKEN) {
-      const mentions = group.map((r) => `<@${r.discord_id}>`).join(' ');
-      const line = `🎟️ A seat opened up: ${mentions}, you're in for **${safe(event.title)}**! ${group.length === 1 ? 'You are' : 'You are all'} on the going list now.`;
-      await postChannelMessage(env.DISCORD_BOT_TOKEN, event.discord_channel_id, line, { parse: [], users: group.map((r) => r.discord_id) }, SUPPRESS_EMBEDS);
+    if (event && env.DISCORD_BOT_TOKEN) {
+      // A private message first; the event's channel gets a mention as well.
+      for (const row of group) {
+        await dmUser(env.DISCORD_BOT_TOKEN, row.discord_id, `🎟️ A seat opened up: you're in for **${safe(event.title)}** (${formatHelsinkiRange(event.starts_at, event.ends_at)}). See you there!`);
+      }
+      if (event.discord_channel_id) {
+        const mentions = group.map((r) => `<@${r.discord_id}>`).join(' ');
+        const line = `🎟️ A seat opened up: ${mentions}, you're in for **${safe(event.title)}**! ${group.length === 1 ? 'You are' : 'You are all'} on the going list now.`;
+        await postChannelMessage(env.DISCORD_BOT_TOKEN, event.discord_channel_id, line, { parse: [], users: group.map((r) => r.discord_id) }, SUPPRESS_EMBEDS);
+      }
     }
     await markPromotionsAnnounced(db, group.map((r) => r.id), now);
     await syncEventRole(db, env, eventId, now);

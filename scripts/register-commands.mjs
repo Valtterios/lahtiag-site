@@ -92,6 +92,11 @@ const commands = [
     name: 'membership',
     description: 'Your LahtiAG membership status (only you see the answer)',
   },
+  { name: 'roll', description: 'Roll dice', options: [{ type: INTEGER, name: 'sides', description: 'Sides (default 6)', required: false, min_value: 2, max_value: 1000 }, { type: INTEGER, name: 'count', description: 'How many dice (default 1)', required: false, min_value: 1, max_value: 10 }] },
+  { name: 'coin', description: 'Flip a coin' },
+  { name: 'pick', description: 'Let the bot choose', options: [{ type: STRING, name: 'options', description: 'Options, separated by commas', required: true }] },
+  { name: 'next', description: 'The next LahtiAG events' },
+  { name: 'champion', description: 'Who holds the latest tournament title' },
   {
     name: 'profile',
     description: 'Your LahtiAG stats card: events, tournaments, wins (everyone sees it)',

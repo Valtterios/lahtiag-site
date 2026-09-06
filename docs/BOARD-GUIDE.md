@@ -177,6 +177,12 @@ puts it on the page and on Discord.
 - **Scheduled news.** Save a news post with a publish date and time and
   it goes out by itself, to the site and Discord. Handy for general
   meeting notices written ahead.
+- **The bot in Discord.** Announcements carry I'm going, Maybe and
+  Interested buttons; a click signs up under the same rules as the site.
+  People get a private message when put in a team or let in from a
+  waitlist. Mondays at nine the bot posts the week's digest in general;
+  winners get the champion role; `/next`, `/champion`, `/roll`, `/coin`
+  and `/pick` are there for fun.
 - **Your stats.** The membership page shows your events, tournaments and
   wins, with a card; `/profile` in Discord posts the card for everyone.
   A tick there puts you on the public leaderboard on the history page.
