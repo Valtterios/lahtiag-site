@@ -1,13 +1,14 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { adminCreateTeam, autoTeamLoosePlayers, RuleError } from '../../../lib/db';
-import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
+import { adminCreateTeam, autoTeamLoosePlayers, renameEventTeam, RuleError } from '../../../lib/db';
+import { syncTeamVoiceChannelsInBackground, renameTeamVoiceChannel } from '../../../lib/event-discord';
+import { later, refreshLiveBracket } from '../../../lib/event-channel';
 
 // Board: make an empty team to assign people to, or group everyone
 // without a team into teams of the event's size.
 
-export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
+export const POST: APIRoute = async ({ request, params, redirect, locals, url }) => {
   const id = Number(params.id);
   const back = `/events/${id}`;
   const admin = await requireAdmin(request, env);
@@ -16,6 +17,16 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf`, 303);
   const now = Math.floor(Date.now() / 1000);
   try {
+    if (form.get('action') === 'rename') {
+      const teamId = Number(form.get('team_id'));
+      const name = String(form.get('name') ?? '');
+      if (!Number.isInteger(teamId)) return redirect(`${back}?err=bad_input`, 303);
+      await renameEventTeam(env.DB, id, teamId, name);
+      // The voice channel and the live bracket carry the new name.
+      later(locals.cfContext, renameTeamVoiceChannel(env.DB, env, id, teamId, name));
+      later(locals.cfContext, refreshLiveBracket(env.DB, env, id, url.origin, now));
+      return redirect(`${back}?ok=team_renamed`, 303);
+    }
     if (form.get('action') === 'auto') {
       await autoTeamLoosePlayers(env.DB, id, now);
       syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, now);

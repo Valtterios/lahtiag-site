@@ -544,6 +544,22 @@ a:hover {
   margin: 0 0 2rem;
 }
 
+/* The board's seeding of a draft bracket: one row per first-round match. */
+.seeding {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.seeding-match {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.seeding-match select {
+  min-width: 12rem;
+}
+
 /* The Publish card's Discord choice, and the same choice in Board tools. */
 .publish-form {
   display: grid;

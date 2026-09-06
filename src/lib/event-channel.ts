@@ -169,7 +169,7 @@ export async function refreshLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKE
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return;
   const event = await getEvent(db, eventId);
-  if (!event) return;
+  if (!event || event.bracket_live_at === null) return; // a draft stays on the site
   const channelId = await bracketChannel(db, event);
   if (!channelId) return;
   const matches = await getBracket(db, eventId);
@@ -245,7 +245,7 @@ export async function postBracketOut(db: D1Database, env: { DISCORD_BOT_TOKEN?: 
   const matches = await getBracket(db, eventId);
   if (matches.length === 0) return;
   const event = await getEvent(db, eventId);
-  if (!event) return;
+  if (!event || event.bracket_live_at === null) return;
   const names = await participantNames(db, eventId);
   const now = Math.floor(Date.now() / 1000);
   const picture = (await pictureBelongsInTalk(db, event)) ? await bracketPicture(event, matches, names, now) : undefined;
@@ -254,6 +254,7 @@ export async function postBracketOut(db: D1Database, env: { DISCORD_BOT_TOKEN?: 
 }
 
 export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, round: number, slot: number): Promise<void> {
+  if ((await getEvent(db, eventId))?.bracket_live_at == null) return; // results on a draft stay quiet
   const matches = await getBracket(db, eventId);
   const names = await participantNames(db, eventId);
   const story = describeResult(matches, round, slot, names);
@@ -268,6 +269,7 @@ export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: stri
 }
 
 export async function postRevert(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, round: number, slot: number): Promise<void> {
+  if ((await getEvent(db, eventId))?.bracket_live_at == null) return;
   const matches = await getBracket(db, eventId);
   const match = matches.find((m) => m.round === round && m.slot === slot);
   if (!match || match.side_a === null || match.side_b === null) return;

@@ -14,7 +14,11 @@ if (!event) {
 
 const session = await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
-const matches = event ? await getBracket(env.DB, event.id) : [];
+// A generated bracket is a draft the board seeds first; others see it
+// once it is live.
+const stored = event ? await getBracket(env.DB, event.id) : [];
+const draftBracket = event !== null && stored.length > 0 && event.bracket_live_at === null;
+const matches = session?.isAdmin || !draftBracket ? stored : [];
 const signups = event ? await listSignups(env.DB, event.id) : [];
 const eventTeams = event?.team_size != null ? await listEventTeams(env.DB, event.id) : [];
 
@@ -64,13 +68,27 @@ const final = matches.find((m) => m.round === totalRounds);
 const champion = final?.winner ? nameOf(final.winner) : null;
 
 const FLASH: Record<string, string> = {
-  bad_input: 'That result could not be recorded.',
-  missing: 'No such match.',
+  bad_input: "That didn't go through: a substitute must be on the roster and not in the bracket yet.",
+  missing: 'No such match or participant.',
+  bad_seeding: 'That seeding could not be saved: every participant exactly once, and the same number of byes.',
+  bracket_live: 'The bracket is live; regenerate to start over with a new draft.',
   forbidden: 'That needs the admin role in Discord.',
   discord_down: "Discord didn't answer while re-checking your role. Try again.",
   csrf: 'The form was stale. Try again.',
 };
-const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
+const OK: Record<string, string> = {
+  drafted: 'Bracket drawn as a draft. Only the board sees it: rearrange round one below if you like, then go live.',
+  seeded: 'Seeding saved.',
+  live: "The bracket is live for everyone and posted to the event's Discord channel.",
+  replaced: 'Substitute in place.',
+};
+const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
+// For the board's seeding and substitute forms.
+const roundOne = matches.filter((m) => m.round === 1);
+const drawKeys = roundOne.flatMap((m) => [m.side_a, m.side_b]).filter((k): k is string => k !== null);
+const inDraw = new Set(matches.flatMap((m) => [m.side_a, m.side_b, m.winner]).filter((k): k is string => k !== null));
+const poolKeys = event?.team_size != null ? eventTeams.map((t) => `t:${t.id}`) : signups.filter((s) => s.status === 'yes').map((s) => `u:${s.discord_id}`);
+const benchKeys = poolKeys.filter((k) => !inDraw.has(k));
 ---
 <Base
   title={event ? `${event.title}: bracket` : 'Event not found'}
@@ -112,9 +130,9 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
 
       {matches.length === 0 ? (
         <p class="app-empty">
-          No bracket yet. {session?.isAdmin
-            ? 'Generate one from the event page once signups are in.'
-            : 'It appears here once the organizers generate it.'}
+          {draftBracket
+            ? 'The organizers are finalizing the bracket. It appears here shortly.'
+            : <>No bracket yet. {session?.isAdmin ? 'Generate one from the event page once signups are in.' : 'It appears here once the organizers generate it.'}</>}
         </p>
       ) : (
         <div class="bracket-scroll">
@@ -182,16 +200,75 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
 
       {session?.isAdmin && matches.length > 0 && (
         <section class="admin-panel">
-          <h2>Admin</h2>
-          <p class="event-meta">
-            Click W on a side to record the winner, or ↺ on the recorded winner
-            to revert the result. Changing or reverting an earlier result
-            clears everything that followed from it.
-          </p>
+          <h2>Admin{draftBracket && <> · <span class="status-badge status-muted">Draft</span></>}</h2>
+          {draftBracket ? (
+            <>
+              <p class="event-meta">
+                Only the board sees this draw. Rearrange round one below (a bye is an empty second side), save, and
+                press Go live: everyone sees it and the event's Discord channel gets it.
+              </p>
+              <form method="post" action={`/events/${event.id}/bracket-action`} class="seeding">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="action" value="seed" />
+                {roundOne.map((m) => (
+                  <div class="seeding-match">
+                    <span class="queue-meta">Match {m.slot + 1}</span>
+                    {(['a', 'b'] as const).map((side) => (
+                      <select name={`${side}${m.slot}`} aria-label={`Match ${m.slot + 1}, side ${side.toUpperCase()}`}>
+                        <option value="">bye</option>
+                        {drawKeys.map((key) => (
+                          <option value={key} selected={(side === 'a' ? m.side_a : m.side_b) === key}>{nameOf(key)?.name ?? 'Unknown'}</option>
+                        ))}
+                      </select>
+                    ))}
+                  </div>
+                ))}
+                <div class="entry-actions">
+                  <button class="btn btn-ghost" type="submit">Save seeding</button>
+                </div>
+              </form>
+              <form method="post" action={`/events/${event.id}/bracket-action`}>
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="action" value="live" />
+                <button class="btn btn-cta" type="submit" data-confirm="Go live? Everyone sees the bracket and it is posted to the event's Discord channel.">Go live</button>
+              </form>
+            </>
+          ) : (
+            <p class="event-meta">
+              Click W on a side to record the winner, or ↺ on the recorded winner
+              to revert the result. Changing or reverting an earlier result
+              clears everything that followed from it.
+            </p>
+          )}
+          <h3>Substitute</h3>
+          {benchKeys.length === 0 ? (
+            <p class="event-meta">
+              Everyone on the roster is in the draw. Add the substitute first ({event.team_size != null ? 'a team under Manage participants' : 'a walk-in, or their own signup'}), then pick them here.
+            </p>
+          ) : (
+            <form method="post" action={`/events/${event.id}/bracket-action`} class="participant-row">
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="action" value="replace" />
+              <label>
+                Out
+                <select name="from">
+                  {drawKeys.map((key) => <option value={key}>{nameOf(key)?.name ?? 'Unknown'}</option>)}
+                </select>
+              </label>
+              <label>
+                In
+                <select name="to">
+                  {benchKeys.map((key) => <option value={key}>{nameOf(key)?.name ?? 'Unknown'}</option>)}
+                </select>
+              </label>
+              <button class="btn btn-ghost btn-sm" type="submit">Replace</button>
+            </form>
+          )}
+          <p class="event-meta">A substitute takes over the place and any results; team names change under Manage participants on the event page.</p>
           <form method="post" action={`/events/${event.id}/bracket-action`}>
             <input type="hidden" name="csrf" value={csrf} />
             <input type="hidden" name="action" value="regenerate" />
-            <button class="btn btn-ghost" type="submit">
+            <button class="btn btn-ghost" type="submit" data-confirm="Redraw the bracket from scratch? Results are lost and it becomes a draft again.">
               Regenerate bracket (new random seeding, results reset)
             </button>
           </form>

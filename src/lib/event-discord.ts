@@ -517,6 +517,17 @@ export function syncTeamVoiceChannelsInBackground(
   ctx?.waitUntil(createTeamVoiceChannels(db, env, eventId, now).catch(() => {}));
 }
 
+// A renamed team's voice channel follows, best effort.
+export async function renameTeamVoiceChannel(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, teamId: number, name: string): Promise<void> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return;
+  const row = await db
+    .prepare("SELECT channel_id FROM event_discord_channels WHERE event_id = ?1 AND kind = 'team' AND event_team_id = ?2")
+    .bind(eventId, teamId)
+    .first<{ channel_id: string }>();
+  if (row) await updateChannel(token, row.channel_id, { name: name.trim().slice(0, 100) || `team-${teamId}` });
+}
+
 // Delete in Discord everything the bot made for the event: the recorded
 // channels, the lone channel of an older event, the category, the role,
 // and the scheduled event when asked (the site's delete). Best effort;

@@ -74,8 +74,11 @@ the bottom right lets you view a page as a member or a visitor would.
 - **Questions** (T-shirt size, diet, team preference) are asked when
   someone signs up or buys, per ticket, and come out in the exports.
 - **Team events.** Set a team size; people form teams, or the board makes
-  teams and groups loose players under Manage participants. Generate the
-  bracket from Board tools; results are recorded there too.
+  teams, renames them and groups loose players under Manage participants.
+  Generate the bracket from Board tools: it starts as a draft only the
+  board sees, the seeding can be rearranged on the bracket page, and Go
+  live shows it to everyone. Substitutes are swapped in on the bracket
+  page; results are recorded there or from the Discord panel.
 - **On Discord.** Publishing puts the event on Discord's event list
   (cover, blurb, place, link) and asks what else it gets: a role with
   one channel under Events (the usual), or for a big event its own

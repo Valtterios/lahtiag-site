@@ -7,12 +7,12 @@ import { formatHelsinki } from '../../../lib/time';
 
 // The bracket as a picture, the same one the bot posts: the link preview
 // of the bracket page, and handy for a screen. Public like the bracket
-// page; a draft's is not served.
+// page; a draft event's, or a draft bracket's, is not served.
 
 export const GET: APIRoute = async ({ params }) => {
   const id = Number(params.id);
   const event = Number.isInteger(id) ? await getEvent(env.DB, id) : null;
-  const matches = event && event.published_at !== null ? await getBracket(env.DB, id) : [];
+  const matches = event && event.published_at !== null && event.bracket_live_at !== null ? await getBracket(env.DB, id) : [];
   if (!event || matches.length === 0) return new Response('no bracket', { status: 404, headers: { 'cache-control': 'no-store' } });
   const png = await bracketPng({
     matches,

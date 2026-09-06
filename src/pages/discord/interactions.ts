@@ -12,6 +12,7 @@ import {
   createAnnouncement,
   createEvent,
   generateBracket,
+  goLiveBracket,
   getBracket,
   listEventTeams,
   listSignups,
@@ -29,7 +30,7 @@ import {
 } from '../../lib/db';
 import { formatHelsinki, formatHelsinkiDate, helsinkiToUnix } from '../../lib/time';
 import { syncScheduledEvent, setUpEventDiscord } from '../../lib/event-discord';
-import { participantNames, postSignups, postBracketOut, postResult, postRevert, postEventLine, cancelLine, screenLine } from '../../lib/event-channel';
+import { participantNames, postSignups, postBracketOut, postResult, postRevert, postEventLine, cancelLine, screenLine, dropLiveBracket } from '../../lib/event-channel';
 import { MEMBER_TYPE_LABELS } from '../../lib/register';
 import { DISCORD_GUILD_ID } from '../../lib/config';
 
@@ -257,6 +258,7 @@ function categoryPanel(category: string): { content: string; components: unknown
           type: 1,
           components: [
             { type: 2, style: 2, label: 'Generate bracket', custom_id: 't:pick:bracket', emoji: { id: '1544775271486586890', name: 'lag_bracket' } },
+            { type: 2, style: 1, label: 'Go live', custom_id: 't:pick:live', emoji: { name: '🚀' } },
             { type: 2, style: 3, label: 'Record winner', custom_id: 't:pick:winner', emoji: { id: '1544775246429556808', name: 'lag_trophy' } },
             { type: 2, style: 2, label: 'Revert result', custom_id: 't:pick:undo', emoji: { name: '↩️' } },
             back,
@@ -363,7 +365,7 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
         return;
       }
       const actionLabel =
-        action === 'winner' ? 'record a winner for' : action === 'undo' ? 'revert a result on' : action;
+        action === 'winner' ? 'record a winner for' : action === 'undo' ? 'revert a result on' : action === 'live' ? 'put the bracket live for' : action;
       await edit(`Pick the event to **${actionLabel}**:`, [
         {
           type: 1,
@@ -401,8 +403,12 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
       } else if (action === 'bracket') {
         const redraw = (await getBracket(env.DB, eventId)).length > 0;
         await generateBracket(env.DB, eventId);
-        await postBracketOut(env.DB, env, eventId, origin, redraw);
-        await edit(`Bracket generated: ${origin}/events/${eventId}/bracket`);
+        if (redraw) await dropLiveBracket(env.DB, env, eventId);
+        await edit(`Bracket drafted; only the board sees it. Check the seeding on the site, then **Go live**: ${origin}/events/${eventId}/bracket`);
+      } else if (action === 'live') {
+        const fresh = await goLiveBracket(env.DB, eventId, now);
+        if (fresh) await postBracketOut(env.DB, env, eventId, origin, false);
+        await edit(fresh ? `The bracket is live: ${origin}/events/${eventId}/bracket` : `The bracket was already live: ${origin}/events/${eventId}/bracket`);
       } else if (action === 'winner') {
         // Step 3: every ready, undecided match offers both possible winners.
         const names = await participantNames(env.DB, eventId);
@@ -701,8 +707,8 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
       const id = Number(opts.get('event'));
       const redraw = (await getBracket(env.DB, id)).length > 0;
       await generateBracket(env.DB, id);
-      await postBracketOut(env.DB, env, id, origin, redraw);
-      await reply(`Bracket generated: ${origin}/events/${id}/bracket`);
+      if (redraw) await dropLiveBracket(env.DB, env, id);
+      await reply(`Bracket drafted; only the board sees it. Check the seeding on the site, then Go live (panel or site): ${origin}/events/${id}/bracket`);
     } else if (name === 'bracket win') {
       const id = Number(opts.get('event'));
       const who = String(opts.get('name') ?? '').trim().toLowerCase();

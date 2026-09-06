@@ -71,7 +71,11 @@ returns to the categories):
 2. Members sign up (and create/join teams) on the event page.
 3. **🔒 Close signups** (Event) when the field is set.
 4. **🎲 Generate bracket** (Bracket) — random seeding, byes handled
-   automatically. The same button re-seeds from scratch if needed.
+   automatically. The draw is a **draft** only the board sees: on the
+   site's bracket page, rearrange round one if you want (a bye is an
+   empty second side), save, then **🚀 Go live** (panel or site), which
+   shows it to everyone and posts it to the event's channel. The same
+   Generate button re-draws from scratch, back to a draft.
 5. Put the bracket on the venue screen: open the event's bracket page as an
    admin, click **Open presenter mode**, fullscreen it (F11). It scales to
    fill the display and refreshes itself every 10 seconds. The direct URL is
@@ -82,6 +86,11 @@ returns to the categories):
    **↩️ Revert result** undoes a recorded win: the match becomes undecided
    again and everything that followed from it is cleared. On the website
    the ↺ button on the recorded winner does the same.
+   A **substitute** (someone dropped out, a walk-in stepped in) is done
+   on the bracket page: add them to the roster first, then Out/In under
+   Substitute; they take over the place and any results. Teams are
+   renamed under Manage participants on the event page, and the name
+   carries to the bracket, the pictures and the team's voice channel.
 7. **💬 Screen message** (Announce & screen) puts a one-line banner on the
    venue screen ("Finals in 5 minutes!"); submit it empty to clear.
 8. **📣 Announce** publishes to the site's News page and the Discord channel

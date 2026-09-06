@@ -171,6 +171,7 @@ const OK: Record<string, string> = {
   published: 'Published and posted on Discord.',
   team_saved: 'Team created. Put people in it with the team pickers below.',
   grouped: 'Players without a team were grouped into teams.',
+  team_renamed: 'Team renamed; its voice channel and the bracket follow.',
   reinstated: 'The event is back on. The Discord cancellation line was removed.',
   released: 'Released. Nothing was charged.',
   added: 'Added to your basket.',
@@ -642,6 +643,9 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 {hasBracket ? 'Regenerate bracket' : 'Generate bracket'}
               </button>
             </form>
+            {hasBracket && event.bracket_live_at === null && (
+              <a class="btn btn-cta" href={`/events/${event.id}/bracket`}>Draft bracket: seed and go live</a>
+            )}
             <form method="post" action={`/events/${event.id}/cancel`}>
               <input type="hidden" name="csrf" value={csrf} />
               <button class="btn btn-ghost" type="submit" data-confirm="Cancel this event? It stays listed as cancelled and can be reinstated.">Cancel this event</button>
@@ -917,6 +921,15 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                   <input type="hidden" name="action" value="auto" />
                   <button class="btn btn-ghost btn-sm" type="submit">Group players without a team</button>
                 </form>
+                {eventTeams.map((team) => (
+                  <form method="post" action={`/events/${event.id}/admin-team`} class="participant-row">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="rename" />
+                    <input type="hidden" name="team_id" value={team.id} />
+                    <label>Rename <input name="name" required maxlength="40" value={team.name} /></label>
+                    <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+                  </form>
+                ))}
               </div>
             )}
             {signups.length > 0 && (
