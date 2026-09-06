@@ -222,6 +222,11 @@ the bottom right lets you view a page as a member or a visitor would.
 
 *After the final: the champion banner; W records a winner, ↺ on a recorded winner reverts that result.*
 
+![The /board panel in Discord](images/discord/board-panel.png)
+
+*`/board` in Discord: Event, Bracket and Announce & screen open the buttons; Whitelist, Register and News link to the site. Only the person who typed it sees the panel.*
+
+
 ![The Hall of Fame](images/site/history-hall.png)
 
 *The history page: the Hall of Fame with the final bracket picture, and the leaderboard.*

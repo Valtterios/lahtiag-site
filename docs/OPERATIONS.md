@@ -65,6 +65,11 @@ see the panel). It opens on three categories — **Event**, **Bracket**, and
 **Announce & screen** — and each button below lives in one of them (Back
 returns to the categories):
 
+![The /board panel in Discord](images/discord/board-panel.png)
+
+*`/board` in Discord: Event, Bracket and Announce & screen open the buttons; Whitelist, Register and News link to the site. Only the person who typed it sees the panel.*
+
+
 1. **📅 Create event** (Event) — fill the form. A team size makes it a
    tournament-style event where members form their own teams on the site;
    empty means individual signups. The announcement posts itself to the
