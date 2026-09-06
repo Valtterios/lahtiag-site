@@ -85,20 +85,74 @@ export function dashedUuid(hex: string): string {
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+// Three places that answer "which account has this name": Mojang's old
+// API first, its newer services endpoint, then PlayerDB. Cloudflare's
+// shared addresses get refused or rate-limited by Mojang at times, so a
+// refusal moves on to the next; only a clear "no such name" is final.
+interface Lookup {
+  source: string;
+  url: (name: string) => string;
+  // The raw id (32 hex) and the exact name, null for "no such account".
+  parse: (data: unknown, status: number) => { id: string; name: string } | null | 'down';
+}
+
+const plain = (data: unknown): { id: string; name: string } | null | 'down' => {
+  const d = data as { id?: string; name?: string; errorMessage?: string } | null;
+  if (d && typeof d.id === 'string' && d.id.length === 32 && typeof d.name === 'string') return { id: d.id, name: d.name };
+  if (d && d.errorMessage) return null;
+  return 'down';
+};
+
+const LOOKUPS: Lookup[] = [
+  { source: 'mojang', url: (n) => `https://api.mojang.com/users/profiles/minecraft/${n}`, parse: plain },
+  { source: 'minecraftservices', url: (n) => `https://api.minecraftservices.com/minecraft/profile/lookup/name/${n}`, parse: plain },
+  {
+    source: 'playerdb',
+    url: (n) => `https://playerdb.co/api/player/minecraft/${n}`,
+    parse: (data) => {
+      const d = data as { success?: boolean; code?: string; data?: { player?: { raw_id?: string; username?: string } } } | null;
+      const p = d?.data?.player;
+      if (d?.success && p && typeof p.raw_id === 'string' && p.raw_id.length === 32 && typeof p.username === 'string') return { id: p.raw_id, name: p.username };
+      if (d && d.success === false && /invalid|not.?found/i.test(d.code ?? '')) return null;
+      return 'down';
+    },
+  },
+];
+
 export async function lookupMojang(name: string): Promise<MojangProfile | null> {
-  let response: Response;
-  try {
-    response = await fetch(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(name)}`, {
-      headers: { accept: 'application/json', 'user-agent': 'lahtiag.fi whitelist (+https://lahtiag.fi)' },
-    });
-  } catch {
-    throw new RuleError('mojang_down', "Mojang didn't answer. Try again in a minute.");
+  for (const lookup of LOOKUPS) {
+    let response: Response;
+    try {
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), 6000);
+      response = await fetch(lookup.url(encodeURIComponent(name)), {
+        headers: { accept: 'application/json', 'user-agent': 'lahtiag.fi whitelist (+https://lahtiag.fi)' },
+        signal: abort.signal,
+      });
+      clearTimeout(timer);
+    } catch (error) {
+      console.log(`minecraft lookup: ${lookup.source} unreachable (${error instanceof Error ? error.message : 'error'})`);
+      continue;
+    }
+    if (response.status === 404 || response.status === 204) return null;
+    if (!response.ok) {
+      console.log(`minecraft lookup: ${lookup.source} answered ${response.status}`);
+      continue;
+    }
+    let parsed: ReturnType<Lookup['parse']>;
+    try {
+      parsed = lookup.parse(await response.json(), response.status);
+    } catch {
+      parsed = 'down';
+    }
+    if (parsed === 'down') {
+      console.log(`minecraft lookup: ${lookup.source} answered oddly`);
+      continue;
+    }
+    if (parsed === null) return null;
+    return { uuid: dashedUuid(parsed.id), name: parsed.name };
   }
-  if (response.status === 404 || response.status === 204) return null;
-  if (!response.ok) throw new RuleError('mojang_down', "Mojang didn't answer. Try again in a minute.");
-  const data = (await response.json()) as { id?: string; name?: string };
-  if (!data.id || data.id.length !== 32 || !data.name) return null;
-  return { uuid: dashedUuid(data.id), name: data.name };
+  throw new RuleError('mojang_down', "Mojang didn't answer. Try again in a minute.");
 }
 
 async function resolveName(raw: string, resolve: Resolver): Promise<MojangProfile> {
