@@ -200,10 +200,10 @@ message too.
 events attended, tournaments played and won, with a card picture drawn
 by the site. In Discord, `/profile` posts the card for everyone to see
 (`/profile user:@someone` for another member's). The command is
-registered with `scripts/register-commands.mjs` like the others. The card also carries the season so far, `seasonCardLine` in
-`src/lib/profile-card.ts` (events, messages, voice, Minecraft), unless the
-member has hidden themselves from the leaderboard: the one opt-out covers
-both.
+registered with `scripts/register-commands.mjs` like the others. The card also carries the season so far as a second row of tiles
+(`src/lib/profile-card.ts`: events, messages, voice, Minecraft; a dash on
+Minecraft when no name is linked), unless the member has hidden themselves
+from the leaderboard: the one opt-out covers both.
 
 **Backups.** D1 keeps thirty days of point-in-time history on its own
 (`npx wrangler d1 time-travel info lahtiag` shows the current bookmark;

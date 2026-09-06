@@ -14,16 +14,15 @@ const GRAY = 0x868686;
 const BG = 0xf5f5f5;
 const WHITE = 0xffffff;
 const W = 900;
-const H = 420;
+const H = 536;
 
 
-// The season line is left off when the member has hidden themselves
-// (the leaderboard opt-out), or when the card is drawn without one.
-export function seasonCardLine(season: SeasonSummary): string {
-  const parts = [`${season.events} events`, `${season.messages} messages`, `${voiceLabel(season.voice_minutes)} in voice`];
-  const played = season.playtime.reduce((sum, p) => sum + p.minutes, 0);
-  if (season.minecraft_name && played > 0) parts.push(`Minecraft ${voiceLabel(played)}`);
-  return parts.join(' / ');
+// The card font has no dot or dash, and a tile is narrow: hours to one
+// decimal, minutes under an hour, in the size that fits.
+export function shortDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = minutes / 60;
+  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} h`;
 }
 
 export async function profileCardPng(name: string, stats: MemberStats, season: SeasonSummary | null = null): Promise<Uint8Array> {
@@ -36,7 +35,7 @@ export async function profileCardPng(name: string, stats: MemberStats, season: S
   const since = stats.member_since !== null ? `Member since ${formatHelsinkiDate(stats.member_since)}` : 'Not a member yet';
   c.text(40, 110, since, WHITE, 's');
 
-  // Three tiles.
+  // Three tiles: all time.
   const tiles: [string, number][] = [
     ['EVENTS', stats.attended],
     ['TOURNAMENTS', stats.tournaments],
@@ -47,16 +46,33 @@ export async function profileCardPng(name: string, stats: MemberStats, season: S
   const x0 = 40;
   tiles.forEach(([label, value], i) => {
     const x = x0 + i * (tileW + gap);
-    c.rect(x, 178, tileW, 118, WHITE);
-    c.rect(x, 178, 6, 118, i === 2 && value > 0 ? YELLOW : BLUE);
-    c.text(x + 24, 186, String(value), INK, 'xl');
-    c.text(x + 24, 268, label, GRAY, 's');
+    c.rect(x, 178, tileW, 150, WHITE);
+    c.rect(x, 178, 6, 150, i === 2 && value > 0 ? YELLOW : BLUE);
+    c.text(x + 24, 188, String(value), INK, 'xl');
+    c.text(x + 24, 288, label, GRAY, 's');
   });
 
-  // The season so far, under the tiles.
+  // Four smaller tiles: the season so far. Left off when the member has
+  // hidden themselves (the leaderboard opt-out) or the card has no season.
   if (season) {
-    c.text(40, 314, `SEASON ${season.label.replace('\u2013', '-')}`, GRAY, 's');
-    c.text(40, 338, Canvas.fit(seasonCardLine(season), W - 80), INK, 's');
+    c.text(40, 350, `SEASON ${season.label.replace('\u2013', '-')}`, GRAY, 's');
+    const played = season.playtime.reduce((sum, p) => sum + p.minutes, 0);
+    const small: [string, string][] = [
+      ['EVENTS', String(season.events)],
+      ['MESSAGES', String(season.messages)],
+      ['IN VOICE', shortDuration(season.voice_minutes)],
+      ['MINECRAFT', season.minecraft_name ? shortDuration(played) : '-'],
+    ];
+    const smallW = 193;
+    const smallGap = 16;
+    small.forEach(([label, value], i) => {
+      const x = x0 + i * (smallW + smallGap);
+      c.rect(x, 384, smallW, 96, WHITE);
+      c.rect(x, 384, 6, 96, i === 3 && played > 0 ? YELLOW : BLUE);
+      const size = Canvas.textWidth(value, 'l') <= smallW - 40 ? 'l' : 's';
+      c.text(x + 22, size === 'l' ? 392 : 402, value, INK, size);
+      c.text(x + 22, 446, label, GRAY, 's');
+    });
   }
 
   // Footer: the last win, or the first event, and the site.
@@ -66,7 +82,7 @@ export async function profileCardPng(name: string, stats: MemberStats, season: S
       ? `First event: ${formatHelsinkiDate(stats.first_event_at)}`
       : 'No events yet. See you at the next one!';
   const siteW = Canvas.textWidth('lahtiag.fi');
-  c.text(40, 380, Canvas.fit(foot, W - 80 - siteW - 30), INK, 's');
-  c.text(W - 40 - siteW, 380, 'lahtiag.fi', GRAY, 's');
+  c.text(40, 496, Canvas.fit(foot, W - 80 - siteW - 30), INK, 's');
+  c.text(W - 40 - siteW, 496, 'lahtiag.fi', GRAY, 's');
   return c.png();
 }

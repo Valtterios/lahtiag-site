@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { upsertMember, createEvent, setSignup, generateBracket, getBracket, setBracketWinner, memberStats, createAnnouncement, listDueAnnouncements, publishAnnouncement } from '../src/lib/db';
-import { profileCardPng, seasonCardLine } from '../src/lib/profile-card';
+import { profileCardPng, shortDuration } from '../src/lib/profile-card';
 
 // A member's numbers from what is recorded, the card they make, and
 // news that publishes itself.
@@ -59,10 +59,12 @@ describe('memberStats', () => {
 
 describe('the season on the card', () => {
   const season = { label: '2026\u201327', events: 3, messages: 120, voice_minutes: 260, playtime: [{ server: 'smp', label: 'SMP', minutes: 130 }, { server: 'gtnh', label: 'GT:NH modpack', minutes: 0 }], minecraft_name: 'AinoV' };
-  it('says the season in words the card font has', () => {
-    expect(seasonCardLine(season)).toBe('3 events / 120 messages / 4 h 20 min in voice / Minecraft 2 h 10 min');
-    expect(seasonCardLine({ ...season, minecraft_name: null })).toBe('3 events / 120 messages / 4 h 20 min in voice');
-    expect(seasonCardLine({ ...season, playtime: [] })).toBe('3 events / 120 messages / 4 h 20 min in voice');
+  it('says a duration the way a narrow tile can hold it', () => {
+    expect(shortDuration(0)).toBe('0 min');
+    expect(shortDuration(45)).toBe('45 min');
+    expect(shortDuration(60)).toBe('1 h');
+    expect(shortDuration(130)).toBe('2.2 h');
+    expect(shortDuration(1500)).toBe('25 h');
   });
   it('draws with and without a season', async () => {
     const stats = { attended: 12, tournaments: 4, wins: 1, first_event_at: 1_760_000_000, last_win: null, member_since: null };
