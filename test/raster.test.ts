@@ -28,7 +28,8 @@ describe('Canvas', () => {
     expect(Canvas.fit('a very long name indeed', 60)).toMatch(/\.\.$/);
     expect(drawable('ä')).toBe(true);
     expect(drawable('吴')).toBe(false);
-    expect(cleanText('r-yaaa 吴海湛 ：）')).toBe('r-yaaa');
+    expect(cleanText('r-yaaa 吴海湛 ：）')).toBe('r-yaaa :)');
+    expect(cleanText('! 𝙿𝙻𝚇𝚃 i')).toBe('! PLXT i');
     expect(Canvas.textWidth('吴海湛')).toBe(0);
   });
 

@@ -46,8 +46,9 @@ export function drawable(ch: string): boolean {
   return ch in FONTS.s.glyphs;
 }
 
+// NFKC first: fancy Unicode letters (𝙿𝙻𝚇𝚃, ｆｕｌｌｗｉｄｔｈ) fold to plain ones.
 export function cleanText(text: string): string {
-  return [...text].filter(drawable).join('').replace(/\s+/g, ' ').trim();
+  return [...text.normalize('NFKC')].filter(drawable).join('').replace(/\s+/g, ' ').trim();
 }
 
 function levels(size: FontSize, ch: string): { w: number; px: Uint8Array } {
@@ -107,7 +108,7 @@ export class Canvas {
     const font = FONTS[size];
     const solid = this.index(rgb);
     let cx = x;
-    for (const ch of text) {
+    for (const ch of text.normalize('NFKC')) {
       if (!(ch in font.glyphs)) continue;
       const { w, px: glyph } = levels(size, ch);
       let i = 0;
@@ -129,7 +130,7 @@ export class Canvas {
   static textWidth(text: string, size: FontSize = 's'): number {
     const font = FONTS[size];
     let w = 0;
-    for (const ch of text) w += font.glyphs[ch]?.w ?? 0;
+    for (const ch of text.normalize('NFKC')) w += font.glyphs[ch]?.w ?? 0;
     return w;
   }
 

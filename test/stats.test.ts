@@ -30,8 +30,8 @@ describe('memberStats', () => {
     const runnerUp = winnerB.slice(2);
     expect(await memberStats(db(), champion, later)).toMatchObject({ attended: 1, tournaments: 1, wins: 1, last_win: { title: 'Cup' }, member_since: null });
     expect(await memberStats(db(), runnerUp, later)).toMatchObject({ attended: 1, tournaments: 1, wins: 0, last_win: null });
-    // Before the event happened, nothing counts yet.
-    expect(await memberStats(db(), champion, NOW)).toMatchObject({ attended: 0, tournaments: 0, wins: 0 });
+    // A decided final counts even before the event's date; an undecided future event does not.
+    expect(await memberStats(db(), champion, NOW)).toMatchObject({ attended: 1, tournaments: 1, wins: 1 });
     // A plain signup with no bracket is an event attended, not a tournament.
     const social = await createEvent(db(), { title: 'Social', description: null, starts_at: NOW + 20, capacity: null, created_by: 'host' }, NOW);
     await setSignup(db(), social, champion, 'yes', NOW);

@@ -2401,7 +2401,8 @@ export async function leaderboard(db: D1Database, now: number, limit = 10): Prom
     .prepare(
       `SELECT m.discord_id, m.username, m.avatar_hash,
          (SELECT COUNT(DISTINCT e.id) FROM events e
-          WHERE e.cancelled_at IS NULL AND e.published_at IS NOT NULL AND e.starts_at < ?1
+          WHERE e.cancelled_at IS NULL AND e.published_at IS NOT NULL
+            AND (e.starts_at < ?1 OR EXISTS (SELECT 1 FROM bracket_matches b WHERE b.event_id = e.id AND b.winner IS NOT NULL AND b.round = (SELECT MAX(round) FROM bracket_matches b2 WHERE b2.event_id = e.id)))
             AND (EXISTS (SELECT 1 FROM signups s WHERE s.event_id = e.id AND s.discord_id = m.discord_id AND s.status = 'yes')
               OR EXISTS (SELECT 1 FROM tickets t WHERE t.event_id = e.id AND t.discord_id = m.discord_id AND t.status = 'paid'))) AS attended
        FROM members m WHERE m.leaderboard = 1`,
@@ -2410,7 +2411,6 @@ export async function leaderboard(db: D1Database, now: number, limit = 10): Prom
     .all<Omit<LeaderboardRow, 'wins'>>();
   const winCount = new Map<string, number>();
   for (const result of await listResults(db, 1000)) {
-    if (result.starts_at >= now) continue;
     for (const who of result.avatars) winCount.set(who.discord_id, (winCount.get(who.discord_id) ?? 0) + 1);
   }
   const rows: LeaderboardRow[] = results.map((r) => ({ ...r, wins: winCount.get(r.discord_id) ?? 0 }));
@@ -2455,8 +2455,9 @@ export async function captainRemoveFromTeam(db: D1Database, eventId: number, tea
 
 // --- a member's stats ---------------------------------------------------------------
 // From what is already recorded: events attended (going, or a paid
-// ticket, on past events), tournaments played and won (the bracket, as a
-// player or in a team), and since when they are a member.
+// ticket, on past events, or on any event whose final is decided),
+// tournaments played and won (the bracket, as a player or in a team),
+// and since when they are a member.
 
 export interface MemberStats {
   attended: number;
@@ -2473,7 +2474,8 @@ export async function memberStats(db: D1Database, discordId: string, now: number
       `SELECT e.id, e.title, e.starts_at, e.team_size,
          (SELECT s.event_team_id FROM signups s WHERE s.event_id = e.id AND s.discord_id = ?1) AS team_id
        FROM events e
-       WHERE e.cancelled_at IS NULL AND e.published_at IS NOT NULL AND e.starts_at < ?2
+       WHERE e.cancelled_at IS NULL AND e.published_at IS NOT NULL
+         AND (e.starts_at < ?2 OR EXISTS (SELECT 1 FROM bracket_matches b WHERE b.event_id = e.id AND b.winner IS NOT NULL AND b.round = (SELECT MAX(round) FROM bracket_matches b2 WHERE b2.event_id = e.id)))
          AND (EXISTS (SELECT 1 FROM signups s WHERE s.event_id = e.id AND s.discord_id = ?1 AND s.status = 'yes')
            OR EXISTS (SELECT 1 FROM tickets t WHERE t.event_id = e.id AND t.discord_id = ?1 AND t.status = 'paid'))
        ORDER BY e.starts_at`,
