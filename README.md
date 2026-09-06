@@ -4,7 +4,7 @@ The website of LahtiAG (Lahti Association of Gaming LAG ry), live at
 <https://lahtiag.fi>. Astro on a single Cloudflare Worker with D1: Markdown
 content pages, Discord sign-in, events with individual and team signups,
 tournament brackets with a venue presenter mode, news, an iCal feed, and a
-Discord bot that runs the whole tournament day from a `/tournament` panel.
+Discord bot that runs the whole tournament day from a `/board` panel.
 
 **Start with [docs/OPERATIONS.md](docs/OPERATIONS.md)** — the handbook for
 running the site: hosting tournaments, editing pages, the moving parts,

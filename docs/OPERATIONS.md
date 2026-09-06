@@ -60,7 +60,7 @@ next section.
 
 ## Hosting a tournament, start to finish
 
-Everything can be run from Discord with `/tournament` (admin only, only you
+Everything can be run from Discord with `/board` (admin only, only you
 see the panel). It opens on three categories — **Event**, **Bracket**, and
 **Announce & screen** — and each button below lives in one of them (Back
 returns to the categories):
@@ -252,7 +252,7 @@ channel (the welcome webhook) when the event has none. Never into the
 announcements channel.
 
 **The event list.** When an event is published (or created straight from
-`/tournament`), the bot puts it on Discord's own event list, the "Events"
+`/board`), the bot puts it on Discord's own event list, the "Events"
 entry at the top of the channel list, with the cover picture, the first
 paragraph of the description, the place and the sign-up link. Members can
 mark themselves interested there and Discord reminds them. Edits, a new
@@ -262,7 +262,7 @@ are left alone. An event published before the bot did this has a
 **Create Discord event** button in Board tools → Discord.
 
 **A role and channels.** The Publish card asks what the event gets on
-Discord; events created from `/tournament` get the first option:
+Discord; events created from `/board` get the first option:
 
 - **A role and one channel under Events** (the default). A text channel
   named after the event under an **Events** category the bot creates the
@@ -294,7 +294,7 @@ account and are skipped, and so is anyone who signed up but hasn't joined
 the server yet (they get the role at the next sync after they join).
 
 **The tournament talks in its channel.** Whatever the board does to the
-event, from the site or from `/tournament`, the bot also says in the
+event, from the site or from `/board`, the bot also says in the
 event's discussion channel: signups closed or reopened (with the count),
 the bracket drawn (first-round pairings and who skips ahead, with a ping),
 each recorded result with the winner's next opponent, a reverted result,

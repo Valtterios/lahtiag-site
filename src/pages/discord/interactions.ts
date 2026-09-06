@@ -231,9 +231,9 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     return json({ type: 5 });
   }
 
-  // /tournament renders the interactive control panel: no database work, so
+  // /board renders the interactive control panel: no database work, so
   // it responds directly instead of deferring.
-  if (interaction.type === 2 && interaction.data?.name === 'tournament') {
+  if (interaction.type === 2 && interaction.data?.name === 'board') {
     if (!isAdmin) {
       return refuse('This needs the admin role.');
     }
@@ -610,13 +610,13 @@ async function memberName(env: WorkerEnv, discordId: string): Promise<string | n
   return row?.username ?? null;
 }
 
-// --- /tournament interactive panel -----------------------------------------
+// --- /board interactive panel ----------------------------------------------
 
-// Two levels: /tournament opens the category chooser, a category button
+// Two levels: /board opens the category chooser, a category button
 // swaps the same ephemeral message to that category's actions, Back returns.
 function controlPanel(origin: string): { content: string; components: unknown[] } {
   return {
-    content: '<:lahtiag:1544775220458430565> **Tournament controls**. Pick a category:',
+    content: '<:lahtiag:1544775220458430565> **Board tools**. Pick a category:',
     components: [
       {
         type: 1,

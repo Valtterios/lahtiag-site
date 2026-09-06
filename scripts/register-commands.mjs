@@ -94,8 +94,8 @@ const commands = [
     ],
   },
   {
-    name: 'tournament',
-    description: 'Interactive tournament controls (buttons and menus)',
+    name: 'board',
+    description: 'Board tools: events, brackets, announcements, whitelist, register, news',
   },
   {
     name: 'announce',

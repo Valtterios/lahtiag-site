@@ -955,6 +955,14 @@ a:hover {
 .year-chart {
   margin: 0;
 }
+/* The bars sit in the same white box as the two tables beside them. */
+.year-chart .year-bars,
+.year-chart .queue-meta {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 0.7rem 0.8rem;
+  margin: 0;
+}
 .year-chart figcaption {
   font-family: var(--display);
   font-weight: 600;
@@ -1600,7 +1608,7 @@ html.display-mode,
   padding-bottom: 0;
 }
 
-/* live message from the /tournament panel; presenter-screen only */
+/* live message from the /board panel; presenter-screen only */
 .display-note {
   display: none;
 }
