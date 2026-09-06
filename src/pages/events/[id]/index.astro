@@ -80,7 +80,7 @@ const discordGrants = event && session?.isAdmin && event.discord_role_id ? await
 const eventChannels = event && session?.isAdmin && (event.discord_category_id || event.discord_channel_id) ? await listEventChannels(env.DB, event.id) : [];
 const teamVoiceCount = eventChannels.filter((c) => c.kind === 'team').length;
 const teamsWithoutVoice = event?.discord_category_id ? eventTeams.filter((t) => !eventChannels.some((c) => c.kind === 'team' && c.event_team_id === t.id)).length : 0;
-const archived = Boolean(event?.discord_category_id && !event?.discord_role_id);
+const archived = Boolean(event && !event.discord_role_id && (event.discord_category_id || event.discord_channel_id));
 const hasTicket = myTicket?.status === 'paid';
 const pendingPurchase = event && session ? await pendingPurchaseFor(env.DB, session.discordId, nowSeconds) : null;
 const resume = resumablePurchase(pendingPurchase, nowSeconds);
@@ -797,7 +797,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               <>
                 <p class="event-meta">
                   Archived: the role is gone, so participants no longer see the channels; the board still does{event.discord_channel_id && <>: <a href={channelUrl(event.discord_channel_id)} rel="noopener">open them</a></>}.
-                  Delete everything removes the category with all {eventChannels.length} channels, messages included.
+                  Delete everything removes {event.discord_category_id ? `the category with all ${eventChannels.length} channels` : 'the channel'}, messages included.
                 </p>
                 <div class="signup-bar">
                   <form method="post" action={`/events/${event.id}/discord`}>

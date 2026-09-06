@@ -33,6 +33,7 @@ import {
   PERM_CONNECT,
   type ChannelOverwrite,
   type ScheduledEventInput,
+  type MessageFile,
   type RoleResult,
 } from './discord';
 import { formatHelsinkiRange } from './time';
@@ -626,6 +627,14 @@ export function scheduledEventFields(
     endIso: new Date((event.ends_at ?? event.starts_at + DEFAULT_EVENT_HOURS * 3600) * 1000).toISOString(),
     location: (event.location?.trim() || url).slice(0, 100),
   };
+}
+
+// The cover as a file to attach (the announcement).
+export async function coverFile(db: D1Database, eventId: number): Promise<MessageFile | null> {
+  const cover = await getEventCover(db, eventId);
+  if (!cover || cover.bytes.byteLength === 0) return null;
+  const ext = cover.content_type === 'image/png' ? 'png' : cover.content_type === 'image/webp' ? 'webp' : 'jpg';
+  return { name: `cover.${ext}`, bytes: new Uint8Array(cover.bytes), type: cover.content_type };
 }
 
 // The cover as a data URI for the Discord event's picture.

@@ -724,3 +724,40 @@ export async function editChannelMessageWithFile(
 ): Promise<BotResult<{ id: string }> & { status?: number }> {
   return botUpload(botToken, 'PATCH', `/channels/${channelId}/messages/${messageId}`, { content, allowed_mentions: NO_MENTIONS, flags }, file);
 }
+
+// --- webhook messages with a picture --------------------------------------------
+// The announcement carries the event's cover as an attachment; the link's
+// own preview card is switched off so the picture shows once.
+
+export async function postWebhookWithFile(
+  webhookUrl: string,
+  content: string,
+  file: MessageFile,
+  allowedMentions: { parse: string[]; roles?: string[]; users?: string[] } = NO_MENTIONS,
+  flags = SUPPRESS_EMBEDS,
+): Promise<string | null> {
+  try {
+    const form = new FormData();
+    form.append('payload_json', JSON.stringify({ content, allowed_mentions: allowedMentions, flags, attachments: [{ id: 0, filename: file.name }] }));
+    form.append('files[0]', new Blob([file.bytes as BlobPart], { type: file.type }), file.name);
+    const response = await fetch(`${webhookUrl}?wait=true`, { method: 'POST', body: form });
+    if (!response.ok) return null;
+    const message = (await response.json()) as { id?: string };
+    return message.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Swap the picture on an announcement (a new cover); the text stays.
+export async function editWebhookMessageFile(webhookUrl: string, messageId: string, file: MessageFile): Promise<boolean> {
+  try {
+    const form = new FormData();
+    form.append('payload_json', JSON.stringify({ attachments: [{ id: 0, filename: file.name }], flags: SUPPRESS_EMBEDS }));
+    form.append('files[0]', new Blob([file.bytes as BlobPart], { type: file.type }), file.name);
+    const response = await fetch(`${webhookUrl}/messages/${messageId}`, { method: 'PATCH', body: form });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}

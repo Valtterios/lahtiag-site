@@ -2165,6 +2165,16 @@ export async function markPromotionsAnnounced(db: D1Database, ids: number[], now
   for (const id of ids) await db.prepare('UPDATE waitlist_promotions SET announced_at = ?2 WHERE id = ?1').bind(id, now).run();
 }
 
+// Events whose role is still out although they ended before `before`:
+// the hourly job archives them (src/lib/cron.ts).
+export async function listEndedEventsWithRole(db: D1Database, before: number): Promise<EventWithCounts[]> {
+  const { results } = await db
+    .prepare(`${EVENT_COUNTS} WHERE e.discord_role_id IS NOT NULL AND COALESCE(e.ends_at, e.starts_at) < ?1 ORDER BY e.starts_at`)
+    .bind(before)
+    .all<EventWithCounts>();
+  return results;
+}
+
 // --- my events ---------------------------------------------------------------------
 
 export type MyEventRelation = 'ticket' | 'going' | 'maybe' | 'waitlist' | 'interested';

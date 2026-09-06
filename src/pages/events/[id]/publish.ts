@@ -2,8 +2,8 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { publishEvent, setEventMessageId, RuleError } from '../../../lib/db';
-import { postWebhook, eventAnnouncement } from '../../../lib/discord';
-import { syncScheduledEvent, setUpEventDiscord } from '../../../lib/event-discord';
+import { postWebhook, postWebhookWithFile, eventAnnouncement } from '../../../lib/discord';
+import { syncScheduledEvent, setUpEventDiscord, coverFile } from '../../../lib/event-discord';
 
 // Publish a draft: it lists, takes signups and sells from now on, the
 // announcement goes to Discord (its message id is kept for later edits),
@@ -20,17 +20,17 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
   try {
     const event = await publishEvent(env.DB, id, Math.floor(Date.now() / 1000));
     if (env.DISCORD_WEBHOOK_URL && !event.discord_message_id) {
-      const messageId = await postWebhook(
-        env.DISCORD_WEBHOOK_URL,
-        eventAnnouncement({
-          title: event.title,
-          startsAt: event.starts_at,
-          endsAt: event.ends_at,
-          organizers: event.organizers,
-          teamSize: event.team_size,
-          url: `${url.origin}/events/${id}`,
-        }),
-      );
+      const content = eventAnnouncement({
+        title: event.title,
+        startsAt: event.starts_at,
+        endsAt: event.ends_at,
+        organizers: event.organizers,
+        teamSize: event.team_size,
+        url: `${url.origin}/events/${id}`,
+      });
+      // With a cover, the picture rides along and the link's preview card stays off.
+      const cover = await coverFile(env.DB, id);
+      const messageId = cover ? await postWebhookWithFile(env.DISCORD_WEBHOOK_URL, content, cover) : await postWebhook(env.DISCORD_WEBHOOK_URL, content);
       if (messageId) await setEventMessageId(env.DB, id, messageId);
     }
     const now = Math.floor(Date.now() / 1000);

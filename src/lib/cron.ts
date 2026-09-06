@@ -5,14 +5,15 @@
 // step is recorded on the event so a rerun never repeats it.
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { getEvent, listUpcomingEvents, type EventWithCounts } from './db';
+import { getEvent, listUpcomingEvents, listEndedEventsWithRole, type EventWithCounts } from './db';
 import { postWebhook, NO_MENTIONS } from './discord';
-import { syncInterest } from './event-discord';
+import { syncInterest, archiveEventDiscord } from './event-discord';
 import { announcePromotions, postEventLine } from './event-channel';
 import { formatHelsinki } from './time';
 
 export const REMINDER_WINDOW = 24 * 3600; // the reminder goes out within the last day before the start
 const OPENING_GRACE = 24 * 3600; // an opening older than this is not announced any more
+export const ARCHIVE_AFTER = 7 * 24 * 3600; // a week after the end, the event's Discord role goes
 
 type Env = { DISCORD_BOT_TOKEN?: string; DISCORD_WEBHOOK_URL?: string };
 
@@ -48,11 +49,12 @@ export interface HourlySummary {
   openings: number;
   promotions: number;
   interest: number;
+  archived: number;
 }
 
 export async function runHourly(db: D1Database, env: Env, origin: string, now: number): Promise<HourlySummary> {
   const upcoming = await listUpcomingEvents(db, now, false);
-  const summary: HourlySummary = { reminders: 0, openings: 0, promotions: 0, interest: 0 };
+  const summary: HourlySummary = { reminders: 0, openings: 0, promotions: 0, interest: 0, archived: 0 };
 
   for (const event of dueReminders(upcoming, now)) {
     const url = `${origin}/events/${event.id}`;
@@ -78,6 +80,11 @@ export async function runHourly(db: D1Database, env: Env, origin: string, now: n
     if (!event.discord_event_id) continue;
     const fresh = await getEvent(db, event.id);
     if (fresh && (await syncInterest(db, env, fresh, now))) summary.interest++;
+  }
+
+  // A week after the end: the role goes, the channels stay for the board.
+  for (const event of await listEndedEventsWithRole(db, now - ARCHIVE_AFTER)) {
+    if ((await archiveEventDiscord(db, env, event.id)) !== 'nothing') summary.archived++;
   }
   return summary;
 }

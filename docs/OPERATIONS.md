@@ -124,8 +124,10 @@ into the event's channel with the role pinged (or into the announcements
 channel, without a ping, when the event has no channel); when a "signups
 open at" moment passes it posts "Signups are open" to the announcements
 channel and the event's channel; it tells people let in from a waitlist;
-and it refreshes the Interested counts from Discord. Each step is
-recorded on the event, so nothing is posted twice.
+it refreshes the Interested counts from Discord; and a week after an
+event ends it archives its Discord set on its own (the role goes, the
+channels stay for the board, Delete everything when you're done with
+them). Each step is recorded on the event, so nothing is posted twice.
 
 **Waitlist.** A full event with plain signups, a capacity and no ticket
 types offers "Join the waitlist". Whenever a seat frees (someone leaves
@@ -139,6 +141,11 @@ read back by the bot (at most every two minutes, when someone opens the
 event page) and counted with the site's own ♡ Interested button; each
 person counts once. "Signups open on/at" in the event form holds signups
 and sales until then, so an announced event can collect interest first.
+
+**The announcement.** Publishing posts the announcement to the
+announcements channel with the cover picture attached (when there is
+one) and the link's preview card switched off; a new cover swaps the
+picture on the post.
 
 **The event list.** When an event is published (or created straight from
 `/tournament`), the bot puts it on Discord's own event list, the "Events"
