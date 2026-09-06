@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { updateEvent, getEvent, setSignupsOpenAt, RuleError } from '../../../lib/db';
 import { renameEventDiscord, syncScheduledEvent } from '../../../lib/event-discord';
+import { dropLiveBracket } from '../../../lib/event-channel';
 import { later, postEventLine, changeLine, announcePromotionsInBackground } from '../../../lib/event-channel';
 import { helsinkiToUnix } from '../../../lib/time';
 import { editWebhookMessage, eventAnnouncement } from '../../../lib/discord';
@@ -36,6 +37,8 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
   const membersOnly = form.get('members_only') === 'on';
   const memberSlotsRaw = String(form.get('member_slots') ?? '').trim();
   const memberSlots = memberSlotsRaw ? Number(memberSlotsRaw) : null;
+  const teamSizeRaw = String(form.get('team_size') ?? '').trim();
+  const teamSize = teamSizeRaw === '' ? null : Number(teamSizeRaw);
 
   try {
     const before = await getEvent(env.DB, id);
@@ -50,6 +53,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
       link_url: linkUrl || null,
       members_only: membersOnly,
       member_slots: memberSlots,
+      team_size: teamSize,
     });
     await setSignupsOpenAt(env.DB, id, opensAt);
     // Edit the original Discord announcement in place instead of reposting.
@@ -67,6 +71,8 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
         }),
       );
     }
+    // A changed team size dropped the bracket; its pinned picture goes too.
+    if (before && before.team_size !== event.team_size) await dropLiveBracket(env.DB, env, id);
     // A retitled event renames its Discord role and channel to match.
     if (before && before.title !== event.title && (event.discord_role_id || event.discord_channel_id)) {
       await renameEventDiscord(env, event, url.origin);

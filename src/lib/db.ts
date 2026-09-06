@@ -33,6 +33,7 @@ export class RuleError extends Error {
       | 'needs_ticket'
       | 'ticket_holder'
       | 'too_few'
+  | 'team_size'
   | 'not_captain'
   | 'has_sales'
   | 'not_open'
@@ -304,10 +305,10 @@ export async function publishEvent(db: D1Database, id: number, now: number): Pro
   return (await getEvent(db, id))!;
 }
 
-// Everything except team_size is editable: changing the shape of team
-// signups under existing teams would corrupt them, so that one is fixed at
-// creation. Signups survive edits; a capacity lowered below the current
-// count keeps existing signups and only blocks new ones.
+// Signups survive edits; a capacity lowered below the current count keeps
+// existing signups and only blocks new ones. The team size can change as
+// long as no existing team ends up over it (and cannot be cleared while
+// teams exist); any bracket is dropped, since its shape no longer fits.
 export async function updateEvent(
   db: D1Database,
   id: number,
@@ -322,11 +323,26 @@ export async function updateEvent(
     link_url: string | null;
     members_only?: boolean;
     member_slots?: number | null;
+    team_size?: number | null; // undefined: unchanged
   },
 ): Promise<EventWithCounts> {
   const event = await getEvent(db, id);
   if (!event) throw new RuleError('missing', `No event with id ${id}.`);
   const memberSlots = checkMemberSlots(input.member_slots ?? null, input.capacity);
+  let teamSize = event.team_size;
+  if (input.team_size !== undefined && input.team_size !== event.team_size) {
+    if (input.team_size !== null && (!Number.isInteger(input.team_size) || input.team_size < 1)) {
+      throw new RuleError('bad_input', 'A team size is a positive whole number.');
+    }
+    const biggest = await db
+      .prepare('SELECT COALESCE(MAX(n), 0) AS n FROM (SELECT COUNT(*) AS n FROM signups WHERE event_id = ?1 AND event_team_id IS NOT NULL GROUP BY event_team_id)')
+      .bind(id)
+      .first<{ n: number }>();
+    const teams = await db.prepare('SELECT COUNT(*) AS n FROM event_teams WHERE event_id = ?1').bind(id).first<{ n: number }>();
+    if (input.team_size === null && (teams?.n ?? 0) > 0) throw new RuleError('team_size', 'Disband the teams before making this an individual event.');
+    if (input.team_size !== null && (biggest?.n ?? 0) > input.team_size) throw new RuleError('team_size', 'A team already has more members than that.');
+    teamSize = input.team_size;
+  }
   if (event.cancelled_at !== null) throw new RuleError('cancelled', 'This event is cancelled.');
   if (!input.title.trim()) throw new RuleError('bad_input', 'An event needs a title.');
   checkEventText(input);
@@ -339,7 +355,7 @@ export async function updateEvent(
   await db
     .prepare(
       `UPDATE events SET title = ?2, description = ?3, starts_at = ?4, ends_at = ?5, capacity = ?6, organizers = ?7, link_url = ?8,
-         members_only = ?9, member_slots = ?10, location = ?11
+         members_only = ?9, member_slots = ?10, location = ?11, team_size = ?12
        WHERE id = ?1`,
     )
     .bind(
@@ -354,8 +370,14 @@ export async function updateEvent(
       input.members_only ? 1 : 0,
       memberSlots,
       input.location?.trim() || null,
+      teamSize,
     )
     .run();
+  // A changed team size makes any bracket the wrong shape: it goes, to be redrawn.
+  if (teamSize !== event.team_size) {
+    await deleteBracket(db, id);
+    await db.prepare('UPDATE events SET bracket_live_at = NULL WHERE id = ?1').bind(id).run();
+  }
   // A raised capacity lets the waitlist in.
   await promoteWaitlist(db, id);
   return (await getEvent(db, id))!;

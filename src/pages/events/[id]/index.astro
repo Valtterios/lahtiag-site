@@ -130,7 +130,7 @@ if (event && !draft && event.cancelled_at === null) syncInterestInBackground(Ast
 
 // Flashes from board actions open the (otherwise folded) board tools.
 const DISCORD_OPEN = new Set(['discord_created', 'discord_synced', 'discord_removed', 'discord_upgraded', 'discord_archived', 'discord_team_voice', 'discord_needs_category', 'discord_no_teams', 'discord_event_created', 'discord_event_removed', 'discord_event_skipped', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
-const ADMIN_OPEN = new Set(['cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'photos_added', 'photo_removed', 'photo_missing', 'photo_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
+const ADMIN_OPEN = new Set(['team_size', 'cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'photos_added', 'photo_removed', 'photo_missing', 'photo_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
 const okKey = Astro.url.searchParams.get('ok') ?? '';
 const errKey = Astro.url.searchParams.get('err') ?? '';
 const FLASH: Record<string, string> = {
@@ -143,7 +143,8 @@ const FLASH: Record<string, string> = {
   bad_time: "That date and time didn't parse.",
   signin: 'Sign in with Discord first.',
   csrf: 'The form was stale. Try again.',
-  bad_input: "That didn't save. Check the values: reserved seats can't exceed the capacity, a team name is 1 to 40 characters.",
+  bad_input: "That didn't save. Check the values: reserved seats can't exceed the capacity, a team name is 1 to 40 characters, a team size is a whole number.",
+  team_size: "The team size didn't change: a team already has more members than that, or teams exist and the event can't go individual. Move people first.",
   missing: 'No such team on this event.',
   forbidden: 'That needs the admin role in Discord.',
   discord_down: "Discord didn't answer while re-checking your role. Try again.",
@@ -810,10 +811,12 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               </label>
               <label>Signups open on <input name="open_date" type="date" value={event.signups_open_at !== null ? unixToHelsinkiInputs(event.signups_open_at).date : ''} /></label>
               <label>Signups open at (Helsinki) <input name="open_time" type="time" value={event.signups_open_at !== null ? unixToHelsinkiInputs(event.signups_open_at).time : ''} placeholder="empty = when published" /></label>
+              <label>
+                Team size
+                <input name="team_size" type="number" min="1" value={event.team_size ?? ''} placeholder="empty = individual signups" />
+              </label>
+              <p class="event-meta">A team size makes this a tournament with teams; existing signups become players without a team. It can change as long as no team has more members than the new size. Any bracket is redrawn.</p>
               <label>Description <textarea name="description" rows="3">{event.description ?? ''}</textarea></label>
-              {event.team_size !== null && (
-                <p class="event-meta">Team size ({event.team_size}) can't change once teams exist.</p>
-              )}
               <button class="btn btn-primary" type="submit">Save changes</button>
             </form>
           <form method="post" action={`/events/${event.id}/cover`} enctype="multipart/form-data" class="signup-bar cover-form">

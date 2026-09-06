@@ -559,12 +559,13 @@ a:hover {
 }
 
 /* Event photos: a tight grid, thumbnails cropped square-ish. */
+/* auto-fit: a few photos grow to fill the row, many settle into a grid. */
 .photo-grid {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
   gap: 0.5rem;
 }
 .photo-grid li {

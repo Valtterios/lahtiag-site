@@ -14,6 +14,9 @@ import {
   removeSignup,
   listSignups,
   RuleError,
+  updateEvent,
+  createEventTeam,
+  joinEventTeam,
 } from '../src/lib/db';
 
 // These run against a real (local) D1 with the production migrations
@@ -189,5 +192,23 @@ describe('drafts', () => {
     expect((await listUpcomingEvents(db(), NOW)).map((e) => e.id)).toContain(id);
     await setSignup(db(), id, 'p', 'yes', NOW + 6);
     expect((await publishEvent(db(), id, NOW + 99)).published_at).toBe(NOW + 5);
+  });
+});
+
+describe('updateEvent team size', () => {
+  it('turns a plain event into a team event and back, within what the teams allow', async () => {
+    await wipe();
+    await seedMember('a');
+    await seedMember('b');
+    const eventId = await seedEvent(null);
+    await setSignup(db(), eventId, 'a', 'yes', NOW);
+    const base = { title: 'Solo', description: null, starts_at: NOW + 86400, ends_at: null, capacity: null, organizers: null, link_url: null };
+    expect((await updateEvent(db(), eventId, { ...base, team_size: 2 })).team_size).toBe(2);
+    const team = await createEventTeam(db(), eventId, 'Alpha', 'a', NOW);
+    await joinEventTeam(db(), eventId, team, 'b', NOW);
+    await expect(updateEvent(db(), eventId, { ...base, team_size: 1 })).rejects.toMatchObject({ code: 'team_size' });
+    await expect(updateEvent(db(), eventId, { ...base, team_size: null })).rejects.toMatchObject({ code: 'team_size' });
+    expect((await updateEvent(db(), eventId, { ...base, team_size: 3 })).team_size).toBe(3);
+    expect((await updateEvent(db(), eventId, { ...base })).team_size).toBe(3); // untouched when not given
   });
 });
