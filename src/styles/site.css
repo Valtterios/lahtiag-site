@@ -547,6 +547,22 @@ a:hover {
   margin: 0 0 2rem;
 }
 
+/* The hall of fame: the final bracket under each champion. */
+.results-list li {
+  flex-wrap: wrap;
+}
+.results-picture {
+  flex-basis: 100%;
+  margin-top: 0.4rem;
+}
+.results-picture img {
+  display: block;
+  width: 100%;
+  max-width: 40rem;
+  height: auto;
+  border: 1px solid var(--line);
+}
+
 /* The Interested heart on an event page: a ghost button, blue when on. */
 .btn-heart-on {
   color: var(--blue);

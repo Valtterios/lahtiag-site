@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dueReminders, dueOpenings, reminderLine, openingLine, REMINDER_WINDOW } from '../src/lib/cron';
+import { dueReminders, dueOpenings, dueSalesReminder, reminderLine, openingLine, salesLine, REMINDER_WINDOW } from '../src/lib/cron';
 
 // The hourly job's choices, as pure functions.
 
@@ -41,5 +41,23 @@ describe('lines', () => {
     expect(reminderLine({ title: 'Cup', starts_at: NOW, location: null, yes_count: 9, team_size: 3, teams_count: 3 }, 'u')).toContain('3 teams in.');
     expect(openingLine({ title: 'Cup', starts_at: NOW, interest_count: 5 }, 'u')).toContain("5 people said they're interested.");
     expect(openingLine({ title: 'Cup', starts_at: NOW, interest_count: 0 }, 'u')).not.toContain('interested');
+  });
+});
+
+describe('dueSalesReminder', () => {
+  const ev = { ...base, starts_at: NOW + 86400 * 5, sales_reminder_sent_at: null as number | null };
+  const type = (closes: number | null, quantity: number | null, sold = 0, active = 1) => ({ active, sales_close_at: closes, quantity, sold });
+
+  it('takes the earliest deadline inside a day, with what is left when every type is capped', () => {
+    expect(dueSalesReminder(ev, [type(NOW + 3600, 10, 4), type(NOW + 7200, 5, 5)], NOW)).toEqual({ closesAt: NOW + 3600, left: 6 });
+    expect(dueSalesReminder(ev, [type(NOW + 3600, 10, 4), type(NOW + 7200, null)], NOW)).toEqual({ closesAt: NOW + 3600, left: null });
+    expect(dueSalesReminder(ev, [type(NOW + REMINDER_WINDOW + 1, 10)], NOW)).toBeNull(); // too far
+    expect(dueSalesReminder(ev, [type(NOW - 1, 10)], NOW)).toBeNull(); // closed already
+    expect(dueSalesReminder(ev, [type(null, 10)], NOW)).toBeNull(); // closes at the start: the day-before reminder covers it
+    expect(dueSalesReminder(ev, [type(NOW + 3600, 10, 0, 0)], NOW)).toBeNull(); // retired type
+    expect(dueSalesReminder({ ...ev, sales_reminder_sent_at: NOW - 5 }, [type(NOW + 3600, 10)], NOW)).toBeNull();
+    expect(salesLine({ title: 'Cup' }, NOW + 3600, 6, 'u')).toMatch(/^🎟️ Ticket sales for \*\*Cup\*\* close .*\. 6 left\.\nu$/);
+    expect(salesLine({ title: 'Cup' }, NOW + 3600, 0, 'u')).toContain('Sold out.');
+    expect(salesLine({ title: 'Cup' }, NOW + 3600, null, 'u')).not.toContain('left');
   });
 });

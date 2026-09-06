@@ -84,6 +84,7 @@ export interface EventRow {
   interest_synced_at: number | null; // last time Discord's Interested clicks were read
   reminder_sent_at: number | null; // the hourly job's day-before reminder, once
   open_posted_at: number | null; // the hourly job's "signups are open" post, once
+  sales_reminder_sent_at: number | null; // the hourly job's "sales close tomorrow" line, once
 }
 
 export interface EventWithCounts extends EventRow {
@@ -2174,6 +2175,54 @@ export async function listEndedEventsWithRole(db: D1Database, before: number): P
     .bind(before)
     .all<EventWithCounts>();
   return results;
+}
+
+// --- duplicate an event ---------------------------------------------------------------
+
+// A new draft with the same setup: details, ticket types (sales
+// deadlines dropped), questions and the cover, a week later. Not the
+// roster, not the Discord objects, not the bracket.
+export async function duplicateEvent(db: D1Database, id: number, by: string, now: number): Promise<number> {
+  const source = await getEvent(db, id);
+  if (!source) throw new RuleError('missing', `No event with id ${id}.`);
+  const shift = 7 * 86400;
+  const copy = await createEvent(
+    db,
+    {
+      title: `${source.title} (copy)`.slice(0, 120),
+      description: source.description,
+      starts_at: source.starts_at + shift,
+      ends_at: source.ends_at === null ? null : source.ends_at + shift,
+      capacity: source.capacity,
+      team_size: source.team_size,
+      organizers: source.organizers,
+      location: source.location,
+      link_url: source.link_url,
+      members_only: source.members_only === 1,
+      member_slots: source.member_slots,
+      created_by: by,
+      published: false,
+    },
+    now,
+  );
+  for (const type of await listTicketTypes(db, id)) {
+    if (type.active !== 1) continue;
+    await createTicketType(db, copy, {
+      name: type.name,
+      price_cents: type.price_cents,
+      member_price_cents: type.member_price_cents,
+      members_only: type.members_only === 1,
+      quantity: type.quantity,
+      sales_close_at: null,
+      description: type.description,
+    });
+  }
+  for (const q of await listEventQuestions(db, id)) {
+    await createEventQuestion(db, copy, { label: q.label, kind: q.kind, options: q.options, required: q.required === 1 });
+  }
+  const cover = await getEventCover(db, id);
+  if (cover && cover.bytes.byteLength > 0) await setEventCover(db, copy, cover.content_type, cover.bytes, now);
+  return copy;
 }
 
 // --- my events ---------------------------------------------------------------------

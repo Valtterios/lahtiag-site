@@ -121,7 +121,9 @@ tournament day, prefer the panel.
 **The hourly job.** A Cron Trigger runs the Worker every hour
 (`src/lib/cron.ts`): the day before an event starts it posts a reminder
 into the event's channel with the role pinged (or into the announcements
-channel, without a ping, when the event has no channel); when a "signups
+channel, without a ping, when the event has no channel); a day before a
+ticket deadline it posts "ticket sales close tomorrow" with what is
+left; when a "signups
 open at" moment passes it posts "Signups are open" to the announcements
 channel and the event's channel; it tells people let in from a waitlist;
 it refreshes the Interested counts from Discord; and a week after an
@@ -141,6 +143,12 @@ read back by the bot (at most every two minutes, when someone opens the
 event page) and counted with the site's own ♡ Interested button; each
 person counts once. "Signups open on/at" in the event form holds signups
 and sales until then, so an announced event can collect interest first.
+
+**Duplicate.** Board tools → **Duplicate as a draft** copies an event a
+week later with its ticket types (deadlines dropped), questions and
+cover, as a new draft: fix the date and the title, then publish. The
+roster, the bracket and the Discord objects are not copied. The history
+page shows each tournament's final bracket picture under its champion.
 
 **The announcement.** Publishing posts the announcement to the
 announcements channel with the cover picture attached (when there is

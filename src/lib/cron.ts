@@ -5,7 +5,7 @@
 // step is recorded on the event so a rerun never repeats it.
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { getEvent, listUpcomingEvents, listEndedEventsWithRole, type EventWithCounts } from './db';
+import { getEvent, listUpcomingEvents, listEndedEventsWithRole, listTicketTypes, type EventWithCounts, type TicketTypeWithSales } from './db';
 import { postWebhook, NO_MENTIONS } from './discord';
 import { syncInterest, archiveEventDiscord } from './event-discord';
 import { announcePromotions, postEventLine } from './event-channel';
@@ -29,6 +29,29 @@ export function dueOpenings<T extends Pick<EventWithCounts, 'signups_open_at' | 
   );
 }
 
+// Pure: the earliest ticket deadline still ahead, when it falls within
+// the next day and the line was not sent yet. Types without a deadline
+// close at the start, which the day-before reminder already covers.
+export function dueSalesReminder<T extends Pick<EventWithCounts, 'starts_at' | 'sales_reminder_sent_at' | 'published_at' | 'cancelled_at'>>(
+  event: T,
+  types: Pick<TicketTypeWithSales, 'active' | 'sales_close_at' | 'quantity' | 'sold'>[],
+  now: number,
+): { closesAt: number; left: number | null } | null {
+  if (event.published_at === null || event.cancelled_at !== null || event.sales_reminder_sent_at !== null) return null;
+  const open = types.filter((t) => t.active === 1 && t.sales_close_at !== null && t.sales_close_at > now);
+  if (open.length === 0) return null;
+  const closesAt = Math.min(...open.map((t) => t.sales_close_at!));
+  if (closesAt - now > REMINDER_WINDOW) return null;
+  const capped = open.filter((t) => t.quantity !== null);
+  const left = capped.length === open.length ? capped.reduce((n, t) => n + Math.max(0, t.quantity! - t.sold), 0) : null;
+  return { closesAt, left };
+}
+
+export function salesLine(event: Pick<EventWithCounts, 'title'>, closesAt: number, left: number | null, url: string): string {
+  const stock = left === null ? '' : left === 0 ? ' Sold out.' : ` ${left} left.`;
+  return `🎟️ Ticket sales for **${safe(event.title)}** close ${formatHelsinki(closesAt)}.${stock}\n${url}`;
+}
+
 function safe(text: string): string {
   return text.replace(/[`*_~|>\[\]()@#]/g, '').trim();
 }
@@ -46,6 +69,7 @@ export function openingLine(event: Pick<EventWithCounts, 'title' | 'starts_at' |
 
 export interface HourlySummary {
   reminders: number;
+  sales: number;
   openings: number;
   promotions: number;
   interest: number;
@@ -54,7 +78,7 @@ export interface HourlySummary {
 
 export async function runHourly(db: D1Database, env: Env, origin: string, now: number): Promise<HourlySummary> {
   const upcoming = await listUpcomingEvents(db, now, false);
-  const summary: HourlySummary = { reminders: 0, openings: 0, promotions: 0, interest: 0, archived: 0 };
+  const summary: HourlySummary = { reminders: 0, sales: 0, openings: 0, promotions: 0, interest: 0, archived: 0 };
 
   for (const event of dueReminders(upcoming, now)) {
     const url = `${origin}/events/${event.id}`;
@@ -63,6 +87,17 @@ export async function runHourly(db: D1Database, env: Env, origin: string, now: n
     const posted = event.discord_channel_id ? await postEventLine(db, env, event.id, line, true) : env.DISCORD_WEBHOOK_URL ? (await postWebhook(env.DISCORD_WEBHOOK_URL, line, NO_MENTIONS)) !== null : false;
     await db.prepare('UPDATE events SET reminder_sent_at = ?2 WHERE id = ?1').bind(event.id, now).run();
     if (posted) summary.reminders++;
+  }
+
+  for (const event of upcoming) {
+    const due = dueSalesReminder(event, await listTicketTypes(db, event.id), now);
+    if (!due) continue;
+    const url = `${origin}/events/${event.id}`;
+    const line = salesLine(event, due.closesAt, due.left, url);
+    if (env.DISCORD_WEBHOOK_URL) await postWebhook(env.DISCORD_WEBHOOK_URL, line, NO_MENTIONS);
+    if (event.discord_channel_id) await postEventLine(db, env, event.id, line, true);
+    await db.prepare('UPDATE events SET sales_reminder_sent_at = ?2 WHERE id = ?1').bind(event.id, now).run();
+    summary.sales++;
   }
 
   for (const event of dueOpenings(upcoming, now)) {

@@ -43,6 +43,9 @@ try {
                 <a href={`/events/${result.event_id}/bracket`}> {result.title}</a>
                 <span class="event-meta"> ({formatHelsinki(result.starts_at)})</span>
               </span>
+              <a class="results-picture" href={`/events/${result.event_id}/bracket`}>
+                <img src={`/events/${result.event_id}/bracket.png`} alt={`Final bracket of ${result.title}`} loading="lazy" />
+              </a>
             </li>
           ))}
         </ul>
