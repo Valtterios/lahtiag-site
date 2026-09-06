@@ -349,7 +349,8 @@ async function push() {
 }
 
 // --- run -------------------------------------------------------------------------------
-log('listener', state.instance, 'season from', seasonStart().toISOString().slice(0, 10), 'pending rows', Object.keys(state.pending).length);
+const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Helsinki', year: 'numeric', month: '2-digit', day: '2-digit' });
+log('listener', state.instance, 'season from', dayFormat.format(seasonStart()), 'pending rows', Object.keys(state.pending).length);
 connect(false);
 scanMessages();
 setInterval(scanMessages, SCAN_EVERY);
