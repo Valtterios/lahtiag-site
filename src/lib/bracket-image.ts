@@ -16,19 +16,17 @@ const PALE = 0xdddddd;
 const BG = 0xf5f5f5;
 const WHITE = 0xffffff;
 
-const SCALE = 2;
-const CH_W = 8 * SCALE;
-const CH_H = 14 * SCALE;
-const NAME_CHARS = 24; // team names go up to 40; most fit whole
-const PAD = 8;
-const BOX_W = NAME_CHARS * CH_W + PAD * 2 + 20; // room for the tick
-const BOX_H = CH_H + 12;
+const PAD = 10;
+const BOX_W = 400; // most team names fit whole; longer ones are cut with '..'
+const TEXT_H = Canvas.lineHeight('s');
+const BOX_H = TEXT_H + 14;
+const NAME_W = BOX_W - PAD * 2 - 24; // room for the tick
 const BOX_GAP = 4;
 const MATCH_H = BOX_H * 2 + BOX_GAP;
 const PITCH = MATCH_H + 24;
 const COL_GAP = 56;
 const MARGIN = 40;
-const HEADER = 160;
+const HEADER = 214;
 const FOOTER = 48;
 
 const TICK = ['......11', '.....11.', '....11..', '11.11...', '.111....', '..1.....'];
@@ -41,9 +39,8 @@ export function roundTitle(round: number, total: number): string {
   return `ROUND ${round}`;
 }
 
-function fit(name: string, max = NAME_CHARS): string {
-  const chars = [...name];
-  return chars.length > max ? `${chars.slice(0, max - 2).join('')}..` : name;
+function fit(name: string, maxWidth = NAME_W): string {
+  return Canvas.fit(name, maxWidth, 's');
 }
 
 export interface BracketPictureInput {
@@ -72,14 +69,13 @@ export async function bracketPng(input: BracketPictureInput): Promise<Uint8Array
 
   // Header: title, subtitle, and the champion when the final is decided.
   canvas.rect(0, 0, width, 6, BLUE);
-  const titleChars = Math.floor((width - MARGIN * 2) / (8 * 3));
-  canvas.text(MARGIN, 24, fit(input.title, titleChars).toUpperCase(), INK, 3);
+  canvas.text(MARGIN, 22, Canvas.fit(input.title.toUpperCase(), width - MARGIN * 2, 'l'), INK, 'l');
   const final = matches.find((m) => m.round === rounds && m.slot === 0);
-  const champion = final?.winner ? `CHAMPION: ${nameOf(final.winner)}` : null;
-  const subY = 24 + 14 * 3 + 12;
-  canvas.text(MARGIN, subY, champion ?? input.subtitle, champion ? BLUE : GRAY, 2);
-  if (champion && Canvas.textWidth(champion, 2) + Canvas.textWidth(input.subtitle, 2) + MARGIN * 3 < width) {
-    canvas.text(width - MARGIN - Canvas.textWidth(input.subtitle, 2), subY, input.subtitle, GRAY, 2);
+  const champion = final?.winner ? `Champion: ${nameOf(final.winner)}` : null;
+  const subY = 22 + Canvas.lineHeight('l') + 6;
+  canvas.text(MARGIN, subY, champion ?? input.subtitle, champion ? BLUE : GRAY, 's');
+  if (champion && Canvas.textWidth(champion) + Canvas.textWidth(input.subtitle) + MARGIN * 3 < width) {
+    canvas.text(width - MARGIN - Canvas.textWidth(input.subtitle), subY, input.subtitle, GRAY, 's');
   }
 
   // Match centres: round one evenly spaced, later rounds between their feeders.
@@ -97,7 +93,7 @@ export async function bracketPng(input: BracketPictureInput): Promise<Uint8Array
 
   for (let round = 1; round <= rounds; round++) {
     const x = columnX(round);
-    canvas.text(x, HEADER - CH_H - 12, roundTitle(round, rounds), GRAY, 2);
+    canvas.text(x, HEADER - TEXT_H - 12, roundTitle(round, rounds), GRAY, 's');
     for (const m of matches.filter((x) => x.round === round)) {
       const cy = centre.get(`${round}:${m.slot}`)!;
       const top = Math.round(cy - MATCH_H / 2);
@@ -109,14 +105,14 @@ export async function bracketPng(input: BracketPictureInput): Promise<Uint8Array
       for (const [key, y] of sides) {
         if (key === null) {
           canvas.rect(x, y, BOX_W, BOX_H, PALE);
-          canvas.text(x + PAD, y + 6, bye ? 'bye' : '', GRAY, 2);
+          if (bye) canvas.text(x + PAD, y + 7, 'bye', GRAY, 's');
           continue;
         }
         const won = m.winner !== null && m.winner === key;
         const lost = m.winner !== null && m.winner !== key;
         canvas.rect(x, y, BOX_W, BOX_H, won ? YELLOW : lost ? TINT : BLUE);
-        canvas.text(x + PAD, y + 6, nameOf(key), won || lost ? INK : WHITE, 2);
-        if (won) canvas.glyph(x + BOX_W - PAD - 16, y + 12, TICK, INK, 2);
+        canvas.text(x + PAD, y + 7, nameOf(key), won || lost ? INK : WHITE, 's');
+        if (won) canvas.glyph(x + BOX_W - PAD - 16, y + Math.floor(BOX_H / 2) - 6, TICK, INK, 2);
       }
       // Connector to the next round: out of this match, over, into the next.
       if (round < rounds) {
@@ -133,6 +129,6 @@ export async function bracketPng(input: BracketPictureInput): Promise<Uint8Array
     }
   }
 
-  canvas.text(width - MARGIN - Canvas.textWidth('lahtiag.fi', 2), height - FOOTER + 12, 'lahtiag.fi', GRAY, 2);
+  canvas.text(width - MARGIN - Canvas.textWidth('lahtiag.fi'), height - FOOTER + 10, 'lahtiag.fi', GRAY, 's');
   return canvas.png();
 }

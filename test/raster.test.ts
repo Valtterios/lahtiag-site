@@ -14,7 +14,7 @@ describe('Canvas', () => {
   it('encodes an indexed PNG with the right header and dimensions', async () => {
     const c = new Canvas(30, 20, 0xf5f5f5);
     c.rect(2, 2, 10, 5, 0x4169e1);
-    c.text(1, 8, 'Hi ✓', 0x1e1e1e, 1);
+    c.text(1, 8, 'Hi ✓', 0x1e1e1e, 's');
     const png = await c.png();
     expect([...png.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     expect(String.fromCharCode(...png.subarray(12, 16))).toBe('IHDR');
@@ -23,7 +23,9 @@ describe('Canvas', () => {
     expect(png[24]).toBe(8); // bit depth
     expect(png[25]).toBe(3); // indexed colour
     expect(String.fromCharCode(...png.subarray(png.length - 8, png.length - 4))).toBe('IEND');
-    expect(Canvas.textWidth('abc', 2)).toBe(48);
+    expect(Canvas.textWidth('abc')).toBeGreaterThan(20);
+    expect(Canvas.textWidth('abc', 'l')).toBeGreaterThan(Canvas.textWidth('abc'));
+    expect(Canvas.fit('a very long name indeed', 60)).toMatch(/\.\.$/);
   });
 
   it('clips drawing to the canvas', () => {

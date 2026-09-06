@@ -4,7 +4,7 @@
 // encoder. Indexed colour (one byte per pixel, a palette of at most 256)
 // keeps the raw image small, and the runtime's own deflate does the rest.
 
-import { FONT_W, FONT_H, GLYPHS } from './font';
+import { FONTS, type FontSize } from './font';
 
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -37,9 +37,29 @@ async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
+// Glyphs decoded once per size and character: one byte per pixel with
+// the level 0-3. Decoding the hex on every draw was the slow part.
+const decoded = new Map<string, Uint8Array>();
+function levels(size: FontSize, ch: string): { w: number; px: Uint8Array } {
+  const font = FONTS[size];
+  const glyph = font.glyphs[ch] ?? font.glyphs['?'];
+  const key = `${size}:${ch in font.glyphs ? ch : '?'}`;
+  let px = decoded.get(key);
+  if (!px) {
+    px = new Uint8Array(glyph.w * font.h);
+    for (let i = 0; i < px.length; i++) {
+      const byte = parseInt(glyph.d.slice((i >> 2) * 2, (i >> 2) * 2 + 2), 16);
+      px[i] = (byte >> (6 - 2 * (i & 3))) & 3;
+    }
+    decoded.set(key, px);
+  }
+  return { w: glyph.w, px };
+}
+
 export class Canvas {
   readonly pixels: Uint8Array;
   private readonly palette: number[] = [];
+  private readonly slots = new Map<number, number>(); // colour -> palette index
 
   constructor(
     readonly width: number,
@@ -52,13 +72,12 @@ export class Canvas {
 
   // Colours are 0xRRGGBB; each new one takes a palette slot.
   index(rgb: number): number {
-    let i = this.palette.indexOf(rgb);
-    if (i === -1) {
-      if (this.palette.length >= 256) throw new Error('palette full');
-      this.palette.push(rgb);
-      i = this.palette.length - 1;
-    }
-    return i;
+    const known = this.slots.get(rgb);
+    if (known !== undefined) return known;
+    if (this.palette.length >= 256) throw new Error('palette full');
+    this.palette.push(rgb);
+    this.slots.set(rgb, this.palette.length - 1);
+    return this.palette.length - 1;
   }
 
   rect(x: number, y: number, w: number, h: number, rgb: number): void {
@@ -71,23 +90,59 @@ export class Canvas {
     }
   }
 
-  // Draws the pixel font at an integer scale; unknown characters become '?'.
-  text(x: number, y: number, text: string, rgb: number, scale = 2): void {
+  // Anti-aliased text: each glyph pixel carries one of four levels, and
+  // the level blends the text colour into whatever is already there, so
+  // edges look smooth on any background. Unknown characters become '?'.
+  text(x: number, y: number, text: string, rgb: number, size: FontSize = 's'): void {
+    const font = FONTS[size];
+    const solid = this.index(rgb);
     let cx = x;
     for (const ch of text) {
-      const rows = GLYPHS[ch] ?? GLYPHS['?'];
-      for (let gy = 0; gy < FONT_H; gy++) {
-        const bits = parseInt(rows.slice(gy * 2, gy * 2 + 2), 16);
-        for (let gx = 0; gx < FONT_W; gx++) {
-          if (bits & (0x80 >> gx)) this.rect(cx + gx * scale, y + gy * scale, scale, scale, rgb);
+      const { w, px: glyph } = levels(size, ch);
+      let i = 0;
+      for (let gy = 0; gy < font.h; gy++) {
+        const py = y + gy;
+        for (let gx = 0; gx < w; gx++, i++) {
+          const level = glyph[i];
+          if (level === 0) continue;
+          const px = cx + gx;
+          if (px < 0 || py < 0 || px >= this.width || py >= this.height) continue;
+          const at = py * this.width + px;
+          this.pixels[at] = level === 3 ? solid : this.blended(rgb, this.palette[this.pixels[at]], level / 3);
         }
       }
-      cx += FONT_W * scale;
+      cx += w;
     }
   }
 
-  static textWidth(text: string, scale = 2): number {
-    return [...text].length * FONT_W * scale;
+  static textWidth(text: string, size: FontSize = 's'): number {
+    const font = FONTS[size];
+    let w = 0;
+    for (const ch of text) w += (font.glyphs[ch] ?? font.glyphs['?']).w;
+    return w;
+  }
+
+  static lineHeight(size: FontSize = 's'): number {
+    return FONTS[size].h;
+  }
+
+  // Cut a string so it fits a width, with a trailing mark.
+  static fit(text: string, maxWidth: number, size: FontSize = 's'): string {
+    if (Canvas.textWidth(text, size) <= maxWidth) return text;
+    const chars = [...text];
+    while (chars.length > 0 && Canvas.textWidth(`${chars.join('')}..`, size) > maxWidth) chars.pop();
+    return `${chars.join('')}..`;
+  }
+
+  // The colour between two, by alpha; a full palette falls back to the text colour.
+  private blended(fg: number, bg: number, alpha: number): number {
+    const mix = (shift: number) => Math.round(((bg >> shift) & 0xff) * (1 - alpha) + ((fg >> shift) & 0xff) * alpha);
+    const rgb = (mix(16) << 16) | (mix(8) << 8) | mix(0);
+    try {
+      return this.index(rgb);
+    } catch {
+      return this.index(fg);
+    }
   }
 
   // A small bitmap (rows of '1'/'.') drawn at a scale, for marks the font
