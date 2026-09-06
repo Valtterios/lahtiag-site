@@ -544,15 +544,10 @@ a:hover {
   margin: 0 0 2rem;
 }
 
-/* The Interested heart on an event page. */
-.btn-heart {
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink);
-}
+/* The Interested heart on an event page: a ghost button, blue when on. */
 .btn-heart-on {
-  border-color: var(--blue);
   color: var(--blue);
+  border-color: var(--blue);
 }
 .btn-heart-static {
   cursor: default;

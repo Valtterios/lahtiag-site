@@ -246,12 +246,12 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             {session ? (
               <form method="post" action={`/events/${event.id}/interest`} class="inline-form">
                 <input type="hidden" name="csrf" value={csrf} />
-                <button class={`btn btn-sm btn-heart${interested ? ' btn-heart-on' : ''}`} type="submit" aria-pressed={interested}>
+                <button class={`btn btn-ghost btn-sm btn-heart${interested ? ' btn-heart-on' : ''}`} type="submit" aria-pressed={interested}>
                   <span aria-hidden="true">{interested ? '♥' : '♡'}</span> {event.interest_count} interested
                 </button>
               </form>
             ) : (
-              <span class="btn btn-sm btn-heart btn-heart-static"><span aria-hidden="true">♡</span> {event.interest_count} interested</span>
+              <span class="btn btn-ghost btn-sm btn-heart btn-heart-static"><span aria-hidden="true">♡</span> {event.interest_count} interested</span>
             )}
             <a class="btn btn-ghost btn-sm" href={`/events/${event.id}/event.ics`}>Add to calendar</a>
             {event.discord_event_id && <a class="btn btn-ghost btn-sm" href={scheduledEventUrl(event.discord_event_id)} rel="noopener">On Discord</a>}
