@@ -15,7 +15,8 @@ const session = view.session;
 const csrf = ensureCsrf(Astro.cookies);
 const now = Math.floor(Date.now() / 1000);
 const isAdmin = session?.isAdmin === true;
-const products = await listProducts(env.DB, now, isAdmin);
+// Everyone sees the whole shop; what is not on sale reads as out of stock.
+const products = await listProducts(env.DB, now, true);
 const offers = new Map<number, Awaited<ReturnType<typeof productOffer>>>();
 for (const p of products) offers.set(p.id, await productOffer(env.DB, p, session?.discordId ?? null));
 const images = await productImageVersions(env.DB, products.map((p) => p.id));
@@ -29,8 +30,7 @@ const editing = isAdmin && Number.isInteger(editId) ? products.find((p) => p.id 
 const FLASH: Record<string, string> = {
   added: 'Added to your basket.',
   product_saved: 'Product saved.',
-  product_deleted: 'Product deleted.',
-  has_sales: 'That product was bought at some point, so it stays for the purchase history. Untick On sale to hide it instead.',
+  product_deleted: 'Product removed from the shop. Past purchases keep it.',
   image_saved: 'Picture saved.',
   image_removed: 'Picture removed.',
   image_missing: 'Pick an image file first.',
@@ -56,11 +56,11 @@ Astro.response.headers.set('cache-control', 'no-store');
     <p class="basket-bar"><strong>{count} in your basket.</strong> <a class="btn btn-primary btn-sm" href="/checkout">Go to checkout</a></p>
   )}
 
-  {products.filter((p) => p.active === 1).length === 0 ? (
+  {products.length === 0 ? (
     <p class="app-empty">Nothing for sale right now.</p>
   ) : (
     <ul class="shop-grid">
-      {products.filter((p) => p.active === 1).map((p) => {
+      {products.map((p) => {
         const offer = offers.get(p.id)!;
         const at = images.get(p.id);
         return (
@@ -77,7 +77,7 @@ Astro.response.headers.set('cache-control', 'no-store');
                 <span class="ticket-type-price">
                   {p.member_price_cents !== null && p.member_price_cents !== p.price_cents ? `${euro(p.price_cents)} · members ${euro(p.member_price_cents)}` : p.price_cents === 0 ? 'Free' : euro(p.price_cents)}
                 </span>
-                {!offer.ok && <span class="status-badge status-muted">{offer.reason === 'sold_out' ? 'Sold out' : 'Not on sale'}</span>}
+                {!offer.ok && <span class="status-badge status-muted">Out of stock</span>}
               </p>
             </div>
             {offer.ok ? (
@@ -115,20 +115,18 @@ Astro.response.headers.set('cache-control', 'no-store');
               <div class="admin-product-main">
                 {images.has(p.id) && <img class="admin-thumb" src={`/shop/${p.id}/image?t=${images.get(p.id)}`} alt="" />}
                 <div>
-                  <p class="ticket-type-name">{p.name}{p.active !== 1 && ' · hidden'}</p>
+                  <p class="ticket-type-name">{p.name}{p.active !== 1 && ' · not on sale, shows as out of stock'}</p>
                   <p class="queue-meta">{euro(p.price_cents)}{p.member_price_cents !== null ? ` / members ${euro(p.member_price_cents)}` : ''} · {p.sold} sold{p.stock !== null ? ` · stock ${p.stock}` : ''}</p>
                 </div>
               </div>
               <div class="entry-actions admin-product-tools">
                 <a class="btn btn-ghost btn-sm" href={`/shop?edit=${p.id}#product-form`}>Edit</a>
-                {p.sold === 0 && (
-                  <form method="post" action="/shop/products" class="inline-form">
-                    <input type="hidden" name="csrf" value={csrf} />
-                    <input type="hidden" name="action" value="delete" />
-                    <input type="hidden" name="id" value={p.id} />
-                    <button class="btn btn-ghost btn-sm" type="submit" data-confirm={`Delete ${p.name} for good?`}>Delete</button>
-                  </form>
-                )}
+                <form method="post" action="/shop/products" class="inline-form">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="action" value="delete" />
+                  <input type="hidden" name="id" value={p.id} />
+                  <button class="btn btn-ghost btn-sm" type="submit" data-confirm={`Remove ${p.name} from the shop and the door? Past purchases keep it.`}>Delete</button>
+                </form>
                 <form method="post" action={`/shop/${p.id}/image`} enctype="multipart/form-data" class="basket-add">
                   <input type="hidden" name="csrf" value={csrf} />
                   <input type="file" name="image" accept="image/jpeg,image/png,image/webp" aria-label={`Picture for ${p.name}`} />
@@ -151,7 +149,7 @@ Astro.response.headers.set('cache-control', 'no-store');
         <label>Price (€) <input name="price" type="number" min="0" step="0.01" required value={editing ? (editing.price_cents / 100).toFixed(2) : ''} /></label>
         <label>Member price (€), empty for none <input name="member_price" type="number" min="0" step="0.01" value={editing?.member_price_cents !== null && editing?.member_price_cents !== undefined ? (editing.member_price_cents / 100).toFixed(2) : ''} /></label>
         <label>Stock, empty for uncounted <input name="stock" type="number" min="0" step="1" value={editing?.stock ?? ''} /></label>
-        <label class="check"><input type="checkbox" name="active" checked={editing ? editing.active === 1 : true} /> <span>On sale</span></label>
+        <label class="check"><input type="checkbox" name="active" checked={editing ? editing.active === 1 : true} /> <span>On sale (unticked, it stays in the shop as "Out of stock"; the stock count still applies)</span></label>
         <div class="entry-actions">
           <button class="btn btn-primary" type="submit">{editing ? 'Save' : 'Add product'}</button>
           {editing && <a class="btn btn-ghost" href="/shop">Cancel</a>}

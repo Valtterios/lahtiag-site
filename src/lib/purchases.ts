@@ -52,9 +52,10 @@ export interface ProductRow {
   price_cents: number;
   member_price_cents: number | null;
   stock: number | null; // null: not counted
-  active: number;
+  active: number; // 0 = not on sale: still listed, shown as out of stock
   sort: number;
   created_at: number;
+  deleted_at: number | null; // hidden from every menu; kept for the purchases that have it
 }
 
 export interface ProductWithSales extends ProductRow {
@@ -79,16 +80,19 @@ const PRODUCT_SELECT = `SELECT p.*,
      WHERE i.product_id = p.id AND (u.status = 'paid' OR (u.status = 'pending' AND u.created_at > ?1))) AS sold
   FROM products p`;
 
+// Deleted products are never listed. `all` includes the ones not on
+// sale (the shop shows them as out of stock); the door lists only what
+// can be sold.
 export async function listProducts(db: D1Database, now: number, all = false): Promise<ProductWithSales[]> {
   const { results } = await db
-    .prepare(`${PRODUCT_SELECT} ${all ? '' : 'WHERE p.active = 1'} ORDER BY p.active DESC, p.sort, p.id`)
+    .prepare(`${PRODUCT_SELECT} WHERE p.deleted_at IS NULL ${all ? '' : 'AND p.active = 1'} ORDER BY p.active DESC, p.sort, p.id`)
     .bind(now - PENDING_TICKET_SECONDS)
     .all<ProductWithSales>();
   return results;
 }
 
 export async function getProduct(db: D1Database, id: number, now: number): Promise<ProductWithSales | null> {
-  return db.prepare(`${PRODUCT_SELECT} WHERE p.id = ?2`).bind(now - PENDING_TICKET_SECONDS, id).first<ProductWithSales>();
+  return db.prepare(`${PRODUCT_SELECT} WHERE p.id = ?2 AND p.deleted_at IS NULL`).bind(now - PENDING_TICKET_SECONDS, id).first<ProductWithSales>();
 }
 
 export interface ProductInput {
@@ -124,14 +128,20 @@ export async function createProduct(db: D1Database, input: ProductInput, now: nu
   return row!.id;
 }
 
-// Gone for good, picture included: only for a product nothing was ever
-// bought on. One that sold is hidden instead, so purchases keep their
-// line.
-export async function deleteProduct(db: D1Database, id: number): Promise<void> {
-  const product = await db.prepare('SELECT id FROM products WHERE id = ?1').bind(id).first();
+// Off every menu. A product nothing was ever bought on goes for good,
+// picture included; one that sold stays in the table, hidden, so the
+// purchases that have it keep their line.
+export async function deleteProduct(db: D1Database, id: number, now: number): Promise<void> {
+  const product = await db.prepare('SELECT id FROM products WHERE id = ?1 AND deleted_at IS NULL').bind(id).first();
   if (!product) throw new RuleError('missing', 'No such product.');
   const sold = await db.prepare('SELECT 1 AS x FROM purchase_items WHERE product_id = ?1 LIMIT 1').bind(id).first();
-  if (sold) throw new RuleError('has_sales', 'This product was bought; hide it instead.');
+  if (sold) {
+    await db.batch([
+      db.prepare('DELETE FROM product_images WHERE product_id = ?1').bind(id),
+      db.prepare('UPDATE products SET deleted_at = ?2, active = 0 WHERE id = ?1').bind(id, now),
+    ]);
+    return;
+  }
   await db.batch([
     db.prepare('DELETE FROM product_images WHERE product_id = ?1').bind(id),
     db.prepare('DELETE FROM products WHERE id = ?1').bind(id),
@@ -155,7 +165,7 @@ export async function productOffer(
   product: ProductWithSales,
   discordId: string | null,
 ): Promise<{ ok: true; unit_cents: number; member: boolean; max: number } | { ok: false; reason: RuleError['code'] }> {
-  if (product.active !== 1) return { ok: false, reason: 'sales_closed' };
+  if (product.active !== 1 || product.deleted_at !== null) return { ok: false, reason: 'sales_closed' };
   const left = product.stock === null ? MAX_ITEM_QUANTITY : product.stock - product.sold;
   if (left <= 0) return { ok: false, reason: 'sold_out' };
   const member = discordId ? await isCurrentMember(db, discordId) : false;

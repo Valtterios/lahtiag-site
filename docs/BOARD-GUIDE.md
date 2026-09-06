@@ -115,9 +115,9 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ## Tickets and the shop
 
-- **Removing a shop item.** Delete is offered for products nothing was
-  ever bought on. One that sold stays for the purchase history: untick
-  On sale to hide it from the shop.
+- **Shop items.** Delete takes a product off the shop and the door for
+  good; past purchases keep their line. Unticking On sale keeps it in the
+  shop as "Out of stock", with the stock count still yours to edit.
 
 - **Buying.** Event pages and the shop only add to a **basket**. The
   checkout takes names and answers for every ticket and one payment for

@@ -23,7 +23,7 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     const id = Number(form.get('id'));
     if (!Number.isInteger(id)) return redirect('/shop?err=bad_input', 303);
     try {
-      await deleteProduct(env.DB, id);
+      await deleteProduct(env.DB, id, Math.floor(Date.now() / 1000));
     } catch (error) {
       if (error instanceof RuleError) return redirect(`/shop?err=${error.code}`, 303);
       throw error;
