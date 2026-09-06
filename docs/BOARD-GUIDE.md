@@ -89,7 +89,8 @@ the bottom right lets you view a page as a member or a visitor would.
   event with plain signups gets a **waitlist**:
   when a seat frees, the first in line is moved to Going on their own,
   the event's Discord channel tells them, and the roster shows who is
-  waiting (the board can take people off it).
+  waiting; the board can let anyone in with ✓, whatever their place or
+  the capacity, or take them off with ×.
 - **Questions** (T-shirt size, diet, team preference) are asked when
   someone signs up or buys, per ticket, and come out in the exports.
 - **Team captains.** Whoever founds a team can add people who signed up

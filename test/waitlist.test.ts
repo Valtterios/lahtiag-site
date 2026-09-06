@@ -18,6 +18,7 @@ import {
   purgeMember,
   createTicketType,
   demoteOverCapacity,
+  admitFromWaitlist,
 } from '../src/lib/db';
 
 // The waitlist of a full event: first come, first promoted.
@@ -118,5 +119,21 @@ describe('a lowered capacity', () => {
     expect(await demoteOverCapacity(db(), id)).toEqual([]);
     await removeSignup(db(), id, '1');
     expect((await listWaitlist(db(), id)).map((w) => w.discord_id)).toEqual(['4']);
+  });
+});
+
+describe('letting someone in by hand', () => {
+  beforeEach(wipe);
+
+  it('moves a chosen person to Going past the capacity and logs the promotion', async () => {
+    const id = await seed(1);
+    await setSignup(db(), id, '1', 'yes', NOW);
+    await joinWaitlist(db(), id, '2', NOW + 1);
+    await joinWaitlist(db(), id, '3', NOW + 2);
+    await admitFromWaitlist(db(), id, '3', NOW + 5);
+    expect((await getEvent(db(), id))?.yes_count).toBe(2);
+    expect((await listWaitlist(db(), id)).map((w) => w.discord_id)).toEqual(['2']);
+    expect((await listUnannouncedPromotions(db())).map((p) => p.discord_id)).toEqual(['3']);
+    await expect(admitFromWaitlist(db(), id, '9', NOW)).rejects.toMatchObject({ code: 'missing' });
   });
 });
