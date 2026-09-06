@@ -84,7 +84,9 @@ the bottom right lets you view a page as a member or a visitor would.
   event list, each person once.
 - **Capacity and reserved seats.** The event's capacity is the total.
   "Seats reserved for members" keeps that many for members; non-members
-  stop at the rest. A full event with plain signups gets a **waitlist**:
+  stop at the rest. Lowering the capacity under the going count moves the
+  latest signups to the waitlist, first in line, and tells them. A full
+  event with plain signups gets a **waitlist**:
   when a seat frees, the first in line is moved to Going on their own,
   the event's Discord channel tells them, and the roster shows who is
   waiting (the board can take people off it).

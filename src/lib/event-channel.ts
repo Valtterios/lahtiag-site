@@ -209,6 +209,26 @@ export async function notifyTeamPlacement(
   }
 }
 
+// The board lowered the capacity under them: told privately, with their
+// place in the queue; a mention in the event's channel when DMs are closed.
+export async function notifyWaitlisted(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, ids: string[], origin: string): Promise<void> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token || ids.length === 0) return;
+  const event = await getEvent(db, eventId);
+  if (!event) return;
+  const { results: queue } = await db.prepare('SELECT discord_id FROM event_waitlist WHERE event_id = ?1 ORDER BY created_at, discord_id').bind(eventId).all<{ discord_id: string }>();
+  const unreached: string[] = [];
+  for (const id of ids) {
+    if (!/^\d{5,25}$/.test(id)) continue;
+    const place = queue.findIndex((q) => q.discord_id === id) + 1;
+    const line = `⏳ The board made **${safe(event.title)}** smaller, so you're now #${place || '?'} on the waitlist. A seat frees and you're back in, and told here. ${origin}/events/${eventId}`;
+    if (!(await dmUser(token, id, line))) unreached.push(id);
+  }
+  if (unreached.length > 0 && event.discord_channel_id) {
+    await postChannelMessage(token, event.discord_channel_id, `${unreached.map((id) => `<@${id}>`).join(' ')} the event got smaller, so you're on the waitlist now; a freed seat puts you back in.`, { parse: [], users: unreached }, SUPPRESS_EMBEDS);
+  }
+}
+
 // Someone joined a team, on their own or moved by the board: the founder
 // hears, privately.
 export async function notifyCaptainJoin(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, teamId: number, joinerId: string, origin: string): Promise<void> {

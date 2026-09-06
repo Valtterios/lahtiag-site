@@ -17,6 +17,7 @@ import {
   markPromotionsAnnounced,
   purgeMember,
   createTicketType,
+  demoteOverCapacity,
 } from '../src/lib/db';
 
 // The waitlist of a full event: first come, first promoted.
@@ -97,5 +98,25 @@ describe('waitlist', () => {
     expect((await getEvent(db(), id))?.yes_count).toBe(1);
     expect((await listWaitlist(db(), id)).length).toBe(0);
     expect(await promoteWaitlist(db(), id, NOW)).toEqual([]);
+  });
+});
+
+describe('a lowered capacity', () => {
+  beforeEach(wipe);
+
+  it('moves the latest signups beyond it to the waitlist, ahead of later joiners', async () => {
+    const id = await seed(4);
+    await setSignup(db(), id, '1', 'yes', NOW);
+    await setSignup(db(), id, '2', 'yes', NOW + 1);
+    await setSignup(db(), id, '3', 'yes', NOW + 2);
+    await setSignup(db(), id, '4', 'yes', NOW + 3);
+    await updateEvent(db(), id, { ...base(id), capacity: 2 });
+    expect(await demoteOverCapacity(db(), id)).toEqual(['4', '3']);
+    expect((await getEvent(db(), id))?.yes_count).toBe(2);
+    expect((await listWaitlist(db(), id)).map((w) => w.discord_id)).toEqual(['3', '4']);
+    // Nothing more to do on a second pass, and a seat freed lets 3 back in first.
+    expect(await demoteOverCapacity(db(), id)).toEqual([]);
+    await removeSignup(db(), id, '1');
+    expect((await listWaitlist(db(), id)).map((w) => w.discord_id)).toEqual(['4']);
   });
 });

@@ -2149,6 +2149,27 @@ export async function waitlistPosition(db: D1Database, eventId: number, discordI
   return at === -1 ? null : at + 1;
 }
 
+// A capacity lowered under the going count: the latest signups beyond it
+// move to the waitlist, keeping their signup time so they head the queue.
+// Team events count teams and ticketed events sell seats, so neither
+// demotes anyone. Returns who was moved, newest first.
+export async function demoteOverCapacity(db: D1Database, eventId: number): Promise<string[]> {
+  const event = await getEvent(db, eventId);
+  if (!event || event.capacity === null || event.team_size !== null || (await isTicketed(db, eventId))) return [];
+  const { results: going } = await db
+    .prepare(`SELECT discord_id, created_at FROM signups WHERE event_id = ?1 AND status = 'yes' ORDER BY created_at, discord_id`)
+    .bind(eventId)
+    .all<{ discord_id: string; created_at: number }>();
+  const overflow = going.slice(event.capacity).reverse();
+  for (const row of overflow) {
+    await db.batch([
+      db.prepare('DELETE FROM signups WHERE event_id = ?1 AND discord_id = ?2').bind(eventId, row.discord_id),
+      db.prepare('INSERT OR IGNORE INTO event_waitlist (event_id, discord_id, created_at) VALUES (?1, ?2, ?3)').bind(eventId, row.discord_id, row.created_at),
+    ]);
+  }
+  return overflow.map((r) => r.discord_id);
+}
+
 // Seats freed, people let in, first come first: each becomes a Going
 // signup and a promotion to announce. Anyone no longer eligible (say,
 // a member-only seat and their membership lapsed) is dropped from the

@@ -1,10 +1,11 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { updateEvent, getEvent, setSignupsOpenAt, RuleError } from '../../../lib/db';
+import { updateEvent, getEvent, setSignupsOpenAt, demoteOverCapacity, RuleError } from '../../../lib/db';
 import { renameEventDiscord, syncScheduledEvent } from '../../../lib/event-discord';
 import { dropLiveBracket } from '../../../lib/event-channel';
-import { later, postEventLine, changeLine, announcePromotionsInBackground } from '../../../lib/event-channel';
+import { later, postEventLine, changeLine, announcePromotionsInBackground, notifyWaitlisted } from '../../../lib/event-channel';
+import { syncEventRolesInBackground } from '../../../lib/event-discord';
 import { helsinkiToUnix } from '../../../lib/time';
 import { refreshEventAnnouncement } from '../../../lib/announce';
 
@@ -56,6 +57,14 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
       team_size: teamSize,
     });
     await setSignupsOpenAt(env.DB, id, opensAt);
+    // A smaller event: the latest signups beyond the new capacity wait, and hear about it.
+    if (before && event.capacity !== null && (before.capacity === null || event.capacity < before.capacity)) {
+      const demoted = await demoteOverCapacity(env.DB, id);
+      if (demoted.length > 0) {
+        later(locals.cfContext, notifyWaitlisted(env.DB, env, id, demoted, url.origin));
+        syncEventRolesInBackground(locals.cfContext, env.DB, env, [id], Math.floor(Date.now() / 1000));
+      }
+    }
     // Edit the original Discord announcement in place instead of reposting.
     await refreshEventAnnouncement(env.DB, env, id, url.origin);
     // A changed team size dropped the bracket; its pinned picture goes too.
