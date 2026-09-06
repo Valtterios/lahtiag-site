@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import {
   editInteractionReply,
+  editInteractionReplyWithFile,
   eventAnnouncement,
   hasAdminRole,
   postWebhook,
@@ -26,11 +27,13 @@ import {
   upsertMember,
   RuleError,
   getRegisterByDiscord,
+  memberStats,
   type RegisterRow,
 } from '../../lib/db';
 import { formatHelsinki, formatHelsinkiDate, helsinkiToUnix } from '../../lib/time';
 import { syncScheduledEvent, setUpEventDiscord } from '../../lib/event-discord';
 import { participantNames, postSignups, postBracketOut, postResult, postRevert, postEventLine, cancelLine, screenLine, dropLiveBracket } from '../../lib/event-channel';
+import { profileCardPng } from '../../lib/profile-card';
 import { MEMBER_TYPE_LABELS } from '../../lib/register';
 import { DISCORD_GUILD_ID } from '../../lib/config';
 
@@ -154,6 +157,13 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     });
   }
 
+  // /profile: anyone's stats card, for everyone to see. Deferred without
+  // the ephemeral flag, then the picture is attached.
+  if (interaction.type === 2 && interaction.data?.name === 'profile') {
+    locals.cfContext.waitUntil(handleProfile(env, interaction));
+    return json({ type: 5 });
+  }
+
   // /tournament renders the interactive control panel: no database work, so
   // it responds directly instead of deferring.
   if (interaction.type === 2 && interaction.data?.name === 'tournament') {
@@ -209,6 +219,31 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   locals.cfContext.waitUntil(handleCommand(env, interaction, url.origin));
   return json({ type: 5, data: { flags: 64 } }); // deferred, ephemeral
 };
+
+// --- /profile ------------------------------------------------------------------
+
+async function handleProfile(env: WorkerEnv, interaction: Interaction): Promise<void> {
+  const invoker = interaction.member?.user;
+  const picked = interaction.data?.options?.find((o) => o.name === 'user')?.value;
+  const targetId = typeof picked === 'string' ? picked : invoker?.id;
+  if (!targetId) {
+    await editInteractionReply(interaction.application_id, interaction.token, 'Could not tell whose card to draw.');
+    return;
+  }
+  const resolved = interaction.data?.resolved?.users?.[targetId];
+  const who = resolved ?? (targetId === invoker?.id ? invoker : undefined);
+  const name = interaction.member?.nick && targetId === invoker?.id ? interaction.member.nick : who?.global_name ?? who?.username ?? (await memberName(env, targetId)) ?? 'Member';
+  const now = Math.floor(Date.now() / 1000);
+  const stats = await memberStats(env.DB, targetId, now);
+  const png = await profileCardPng(name, stats);
+  const ok = await editInteractionReplyWithFile(interaction.application_id, interaction.token, '', { name: 'profile.png', bytes: png, type: 'image/png' });
+  if (!ok) await editInteractionReply(interaction.application_id, interaction.token, 'The card could not be posted. Try again in a moment.');
+}
+
+async function memberName(env: WorkerEnv, discordId: string): Promise<string | null> {
+  const row = await env.DB.prepare('SELECT username FROM members WHERE discord_id = ?1').bind(discordId).first<{ username: string }>();
+  return row?.username ?? null;
+}
 
 // --- /tournament interactive panel -----------------------------------------
 

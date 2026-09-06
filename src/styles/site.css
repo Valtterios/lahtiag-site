@@ -547,6 +547,16 @@ a:hover {
   margin: 0 0 2rem;
 }
 
+/* The member's stats card on the membership page. */
+.profile-card {
+  display: block;
+  width: 100%;
+  max-width: 36rem;
+  height: auto;
+  border: 1px solid var(--line);
+  margin-top: 0.6rem;
+}
+
 /* The hall of fame: the final bracket under each champion. */
 .results-list li {
   flex-wrap: wrap;

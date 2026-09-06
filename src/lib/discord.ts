@@ -764,3 +764,21 @@ export async function editWebhookMessageFile(webhookUrl: string, messageId: stri
     return false;
   }
 }
+
+// Edit the deferred reply with a picture attached (the /profile card).
+export async function editInteractionReplyWithFile(
+  applicationId: string,
+  interactionToken: string,
+  content: string,
+  file: MessageFile,
+): Promise<boolean> {
+  try {
+    const form = new FormData();
+    form.append('payload_json', JSON.stringify({ content, allowed_mentions: NO_MENTIONS, attachments: [{ id: 0, filename: file.name }] }));
+    form.append('files[0]', new Blob([file.bytes as BlobPart], { type: file.type }), file.name);
+    const response = await fetch(`${API}/webhooks/${applicationId}/${interactionToken}/messages/@original`, { method: 'PATCH', body: form });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}

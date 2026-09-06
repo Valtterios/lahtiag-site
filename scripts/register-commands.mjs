@@ -93,6 +93,11 @@ const commands = [
     description: 'Your LahtiAG membership status (only you see the answer)',
   },
   {
+    name: 'profile',
+    description: 'Your LahtiAG stats card: events, tournaments, wins (everyone sees it)',
+    options: [{ type: 6, name: 'user', description: "Someone else's card", required: false }],
+  },
+  {
     name: 'join',
     description: 'Become a LahtiAG member, or link your Discord to your membership',
   },

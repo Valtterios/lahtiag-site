@@ -168,6 +168,12 @@ On a phone it does everything:
 Board tools on the news page. A post is saved as a draft; **Publish**
 puts it on the page and on Discord.
 
+- **Scheduled news.** Save a news post with a publish date and time and
+  it goes out by itself, to the site and Discord. Handy for general
+  meeting notices written ahead.
+- **Your stats.** The membership page shows your events, tournaments and
+  wins, with a card; `/profile` in Discord posts the card for everyone.
+
 ## Where things are
 
 | | |

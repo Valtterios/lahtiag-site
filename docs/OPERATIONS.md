@@ -118,7 +118,7 @@ tournament day, prefer the panel.
 
 ## Events on Discord: the event list, a role and a channel
 
-**The hourly job.** A Cron Trigger runs the Worker every hour
+**The 15-minute job.** A Cron Trigger runs the Worker every quarter hour
 (`src/lib/cron.ts`): the day before an event starts it posts a reminder
 into the event's channel with the role pinged (or into the announcements
 channel, without a ping, when the event has no channel); a day before a
@@ -143,6 +143,25 @@ read back by the bot (at most every two minutes, when someone opens the
 event page) and counted with the site's own ♡ Interested button; each
 person counts once. "Signups open on/at" in the event form holds signups
 and sales until then, so an announced event can collect interest first.
+
+**Scheduled news.** A news post saved with a publish date and time goes
+out on its own within 15 minutes of that moment, to the site and to
+Discord, for a general meeting notice written ahead. Publish sends it
+right away instead.
+
+**Stats and the profile card.** The membership page shows each member's
+events attended, tournaments played and won, with a card picture drawn
+by the site. In Discord, `/profile` posts the card for everyone to see
+(`/profile user:@someone` for another member's). The command is
+registered with `scripts/register-commands.mjs` like the others.
+
+**Backups.** D1 keeps thirty days of point-in-time history on its own
+(`npx wrangler d1 time-travel info lahtiag` shows the current bookmark;
+`restore` takes a timestamp or bookmark, and is best drilled on
+`lahtiag-preview` first). A full SQL export is
+`npx wrangler d1 export lahtiag --remote --output ~/Backups/lahtiag/<date>.sql`;
+it holds the member register, so it stays on an encrypted disk and never
+in the repository.
 
 **Duplicate.** Board tools → **Duplicate as a draft** copies an event a
 week later with its ticket types (deadlines dropped), questions and

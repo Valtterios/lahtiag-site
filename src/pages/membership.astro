@@ -2,7 +2,7 @@
 import { env } from 'cloudflare:workers';
 import Base from '../layouts/Base.astro';
 import { currentSession, ensureCsrf, checkCsrf } from '../lib/guard';
-import { getRegisterByDiscord, getPendingLinkByDiscord, setOwnActive, updateOwnEntry, listMyEvents, RuleError } from '../lib/db';
+import { getRegisterByDiscord, getPendingLinkByDiscord, setOwnActive, updateOwnEntry, listMyEvents, memberStats, RuleError } from '../lib/db';
 import {
   parseApplication,
   normalizeHandle,
@@ -29,6 +29,7 @@ const session = await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
 const entry = session ? await getRegisterByDiscord(env.DB, session.discordId) : null;
 const myEvents = session ? await listMyEvents(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : [];
+const stats = session ? await memberStats(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : null;
 const RELATION: Record<string, string> = { ticket: 'Ticket', going: 'Going', maybe: 'Maybe', waitlist: 'On the waitlist', interested: 'Interested' };
 const pendingLink = session && !entry ? await getPendingLinkByDiscord(env.DB, session.discordId) : null;
 
@@ -130,6 +131,17 @@ const MESSAGES: Record<FieldError, string> = {
         <button class="btn btn-ghost btn-sm" type="submit">Sign out</button>
       </form>
     </p>
+  )}
+
+  {session && stats && (
+    <section class="list" id="my-stats">
+      <h2 class="section-label">Your stats</h2>
+      <p class="queue-meta">
+        <strong>{stats.attended}</strong> events, <strong>{stats.tournaments}</strong> tournaments, <strong>{stats.wins}</strong> wins
+        {stats.last_win ? <> · last win: {stats.last_win.title}</> : null}. Type <code>/profile</code> in Discord to post your card for everyone.
+      </p>
+      <img class="profile-card" src="/membership/card.png" alt="Your stats card" width="900" height="420" />
+    </section>
   )}
 
   {session && (

@@ -1,5 +1,5 @@
 // The Worker's own entry: Astro handles requests as before, and the
-// hourly Cron Trigger (wrangler.toml) runs the reminders and the rest of
+// 15-minute Cron Trigger (wrangler.toml) runs the reminders and the rest of
 // src/lib/cron.ts. wrangler.toml's `main` points here; the adapter builds
 // it as the server entry.
 

@@ -10,10 +10,10 @@ main = "./src/worker.ts"
 compatibility_date = "2026-08-01"
 compatibility_flags = ["nodejs_compat"]
 
-# The hourly job: day-before reminders, "signups are open" posts, waitlist
+# The 15-minute job: day-before reminders, "signups are open" posts, waitlist
 # promotions, Discord's Interested counts (src/lib/cron.ts). Production only.
 [triggers]
-crons = ["0 * * * *"]
+crons = ["*/15 * * * *"]
 
 [assets]
 # The @astrojs/cloudflare adapter rewrites this to "../client" (relative to
@@ -55,6 +55,7 @@ run_worker_first = [
   "/members/purge",
   "/join",
   "/membership",
+  "/membership/*",
   "/tickets",
   "/tickets/*",
   "/checkout",
@@ -135,6 +136,7 @@ run_worker_first = [
   "/members/purge",
   "/join",
   "/membership",
+  "/membership/*",
   "/tickets",
   "/tickets/*",
   "/checkout",

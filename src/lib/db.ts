@@ -122,6 +122,7 @@ export interface AnnouncementRow {
   discord_message_id: string | null;
   author_name: string | null;
   draft: number; // 1 until the board publishes it (and it goes to Discord)
+  publish_at: number | null; // a draft with a time: the 15-minute job publishes it then
 }
 
 // The members table is a display cache, not an account table: written on
@@ -1246,7 +1247,7 @@ export async function deleteAnnouncement(
 
 export async function createAnnouncement(
   db: D1Database,
-  input: { title: string; body_md: string; author_id: string; source: 'web' | 'discord'; draft?: boolean },
+  input: { title: string; body_md: string; author_id: string; source: 'web' | 'discord'; draft?: boolean; publish_at?: number | null },
   now: number,
 ): Promise<number> {
   if (!input.title.trim() || !input.body_md.trim()) {
@@ -1256,12 +1257,21 @@ export async function createAnnouncement(
   capLength(input.body_md, 4000, 'An announcement body');
   const row = await db
     .prepare(
-      `INSERT INTO announcements (title, body_md, published_at, author_id, source, draft)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id`,
+      `INSERT INTO announcements (title, body_md, published_at, author_id, source, draft, publish_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) RETURNING id`,
     )
-    .bind(input.title.trim(), input.body_md, now, input.author_id, input.source, input.draft ? 1 : 0)
+    .bind(input.title.trim(), input.body_md, now, input.author_id, input.source, input.draft ? 1 : 0, input.draft ? (input.publish_at ?? null) : null)
     .first<{ id: number }>();
   return row!.id;
+}
+
+// Drafts whose publish time has come (the 15-minute job).
+export async function listDueAnnouncements(db: D1Database, now: number): Promise<AnnouncementRow[]> {
+  const { results } = await db
+    .prepare('SELECT a.*, NULL AS author_name FROM announcements a WHERE a.draft = 1 AND a.publish_at IS NOT NULL AND a.publish_at <= ?1 ORDER BY a.publish_at')
+    .bind(now)
+    .all<AnnouncementRow>();
+  return results;
 }
 
 // A draft goes public, dated now.
@@ -2175,6 +2185,59 @@ export async function listEndedEventsWithRole(db: D1Database, before: number): P
     .bind(before)
     .all<EventWithCounts>();
   return results;
+}
+
+// --- a member's stats ---------------------------------------------------------------
+// From what is already recorded: events attended (going, or a paid
+// ticket, on past events), tournaments played and won (the bracket, as a
+// player or in a team), and since when they are a member.
+
+export interface MemberStats {
+  attended: number;
+  tournaments: number;
+  wins: number;
+  first_event_at: number | null;
+  last_win: { title: string; starts_at: number } | null;
+  member_since: number | null; // the register's decision date for a current member
+}
+
+export async function memberStats(db: D1Database, discordId: string, now: number): Promise<MemberStats> {
+  const { results: attended } = await db
+    .prepare(
+      `SELECT e.id, e.title, e.starts_at, e.team_size,
+         (SELECT s.event_team_id FROM signups s WHERE s.event_id = e.id AND s.discord_id = ?1) AS team_id
+       FROM events e
+       WHERE e.cancelled_at IS NULL AND e.published_at IS NOT NULL AND e.starts_at < ?2
+         AND (EXISTS (SELECT 1 FROM signups s WHERE s.event_id = e.id AND s.discord_id = ?1 AND s.status = 'yes')
+           OR EXISTS (SELECT 1 FROM tickets t WHERE t.event_id = e.id AND t.discord_id = ?1 AND t.status = 'paid'))
+       ORDER BY e.starts_at`,
+    )
+    .bind(discordId, now)
+    .all<{ id: number; title: string; starts_at: number; team_size: number | null; team_id: number | null }>();
+  let tournaments = 0;
+  let wins = 0;
+  let lastWin: MemberStats['last_win'] = null;
+  for (const event of attended) {
+    const key = event.team_id !== null ? `t:${event.team_id}` : `u:${discordId}`;
+    const matches = await getBracket(db, event.id);
+    if (matches.length === 0 || !matches.some((m) => m.side_a === key || m.side_b === key)) continue;
+    tournaments++;
+    const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
+    const final = matches.find((m) => m.round === total && m.slot === 0);
+    if (final?.winner === key) {
+      wins++;
+      lastWin = { title: event.title, starts_at: event.starts_at };
+    }
+  }
+  const entry = await getRegisterByDiscord(db, discordId);
+  return {
+    attended: attended.length,
+    tournaments,
+    wins,
+    first_event_at: attended[0]?.starts_at ?? null,
+    last_win: lastWin,
+    member_since: entry?.status === 'member' ? (entry.decided_at ?? entry.applied_at) : null,
+  };
 }
 
 // --- duplicate an event ---------------------------------------------------------------

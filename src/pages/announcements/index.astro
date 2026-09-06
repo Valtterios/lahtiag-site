@@ -37,6 +37,8 @@ const FLASH: Record<string, string> = {
 };
 const OK: Record<string, string> = {
   draft: 'Saved as a draft. Only the board sees it; publish it when it is ready.',
+  scheduled: 'Scheduled. It publishes itself and goes to Discord within 15 minutes of that time; Publish sends it now instead.',
+  bad_time: "That publish date and time didn't parse.",
   published: 'Published and posted on Discord.',
 };
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
@@ -57,7 +59,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
       <article class={`news-card prose${item.draft ? ' news-draft' : ''}`}>
         <p class="event-when">
           {item.draft === 1 && <span class="status-badge status-muted">Draft</span>}
-          {item.draft === 1 ? ' not published' : formatHelsinki(item.published_at)}
+          {item.draft === 1 ? (item.publish_at ? ` scheduled for ${formatHelsinki(item.publish_at)}` : ' not published') : formatHelsinki(item.published_at)}
           {item.author_name && `, ${item.author_name}`}
           {item.source === 'discord' && ', via Discord'}
         </p>
@@ -92,8 +94,10 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
         <input type="hidden" name="csrf" value={csrf} />
         <label>Title <input name="title" required maxlength="120" /></label>
         <label>Body (Markdown) <textarea name="body" rows="6" required maxlength="4000"></textarea></label>
-        <button class="btn btn-primary" type="submit">Save as draft</button>
-        <p class="queue-meta">Drafts stay on this page for the board only until you press Publish, which also posts them on Discord.</p>
+        <label>Publish on <input name="publish_date" type="date" /></label>
+        <label>Publish at (Helsinki) <input name="publish_time" type="time" placeholder="empty = 09:00" /></label>
+        <button class="btn btn-primary" type="submit">Save</button>
+        <p class="queue-meta">Without a date it stays a draft until you press Publish. With one it publishes itself within 15 minutes of that time and goes to Discord, for a general meeting notice written ahead.</p>
       </form>
     </details>
   )}

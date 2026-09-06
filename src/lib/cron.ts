@@ -5,7 +5,7 @@
 // step is recorded on the event so a rerun never repeats it.
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { getEvent, listUpcomingEvents, listEndedEventsWithRole, listTicketTypes, type EventWithCounts, type TicketTypeWithSales } from './db';
+import { getEvent, listUpcomingEvents, listEndedEventsWithRole, listTicketTypes, listDueAnnouncements, publishAnnouncement, setAnnouncementMessageId, type EventWithCounts, type TicketTypeWithSales } from './db';
 import { postWebhook, NO_MENTIONS, SUPPRESS_EMBEDS } from './discord';
 import { syncInterest, archiveEventDiscord } from './event-discord';
 import { announcePromotions, postEventLine } from './event-channel';
@@ -68,6 +68,7 @@ export function openingLine(event: Pick<EventWithCounts, 'title' | 'starts_at' |
 }
 
 export interface HourlySummary {
+  news: number;
   reminders: number;
   sales: number;
   openings: number;
@@ -78,7 +79,18 @@ export interface HourlySummary {
 
 export async function runHourly(db: D1Database, env: Env, origin: string, now: number): Promise<HourlySummary> {
   const upcoming = await listUpcomingEvents(db, now, false);
-  const summary: HourlySummary = { reminders: 0, sales: 0, openings: 0, promotions: 0, interest: 0, archived: 0 };
+  const summary: HourlySummary = { news: 0, reminders: 0, sales: 0, openings: 0, promotions: 0, interest: 0, archived: 0 };
+
+  // News written ahead: published and posted at its time.
+  for (const draft of await listDueAnnouncements(db, now)) {
+    const post = await publishAnnouncement(db, draft.id, now);
+    if (!post) continue;
+    if (env.DISCORD_WEBHOOK_URL) {
+      const messageId = await postWebhook(env.DISCORD_WEBHOOK_URL, `📣 **${post.title}**\n${post.body_md}`);
+      if (messageId) await setAnnouncementMessageId(db, post.id, messageId);
+    }
+    summary.news++;
+  }
 
   for (const event of dueReminders(upcoming, now)) {
     const url = `${origin}/events/${event.id}`;
