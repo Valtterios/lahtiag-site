@@ -553,7 +553,7 @@ a:hover {
 }
 
 .news-edit {
-  margin: -1.5rem 0 1.5rem;
+  margin: 0.9rem 0 0;
 }
 
 .news-edit summary {
@@ -566,9 +566,30 @@ a:hover {
   margin-top: 0.6rem;
 }
 
+/* The cover picker sits in the button row, so its browse button looks
+   like the ghost buttons beside it. */
 .cover-form input[type='file'] {
-  max-width: 14rem;
+  max-width: 17rem;
   font-size: 0.85rem;
+}
+
+.cover-form input[type='file']::file-selector-button {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.9rem;
+  margin-right: 0.6rem;
+  border: 1px solid var(--ink);
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.cover-form input[type='file']::file-selector-button:hover {
+  background: var(--ink);
+  color: #fff;
 }
 
 /* The Minecraft whitelist on the membership page. */
