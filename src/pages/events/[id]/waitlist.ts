@@ -2,7 +2,9 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession, requireAdmin } from '../../../lib/guard';
 import { refreshAnnouncementInBackground } from '../../../lib/announce';
-import { joinWaitlist, leaveWaitlist, upsertMember, RuleError } from '../../../lib/db';
+import { joinWaitlist, leaveWaitlist, admitFromWaitlist, upsertMember, RuleError } from '../../../lib/db';
+import { announcePromotionsInBackground } from '../../../lib/event-channel';
+import { syncEventRolesInBackground } from '../../../lib/event-discord';
 
 // Join or leave the waitlist of a full event. The board can take anyone
 // off it with a discord_id.
@@ -23,6 +25,15 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
       await joinWaitlist(env.DB, id, session.discordId, now);
       refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
       return redirect(`${back}?ok=waitlisted#signup`, 303);
+    }
+    if (action === 'admit') {
+      const admin = await requireAdmin(request, env);
+      if (!admin.ok) return redirect(`${back}?err=${admin.reason}`, 303);
+      await admitFromWaitlist(env.DB, id, target, now);
+      syncEventRolesInBackground(locals.cfContext, env.DB, env, [id], now);
+      announcePromotionsInBackground(locals.cfContext, env.DB, env, now);
+      refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
+      return redirect(`${back}?ok=admitted`, 303);
     }
     if (action === 'leave') {
       if (target && target !== session.discordId) {

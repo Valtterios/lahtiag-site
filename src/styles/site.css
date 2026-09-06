@@ -675,6 +675,11 @@ a:hover {
   border: 1px solid var(--line);
 }
 
+/* The board's "let in" on a waitlist chip. */
+.chip-admit {
+  color: #1f7a3f;
+}
+
 /* The team founder's tag: the member mark in brand blue. */
 .captain-mark {
   color: var(--blue);

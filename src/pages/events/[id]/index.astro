@@ -212,6 +212,7 @@ const OK: Record<string, string> = {
   interested: "Marked as interested. You'll see it under My events.",
   waitlisted: "You're on the waitlist. When a seat frees you're moved to Going, the event's Discord channel tells you, and it shows under My events.",
   left_waitlist: 'Taken off the waitlist.',
+  admitted: 'Let in from the waitlist; they are going, and told.',
   uninterested: 'Interest removed.',
   discord_created: 'Role and channel created. Everyone on the roster has the role; new signups get it as they come.',
   discord_removed: 'Deleted from Discord: the role and every channel the bot made for this event.',
@@ -578,6 +579,12 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               ? waitlist.map((w, i) => (
                   <span class="member-chip">
                     {i + 1}. {w.username}
+                    <form method="post" action={`/events/${event.id}/waitlist`} class="inline-form">
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="action" value="admit" />
+                      <input type="hidden" name="discord_id" value={w.discord_id} />
+                      <button class="chip-remove chip-admit" type="submit" title="Let in: they go to Going, whatever the capacity">✓</button>
+                    </form>
                     <form method="post" action={`/events/${event.id}/waitlist`} class="inline-form">
                       <input type="hidden" name="csrf" value={csrf} />
                       <input type="hidden" name="action" value="leave" />

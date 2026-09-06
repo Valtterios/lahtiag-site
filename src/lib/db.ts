@@ -2149,6 +2149,21 @@ export async function waitlistPosition(db: D1Database, eventId: number, discordI
   return at === -1 ? null : at + 1;
 }
 
+// The board lets one person in from the waitlist, whatever their place
+// and the capacity: a Going signup, and a promotion to tell them about.
+export async function admitFromWaitlist(db: D1Database, eventId: number, discordId: string, now: number): Promise<void> {
+  const waiting = await db.prepare('SELECT 1 AS x FROM event_waitlist WHERE event_id = ?1 AND discord_id = ?2').bind(eventId, discordId).first();
+  if (!waiting) throw new RuleError('missing', 'That person is not on the waitlist.');
+  await db.batch([
+    db.prepare(
+      `INSERT INTO signups (event_id, discord_id, status, created_at, event_team_id) VALUES (?1, ?2, 'yes', ?3, NULL)
+       ON CONFLICT (event_id, discord_id) DO UPDATE SET status = 'yes', event_team_id = NULL`,
+    ).bind(eventId, discordId, now),
+    db.prepare('DELETE FROM event_waitlist WHERE event_id = ?1 AND discord_id = ?2').bind(eventId, discordId),
+    db.prepare('INSERT INTO waitlist_promotions (event_id, discord_id, promoted_at) VALUES (?1, ?2, ?3)').bind(eventId, discordId, now),
+  ]);
+}
+
 // A capacity lowered under the going count: the latest signups beyond it
 // move to the waitlist, keeping their signup time so they head the queue.
 // Team events count teams and ticketed events sell seats, so neither
