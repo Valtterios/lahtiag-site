@@ -823,6 +823,25 @@ Without the secret the API answers 404 and nothing on the site changes;
 the membership page and the command still take names, ready for when the
 server starts pulling.
 
+**Play time.** For the season pass, `scripts/minecraft/playtime-sync.py`
+(installed as `/usr/local/bin/lahtiag-playtime-sync.py`, run by
+`lahtiag-playtime@smp.timer` and `@gtnh.timer` every five minutes, same
+config files as the whitelist sync) reads each server's own player
+statistics, the online ticks per player in `<world>/stats/<uuid>.json`
+(the SMP's Fabric world keeps them under `<world>/players/stats`; the
+1.7.10 modpack's are the flat `stat.playOneMinute` form), and posts the
+minutes since the last run per player and day to
+`/api/minecraft/playtime` with the whitelist token, as numbered batches
+applied once (`src/lib/playtime.ts`; tables `minecraft_playtime` and
+`minecraft_playtime_batches`). The first run only takes a baseline, so
+play before the script existed is not counted; the state, the last ticks
+per player and the unsent minutes, is `/var/lib/lahtiag-playtime-<server>.json`.
+A member's time is the rows for their own names' UUIDs, shown on the
+membership page as "Minecraft this season". The stats files are written
+on the server's autosave and when a player leaves, so minutes arrive in
+lumps a few minutes late. `STATS_DIR=` in the config file overrides the
+detection.
+
 ## The Discord activity listener
 
 For the season pass (the academic-year rewards the board is planning), the
@@ -942,6 +961,7 @@ no subdirectories.
 | Security headers | `public/_headers` (static assets) **and** `src/middleware.ts` (Worker responses) — keep the two CSPs identical |
 | Helsinki time handling | `src/lib/time.ts` — storage is UTC unix seconds, always |
 | Brand assets | `public/brand/`; the Canva kit is the source of truth (blue #4169e1, yellow #ffde59, ink #1e1e1e, Chakra Petch ≈ the wordmark) |
+| Minecraft play time | `scripts/minecraft/playtime-sync.py` + `lahtiag-playtime@.service/.timer` on auraserver; API `src/pages/api/minecraft/playtime.ts`; `src/lib/playtime.ts` |
 | The Discord activity listener | `scripts/discord-listener/` (listener.mjs, compose.yaml, setcreds); on auraserver as container `lahtiag-listener` in `/opt/lahtiag-listener`; API `src/pages/api/discord/activity.ts`, counting `src/lib/activity.ts` |
 
 Secrets (set with `npx wrangler secret put NAME`, never committed):

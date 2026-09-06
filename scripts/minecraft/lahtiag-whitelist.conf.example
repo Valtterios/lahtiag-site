@@ -13,3 +13,9 @@ AMP_PASS=
 CONTAINER=AMP_LahtiAG02
 KEEP=Axinikk
 REMOVE=yes
+
+# Play time (lahtiag-playtime@<server>.timer), optional: where the server keeps
+# <uuid>.json player statistics when it is not <world>/stats or
+# <world>/players/stats next to the whitelist, and where to keep the state.
+#STATS_DIR=/mnt/storage/amp-instances/LahtiAG02/Minecraft/lahtiag/players/stats
+#STATE=/var/lib/lahtiag-playtime-smp.json

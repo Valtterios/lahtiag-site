@@ -1,0 +1,10 @@
+[Unit]
+Description=Send the LahtiAG %i server's Minecraft play time to lahtiag.fi every five minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

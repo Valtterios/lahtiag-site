@@ -74,8 +74,10 @@ The association's Discord bot also counts, per member and day,
 how many messages you send and how long you spend in voice channels on
 the LahtiAG server, in the channels every member can see, for the
 activity rewards of the academic year. Only the counts are kept; the bot
-never stores what was said. Your own counts show on your membership
-page.
+never stores what was said. The Minecraft servers' own player
+statistics are read the same way, so the site knows, per day, how long
+each whitelisted name was online. Your own counts show on your
+membership page.
 
 Event announcements are also posted to the association's Discord server;
 what happens to data inside Discord is governed by

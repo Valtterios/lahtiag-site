@@ -429,6 +429,10 @@ puts it on the page and on Discord.
   the same name, it moves to them, and the member who brought them gets
   a DM that their friend slot is free. A former member's name is free
   for others to list.
+- **Play time.** For the season pass the site also knows, per day, how
+  long each whitelisted name was online on each server, read from the
+  servers' own statistics every five minutes. A member sees their own
+  season on the membership page.
 - **The old list.** The names that were on the server before the site
   took over are on the list as board names. A member who whitelists that
   same name takes it over, and from then on it follows their membership.

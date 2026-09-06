@@ -33,6 +33,7 @@ import { formatHelsinki } from './time';
 import { refreshEventAnnouncement } from './announce';
 import { postNews } from './news';
 import { pruneActivityBatches } from './activity';
+import { prunePlaytimeBatches } from './playtime';
 
 export const REMINDER_WINDOW = 24 * 3600; // the reminder goes out within the last day before the start
 const OPENING_GRACE = 24 * 3600; // an opening older than this is not announced any more
@@ -184,6 +185,7 @@ export async function runHourly(db: D1Database, env: Env, origin: string, now: n
 
   // The activity listener's batch receipts are only needed to catch a retry; a month is plenty.
   await pruneActivityBatches(db, now - 30 * 24 * 3600);
+  await prunePlaytimeBatches(db, now - 30 * 24 * 3600);
 
   for (const event of upcoming) {
     if (!event.discord_event_id) continue;
