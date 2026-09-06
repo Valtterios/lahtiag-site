@@ -118,11 +118,13 @@ export async function isCurrentMember(db: D1Database, discordId: string): Promis
   return row !== null;
 }
 
+// A person's own names: theirs and their friends'. Names the board added
+// belong to the board, whoever typed them, and live on the board's table.
 export async function listMinecraftNames(db: D1Database, discordId: string): Promise<MinecraftName[]> {
   const { results } = await db
     .prepare(
-      `SELECT * FROM minecraft_names WHERE discord_id = ?1
-       ORDER BY CASE kind WHEN 'own' THEN 0 WHEN 'friend' THEN 1 ELSE 2 END, added_at, id`,
+      `SELECT * FROM minecraft_names WHERE discord_id = ?1 AND kind IN ('own', 'friend')
+       ORDER BY CASE kind WHEN 'own' THEN 0 ELSE 1 END, added_at, id`,
     )
     .bind(discordId)
     .all<MinecraftName>();
