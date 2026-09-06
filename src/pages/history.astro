@@ -2,7 +2,7 @@
 import { env } from 'cloudflare:workers';
 import { getEntry, render } from 'astro:content';
 import Base from '../layouts/Base.astro';
-import { listResults, type ResultRow } from '../lib/db';
+import { listResults, leaderboard, type ResultRow } from '../lib/db';
 import { avatarUrl } from '../lib/discord';
 import { formatHelsinki } from '../lib/time';
 
@@ -17,8 +17,10 @@ if (!entry) {
 const { Content } = await render(entry);
 
 let results: ResultRow[] = [];
+let board: Awaited<ReturnType<typeof leaderboard>> = { events: [], wins: [] };
 try {
   results = await listResults(env.DB);
+  board = await leaderboard(env.DB, Math.floor(Date.now() / 1000));
 } catch {
   // archive stays empty; the stories stay up
 }
@@ -49,6 +51,35 @@ try {
             </li>
           ))}
         </ul>
+      </>
+    )}
+
+    {(board.events.length > 0 || board.wins.length > 0) && (
+      <>
+        <h2>Leaderboard</h2>
+        <p class="event-meta">Members who chose to be listed, on their membership page.</p>
+        <div class="leaderboard">
+          {board.events.length > 0 && (
+            <div>
+              <h3>Most events</h3>
+              <ol>
+                {board.events.map((r) => (
+                  <li><img src={avatarUrl(r.discord_id, r.avatar_hash)} alt="" width="24" height="24" loading="lazy" /> {r.username} <span class="event-meta">{r.attended}</span></li>
+                ))}
+              </ol>
+            </div>
+          )}
+          {board.wins.length > 0 && (
+            <div>
+              <h3>Most wins</h3>
+              <ol>
+                {board.wins.map((r) => (
+                  <li><img src={avatarUrl(r.discord_id, r.avatar_hash)} alt="" width="24" height="24" loading="lazy" /> {r.username} <span class="event-meta">{r.wins}</span></li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
       </>
     )}
 

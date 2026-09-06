@@ -176,6 +176,7 @@ puts it on the page and on Discord.
   meeting notices written ahead.
 - **Your stats.** The membership page shows your events, tournaments and
   wins, with a card; `/profile` in Discord posts the card for everyone.
+  A tick there puts you on the public leaderboard on the history page.
 
 ## Where things are
 

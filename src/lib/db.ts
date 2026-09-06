@@ -2188,6 +2188,51 @@ export async function listEndedEventsWithRole(db: D1Database, before: number): P
   return results;
 }
 
+// --- the leaderboard ----------------------------------------------------------------
+// Public on the history page, opt-in per member: events attended and
+// tournament wins, from the same records as the stats card.
+
+export interface LeaderboardRow {
+  discord_id: string;
+  username: string;
+  avatar_hash: string | null;
+  attended: number;
+  wins: number;
+}
+
+export async function setLeaderboardOptIn(db: D1Database, discordId: string, on: boolean): Promise<void> {
+  await db.prepare('UPDATE members SET leaderboard = ?2 WHERE discord_id = ?1').bind(discordId, on ? 1 : 0).run();
+}
+
+export async function isLeaderboardOptIn(db: D1Database, discordId: string): Promise<boolean> {
+  const row = await db.prepare('SELECT leaderboard FROM members WHERE discord_id = ?1').bind(discordId).first<{ leaderboard: number }>();
+  return row?.leaderboard === 1;
+}
+
+export async function leaderboard(db: D1Database, now: number, limit = 10): Promise<{ events: LeaderboardRow[]; wins: LeaderboardRow[] }> {
+  const { results } = await db
+    .prepare(
+      `SELECT m.discord_id, m.username, m.avatar_hash,
+         (SELECT COUNT(DISTINCT e.id) FROM events e
+          WHERE e.cancelled_at IS NULL AND e.published_at IS NOT NULL AND e.starts_at < ?1
+            AND (EXISTS (SELECT 1 FROM signups s WHERE s.event_id = e.id AND s.discord_id = m.discord_id AND s.status = 'yes')
+              OR EXISTS (SELECT 1 FROM tickets t WHERE t.event_id = e.id AND t.discord_id = m.discord_id AND t.status = 'paid'))) AS attended
+       FROM members m WHERE m.leaderboard = 1`,
+    )
+    .bind(now)
+    .all<Omit<LeaderboardRow, 'wins'>>();
+  const winCount = new Map<string, number>();
+  for (const result of await listResults(db, 1000)) {
+    if (result.starts_at >= now) continue;
+    for (const who of result.avatars) winCount.set(who.discord_id, (winCount.get(who.discord_id) ?? 0) + 1);
+  }
+  const rows: LeaderboardRow[] = results.map((r) => ({ ...r, wins: winCount.get(r.discord_id) ?? 0 }));
+  return {
+    events: rows.filter((r) => r.attended > 0).sort((a, b) => b.attended - a.attended || a.username.localeCompare(b.username)).slice(0, limit),
+    wins: rows.filter((r) => r.wins > 0).sort((a, b) => b.wins - a.wins || a.username.localeCompare(b.username)).slice(0, limit),
+  };
+}
+
 // --- team captains ----------------------------------------------------------------
 // Whoever founded a team runs it while signups are open: adding someone
 // who is on the roster without a team, and taking a member out. The

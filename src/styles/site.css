@@ -558,6 +558,24 @@ a:hover {
   margin: 1rem 0 0;
 }
 
+/* The leaderboard on the history page. */
+.leaderboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1rem 2rem;
+}
+.leaderboard ol {
+  padding-left: 1.4rem;
+}
+.leaderboard li img {
+  vertical-align: middle;
+  border-radius: 50%;
+  margin-right: 0.3rem;
+}
+.leaderboard-optin {
+  margin-top: 0.8rem;
+}
+
 /* The member's stats card on the membership page. */
 .profile-card {
   display: block;

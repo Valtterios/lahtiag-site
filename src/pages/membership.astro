@@ -2,7 +2,7 @@
 import { env } from 'cloudflare:workers';
 import Base from '../layouts/Base.astro';
 import { currentSession, ensureCsrf, checkCsrf } from '../lib/guard';
-import { getRegisterByDiscord, getPendingLinkByDiscord, setOwnActive, updateOwnEntry, listMyEvents, memberStats, RuleError } from '../lib/db';
+import { getRegisterByDiscord, getPendingLinkByDiscord, setOwnActive, updateOwnEntry, listMyEvents, memberStats, isLeaderboardOptIn, RuleError } from '../lib/db';
 import {
   parseApplication,
   normalizeHandle,
@@ -30,6 +30,7 @@ const csrf = ensureCsrf(Astro.cookies);
 const entry = session ? await getRegisterByDiscord(env.DB, session.discordId) : null;
 const myEvents = session ? await listMyEvents(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : [];
 const stats = session ? await memberStats(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : null;
+const onLeaderboard = session ? await isLeaderboardOptIn(env.DB, session.discordId) : false;
 const RELATION: Record<string, string> = { ticket: 'Ticket', going: 'Going', maybe: 'Maybe', waitlist: 'On the waitlist', interested: 'Interested' };
 const pendingLink = session && !entry ? await getPendingLinkByDiscord(env.DB, session.discordId) : null;
 
@@ -99,6 +100,7 @@ const field = (name: string, fallback: string | null) => values[name] ?? fallbac
 const NOTES: Record<string, string> = {
   saved: 'Saved.',
   details: 'Your details are updated.',
+  leaderboard: 'Leaderboard choice saved.',
   telegram: 'That Telegram handle is too long.',
 };
 const note = NOTES[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
@@ -299,6 +301,11 @@ const MESSAGES: Record<FieldError, string> = {
         {stats.last_win ? <> · last win: {stats.last_win.title}</> : null}. Type <code>/profile</code> in Discord to post your card for everyone.
       </p>
       <img class="profile-card" src="/membership/card.png" alt="Your stats card" width="900" height="420" />
+      <form method="post" action="/membership/leaderboard" class="app-form-row leaderboard-optin">
+        <input type="hidden" name="csrf" value={csrf} />
+        <label class="check"><input type="checkbox" name="leaderboard" checked={onLeaderboard} /> <span>Show me on the public leaderboard on the history page (your Discord name, events and wins)</span></label>
+        <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+      </form>
     </section>
   )}
 
