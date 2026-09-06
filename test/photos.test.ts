@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
-import { upsertMember, createEvent, deleteEvent, addEventPhoto, listEventPhotos, getEventPhoto, deleteEventPhoto, listPhotoAlbums, PHOTO_MAX_BYTES } from '../src/lib/db';
+import { upsertMember, createEvent, deleteEvent, addEventPhoto, listEventPhotos, getEventPhoto, deleteEventPhoto, listPhotoAlbums, setPhotoCredit, getEvent, PHOTO_MAX_BYTES } from '../src/lib/db';
 
 // Photos in D1: added with a thumbnail, listed, served, removed.
 
@@ -21,12 +21,25 @@ describe('event photos', () => {
     expect((await listEventPhotos(db(), id)).map((p) => [p.id, p.width, p.height, p.has_thumb])).toEqual([[a, 1, 1, 1], [b, 1, 1, 0]]);
     expect((await getEventPhoto(db(), a, false))?.bytes.byteLength).toBe(PNG.length);
     expect((await getEventPhoto(db(), b, true))?.bytes.byteLength).toBe(PNG.length); // no thumb: the picture itself
-    expect(await listPhotoAlbums(db())).toEqual([{ event_id: id, title: 'LAN', starts_at: NOW - 86400, photos: 2, first_id: a }]);
+    expect(await listPhotoAlbums(db())).toEqual([{ event_id: id, title: 'LAN', starts_at: NOW - 86400, photos: 2, first_id: a, photo_credit: null }]);
     await expect(addEventPhoto(db(), id, 'text/plain', PNG.buffer.slice(0), null, NOW)).rejects.toMatchObject({ code: 'bad_input' });
     await expect(addEventPhoto(db(), id, 'image/png', new ArrayBuffer(PHOTO_MAX_BYTES + 1), null, NOW)).rejects.toMatchObject({ code: 'bad_input' });
     expect(await deleteEventPhoto(db(), id, a)).toBe(true);
     expect(await deleteEventPhoto(db(), id, a)).toBe(false);
     await deleteEvent(db(), id);
     expect(await getEventPhoto(db(), b, false)).toBeNull();
+  });
+});
+
+describe('the photo credit', () => {
+  it('is kept per event, trimmed, and cleared by an empty line', async () => {
+    await env.DB.prepare("INSERT INTO members (discord_id, username, last_seen) VALUES ('900000000000000001', 'Board', 1)").run();
+    await env.DB.prepare("INSERT INTO events (id, title, starts_at, created_by, created_at, published_at) VALUES (901, 'Album night', 1, '900000000000000001', 1, 1)").run();
+    await setPhotoCredit(env.DB, 901, '  Photos: Siiri Hietala  ');
+    expect((await getEvent(env.DB, 901))?.photo_credit).toBe('Photos: Siiri Hietala');
+    await setPhotoCredit(env.DB, 901, '');
+    expect((await getEvent(env.DB, 901))?.photo_credit).toBeNull();
+    await expect(setPhotoCredit(env.DB, 901, 'x'.repeat(121))).rejects.toMatchObject({ code: 'bad_input' });
+    await expect(setPhotoCredit(env.DB, 902, 'nobody')).rejects.toMatchObject({ code: 'missing' });
   });
 });

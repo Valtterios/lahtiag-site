@@ -38,4 +38,3 @@ next year with an even bigger event!
 
 ---
 
-Photo credits for past events: Toivo Harmaala, Siiri Hietala and Eve Väänänen; the CS2 tournament pictures are stills from VAKA ry's stream of the day. Photos from events go up above as the board adds them.

@@ -130,7 +130,7 @@ if (event && !draft && event.cancelled_at === null) syncInterestInBackground(Ast
 
 // Flashes from board actions open the (otherwise folded) board tools.
 const DISCORD_OPEN = new Set(['discord_reannounced', 'discord_created', 'discord_synced', 'discord_removed', 'discord_upgraded', 'discord_archived', 'discord_team_voice', 'discord_needs_category', 'discord_no_teams', 'discord_event_created', 'discord_event_removed', 'discord_event_skipped', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
-const ADMIN_OPEN = new Set(['team_size', 'cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'photos_added', 'photo_removed', 'photo_missing', 'photo_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
+const ADMIN_OPEN = new Set(['team_size', 'cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'photos_added', 'photo_removed', 'credit_saved', 'photo_missing', 'photo_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
 const okKey = Astro.url.searchParams.get('ok') ?? '';
 const errKey = Astro.url.searchParams.get('err') ?? '';
 const FLASH: Record<string, string> = {
@@ -209,6 +209,7 @@ const OK: Record<string, string> = {
   cover_removed: 'Cover image removed.',
   photos_added: 'Photos added.',
   photo_removed: 'Photo removed.',
+  credit_saved: 'Photo credit saved.',
   interested: "Marked as interested. You'll see it under My events.",
   waitlisted: "You're on the waitlist. When a seat frees you're moved to Going, the event's Discord channel tells you, and it shows under My events.",
   left_waitlist: 'Taken off the waitlist.',
@@ -554,6 +555,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 </li>
               ))}
             </ul>
+            {event.photo_credit && <p class="queue-meta">{event.photo_credit}</p>}
           </section>
         )}
       {!isTeamEvent && signups.length > 0 && (
@@ -1141,7 +1143,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               <button class="btn btn-primary" type="submit">Add participant</button>
             </form>
           </details>
-          <details class="admin-edit" id="photos-admin" open={['photos_added', 'photo_removed'].includes(okKey) || ['photo_missing', 'photo_bad'].includes(errKey)}>
+          <details class="admin-edit" id="photos-admin" open={['photos_added', 'photo_removed', 'credit_saved'].includes(okKey) || ['photo_missing', 'photo_bad'].includes(errKey)}>
             <summary>Photos · {photos.length === 0 ? 'none' : photos.length}</summary>
             <form method="post" action={`/events/${event.id}/photos`} enctype="multipart/form-data" class="app-form" id="photo-form">
               <input type="hidden" name="csrf" value={csrf} />
@@ -1149,6 +1151,13 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               <p class="queue-meta">Pick several at once. The page shrinks them to 1600 px and makes thumbnails before uploading, so phone photos are fine. Shown on this page and on the history page; up to 60 per event.</p>
               <button class="btn btn-primary" type="submit" id="photo-submit">Upload</button>
             </form>
+            <form method="post" action={`/events/${event.id}/photos`} class="app-form-row">
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="action" value="credit" />
+              <label>Photo credit <input type="text" name="credit" value={event.photo_credit ?? ''} maxlength="120" placeholder="Photos: Firstname Lastname" /></label>
+              <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+            </form>
+            <p class="queue-meta">Shown under the pictures here and on the history page. Empty to clear.</p>
             {photos.length > 0 && (
               <ul class="photo-grid photo-grid-admin">
                 {photos.map((p) => (

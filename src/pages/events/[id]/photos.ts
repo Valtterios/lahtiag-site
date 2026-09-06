@@ -1,11 +1,11 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { addEventPhoto, deleteEventPhoto, RuleError } from '../../../lib/db';
+import { addEventPhoto, deleteEventPhoto, setPhotoCredit, RuleError } from '../../../lib/db';
 import { later, postPhotosNotice } from '../../../lib/event-channel';
 
 // Board: add photos of an event (several at once, each with the thumbnail
-// the browser made), or remove one.
+// the browser made), remove one, or say who took them.
 
 export const POST: APIRoute = async ({ request, params, redirect, locals, url }) => {
   const id = Number(params.id);
@@ -16,6 +16,10 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf`, 303);
   const now = Math.floor(Date.now() / 1000);
   try {
+    if (form.get('action') === 'credit') {
+      await setPhotoCredit(env.DB, id, String(form.get('credit') ?? ''));
+      return redirect(`${back}?ok=credit_saved#photos`, 303);
+    }
     if (form.get('action') === 'remove') {
       const photo = Number(form.get('photo_id'));
       if (!Number.isInteger(photo) || !(await deleteEventPhoto(env.DB, id, photo))) return redirect(`${back}?err=missing`, 303);

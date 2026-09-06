@@ -94,7 +94,7 @@ try {
               <a href={`/events/${a.event_id}#photos`}>
                 <img src={`/events/${a.event_id}/photos/${a.first_id}?thumb`} alt="" loading="lazy" />
                 <span class="album-title">{a.title}</span>
-                <span class="event-meta">{formatHelsinki(a.starts_at)} · {a.photos} {a.photos === 1 ? 'photo' : 'photos'}</span>
+                <span class="event-meta">{formatHelsinki(a.starts_at)} · {a.photos} {a.photos === 1 ? 'photo' : 'photos'}{a.photo_credit ? ` · ${a.photo_credit}` : ''}</span>
               </a>
             </li>
           ))}

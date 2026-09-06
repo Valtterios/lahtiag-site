@@ -245,7 +245,9 @@ the bottom right lets you view a page as a member or a visitor would.
   screen messages are posted there by the bot. Board tools → Discord
   shows the state. Afterwards, Archive keeps the channels for the board
   and takes the role away; Delete everything removes them.
-- **Photos.** Board tools → Photos takes several pictures at once; the
+- **Photos.** Board tools → Photos takes several pictures at once, and
+  has a photo credit line that shows under the pictures on the event page
+  and on the history page's album; the
   page shrinks them before upload. They show on the event page and the
   history page. Up to 60 per event.
 

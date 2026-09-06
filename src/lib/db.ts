@@ -75,6 +75,7 @@ export interface EventRow {
   published_at: number | null; // null: a draft only the board sees
   link_url: string | null; // optional stream/info link
   display_note: string | null; // live message for the venue display
+  photo_credit: string | null; // who took the photos, shown under them
   cancel_message_id: string | null; // the Discord "cancelled" post, removed on reinstate
   members_only: number; // 1 = signups and tickets need a linked, current member
   member_slots: number | null; // seats within capacity only members may take
@@ -512,6 +513,15 @@ export async function setDisplayNote(
   if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
   capLength(note, 200, 'A screen message');
   await db.prepare('UPDATE events SET display_note = ?2 WHERE id = ?1').bind(eventId, note).run();
+}
+
+// The photographer(s), a short line under the event's photos; empty clears it.
+export async function setPhotoCredit(db: D1Database, eventId: number, credit: string | null): Promise<void> {
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  const text = credit?.trim() || null;
+  capLength(text, 120, 'A photo credit');
+  await db.prepare('UPDATE events SET photo_credit = ?2 WHERE id = ?1').bind(eventId, text).run();
 }
 
 // Admin roster edit: change a signup's answer or move it between teams.
@@ -2358,13 +2368,15 @@ export interface PhotoAlbum {
   starts_at: number;
   photos: number;
   first_id: number;
+  photo_credit: string | null;
 }
 
 // Past events with photos, newest first, for the history page.
 export async function listPhotoAlbums(db: D1Database, limit = 30): Promise<PhotoAlbum[]> {
   const { results } = await db
     .prepare(
-      `SELECT e.id AS event_id, e.title, e.starts_at, COUNT(p.id) AS photos, MIN(p.id) AS first_id
+      `SELECT e.id AS event_id, e.title, e.starts_at, e.photo_credit, COUNT(p.id) AS photos,
+              (SELECT p2.id FROM event_photos p2 WHERE p2.event_id = e.id ORDER BY p2.sort, p2.id LIMIT 1) AS first_id
        FROM events e JOIN event_photos p ON p.event_id = e.id
        WHERE e.cancelled_at IS NULL AND e.published_at IS NOT NULL
        GROUP BY e.id ORDER BY e.starts_at DESC LIMIT ?1`,
