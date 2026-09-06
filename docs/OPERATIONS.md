@@ -135,7 +135,7 @@ mentions them in the event's channel. Team events and ticketed events
 have no waitlist.
 
 **Interested.** People who press Interested on Discord's event list are
-read back by the bot (at most every ten minutes, when someone opens the
+read back by the bot (at most every two minutes, when someone opens the
 event page) and counted with the site's own ♡ Interested button; each
 person counts once. "Signups open on/at" in the event form holds signups
 and sales until then, so an announced event can collect interest first.

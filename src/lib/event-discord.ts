@@ -638,7 +638,7 @@ async function coverDataUri(db: D1Database, eventId: number): Promise<string | u
   return `data:${cover.content_type};base64,${btoa(binary)}`;
 }
 
-export const INTEREST_SYNC_SECONDS = 600;
+export const INTEREST_SYNC_SECONDS = 120;
 
 // Read Discord's Interested list into the event's interest rows.
 export async function syncInterest(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, event: Pick<EventRow, 'id' | 'discord_event_id'>, now: number): Promise<boolean> {
