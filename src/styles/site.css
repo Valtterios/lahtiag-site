@@ -544,6 +544,23 @@ a:hover {
   margin: 0 0 2rem;
 }
 
+/* The Interested heart on an event page. */
+.btn-heart {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+.btn-heart-on {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.btn-heart-static {
+  cursor: default;
+}
+.inline-form {
+  display: inline;
+}
+
 /* The board's seeding of a draft bracket: one row per first-round match. */
 .seeding {
   display: grid;

@@ -612,6 +612,21 @@ export async function updateScheduledEvent(
   return botCall(botToken, 'PATCH', `/guilds/${guildId}/scheduled-events/${eventId}`, scheduledEventBody(input));
 }
 
+// Who pressed Interested on the scheduled event; null when Discord did
+// not answer. Pages of 100, a handful at most.
+export async function listScheduledEventUsers(botToken: string, guildId: string, eventId: string): Promise<string[] | null> {
+  const ids: string[] = [];
+  let after = '0';
+  for (let page = 0; page < 10; page++) {
+    const result = await botCall<{ user: { id: string } }[]>(botToken, 'GET', `/guilds/${guildId}/scheduled-events/${eventId}/users?limit=100&after=${after}`);
+    if (!result.ok) return page === 0 ? null : ids;
+    for (const row of result.value) ids.push(row.user.id);
+    if (result.value.length < 100) break;
+    after = result.value[result.value.length - 1].user.id;
+  }
+  return ids;
+}
+
 export async function deleteScheduledEvent(botToken: string, guildId: string, eventId: string, reason: string): Promise<boolean> {
   const result = await botCall(botToken, 'DELETE', `/guilds/${guildId}/scheduled-events/${eventId}`, undefined, reason);
   return result.ok || result.status === 404;

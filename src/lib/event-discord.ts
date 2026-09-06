@@ -8,7 +8,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { DISCORD_GUILD_ID } from './config';
-import { getEvent, listSignups, listEventTeams, getSettings, setSetting, getEventCover, type EventRow, type EventTeamRow } from './db';
+import { getEvent, listSignups, listEventTeams, getSettings, setSetting, getEventCover, replaceDiscordInterest, type EventRow, type EventTeamRow } from './db';
 import {
   createGuildRole,
   createGuildChannel,
@@ -17,6 +17,7 @@ import {
   createScheduledEvent,
   updateScheduledEvent,
   deleteScheduledEvent,
+  listScheduledEventUsers,
   deleteGuildRole,
   deleteChannel,
   renameGuildRole,
@@ -635,6 +636,31 @@ async function coverDataUri(db: D1Database, eventId: number): Promise<string | u
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return `data:${cover.content_type};base64,${btoa(binary)}`;
+}
+
+export const INTEREST_SYNC_SECONDS = 600;
+
+// Read Discord's Interested list into the event's interest rows.
+export async function syncInterest(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, event: Pick<EventRow, 'id' | 'discord_event_id'>, now: number): Promise<boolean> {
+  if (!env.DISCORD_BOT_TOKEN || !event.discord_event_id) return false;
+  const ids = await listScheduledEventUsers(env.DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, event.discord_event_id);
+  if (ids === null) return false;
+  await replaceDiscordInterest(db, event.id, ids, now);
+  return true;
+}
+
+// From a page view: refresh in the background when the last read is old,
+// so the page never waits for Discord.
+export function syncInterestInBackground(
+  ctx: { waitUntil(promise: Promise<unknown>): void } | undefined,
+  db: D1Database,
+  env: { DISCORD_BOT_TOKEN?: string },
+  event: Pick<EventRow, 'id' | 'discord_event_id' | 'interest_synced_at' | 'starts_at'>,
+  now: number,
+): void {
+  if (!event.discord_event_id || event.starts_at < now) return;
+  if (event.interest_synced_at !== null && now - event.interest_synced_at < INTEREST_SYNC_SECONDS) return;
+  ctx?.waitUntil(syncInterest(db, env, event, now).catch(() => {}));
 }
 
 export type ScheduledSync = 'created' | 'updated' | 'removed' | 'skipped' | 'forbidden' | 'error' | 'unconfigured';

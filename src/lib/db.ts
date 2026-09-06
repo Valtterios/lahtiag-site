@@ -33,6 +33,7 @@ export class RuleError extends Error {
       | 'needs_ticket'
       | 'ticket_holder'
       | 'too_few'
+  | 'not_open'
   | 'bad_seeding'
   | 'bracket_live'
       | 'answers',
@@ -76,12 +77,15 @@ export interface EventRow {
   discord_category_id: string | null; // a big event's own category; null = one channel under the shared Events category
   discord_bracket_message_id: string | null; // the pinned live bracket in the channel, edited after every result
   bracket_live_at: number | null; // null = the generated bracket is a draft only the board sees
+  signups_open_at: number | null; // null = from publication; else signups and sales wait for this moment
+  interest_synced_at: number | null; // last time Discord's Interested clicks were read
 }
 
 export interface EventWithCounts extends EventRow {
   yes_count: number;
   maybe_count: number;
   teams_count: number;
+  interest_count: number; // people interested, on the site or on Discord, each once
 }
 
 export interface SignupRow {
@@ -154,7 +158,8 @@ const EVENT_COUNTS = `
   SELECT e.*,
     (SELECT COUNT(*) FROM signups s WHERE s.event_id = e.id AND s.status = 'yes')   AS yes_count,
     (SELECT COUNT(*) FROM signups s WHERE s.event_id = e.id AND s.status = 'maybe') AS maybe_count,
-    (SELECT COUNT(*) FROM event_teams t WHERE t.event_id = e.id)                    AS teams_count
+    (SELECT COUNT(*) FROM event_teams t WHERE t.event_id = e.id)                    AS teams_count,
+    (SELECT COUNT(DISTINCT i.discord_id) FROM event_interest i WHERE i.event_id = e.id) AS interest_count
   FROM events e`;
 
 // Drafts are the board's alone until published: they stay out of every
@@ -384,6 +389,7 @@ export async function deleteEvent(db: D1Database, id: number): Promise<EventRow>
     db.prepare('DELETE FROM bracket_matches WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM event_role_grants WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM event_discord_channels WHERE event_id = ?1').bind(id),
+    db.prepare('DELETE FROM event_interest WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM signups WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM event_teams WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM events WHERE id = ?1').bind(id),
@@ -412,6 +418,7 @@ export async function setSignup(
   if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
   if (event.cancelled_at !== null) throw new RuleError('cancelled', 'This event is cancelled.');
   if (event.published_at === null) throw new RuleError('closed', 'This event is not published yet.');
+  if (!signupsOpen(event, now)) throw new RuleError('not_open', 'Signups are not open yet.');
   if (event.signups_closed_at !== null) throw new RuleError('closed', 'Signups are closed.');
   await requireEligible(db, event, discordId, status === 'yes');
   await requireTicketIfTicketed(db, eventId, discordId);
@@ -626,10 +633,16 @@ export async function setSignupsClosed(
 
 // --- tournament team signups -----------------------------------------------
 
-async function requireOpenTeamEvent(db: D1Database, eventId: number): Promise<EventWithCounts> {
+// Signups (and sales) wait for the opening moment when one is set.
+export function signupsOpen(event: Pick<EventRow, 'signups_open_at'>, now: number): boolean {
+  return event.signups_open_at === null || event.signups_open_at <= now;
+}
+
+async function requireOpenTeamEvent(db: D1Database, eventId: number, now?: number): Promise<EventWithCounts> {
   const event = await getEvent(db, eventId);
   if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
   if (event.cancelled_at !== null) throw new RuleError('cancelled', 'This event is cancelled.');
+  if (now !== undefined && !signupsOpen(event, now)) throw new RuleError('not_open', 'Signups are not open yet.');
   if (event.signups_closed_at !== null) throw new RuleError('closed', 'Signups are closed.');
   if (event.team_size === null) {
     throw new RuleError('not_team_event', 'This event does not take team signups.');
@@ -665,7 +678,7 @@ export async function createEventTeam(
   discordId: string,
   now: number,
 ): Promise<number> {
-  const event = await requireOpenTeamEvent(db, eventId);
+  const event = await requireOpenTeamEvent(db, eventId, now);
   await requireEligible(db, event, discordId, false);
   await requireTicketIfTicketed(db, eventId, discordId);
   const trimmed = name.trim();
@@ -704,7 +717,7 @@ export async function joinEventTeam(
   discordId: string,
   now: number,
 ): Promise<void> {
-  const event = await requireOpenTeamEvent(db, eventId);
+  const event = await requireOpenTeamEvent(db, eventId, now);
   await requireEligible(db, event, discordId, false);
   await requireTicketIfTicketed(db, eventId, discordId);
   const team = await db
@@ -2022,6 +2035,51 @@ export async function removeRegisterAdmin(db: D1Database, email: string): Promis
   return (result.meta.changes ?? 0) > 0;
 }
 
+// --- signups open at, and the Interested heart --------------------------------------
+
+export async function setSignupsOpenAt(db: D1Database, eventId: number, at: number | null): Promise<void> {
+  await db.prepare('UPDATE events SET signups_open_at = ?2 WHERE id = ?1').bind(eventId, at).run();
+}
+
+export interface InterestRow {
+  discord_id: string;
+  source: 'site' | 'discord';
+}
+
+export async function listInterest(db: D1Database, eventId: number): Promise<InterestRow[]> {
+  const { results } = await db.prepare('SELECT discord_id, source FROM event_interest WHERE event_id = ?1 ORDER BY created_at').bind(eventId).all<InterestRow>();
+  return results;
+}
+
+export async function isInterested(db: D1Database, eventId: number, discordId: string): Promise<boolean> {
+  const row = await db.prepare('SELECT 1 AS x FROM event_interest WHERE event_id = ?1 AND discord_id = ?2 LIMIT 1').bind(eventId, discordId).first();
+  return row !== null;
+}
+
+// The site's heart: on, off, on. True when it is on afterwards. Interest
+// marked on Discord is Discord's to remove and stays counted.
+export async function toggleInterest(db: D1Database, eventId: number, discordId: string, now: number): Promise<boolean> {
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  const mine = await db.prepare("SELECT 1 AS x FROM event_interest WHERE event_id = ?1 AND discord_id = ?2 AND source = 'site'").bind(eventId, discordId).first();
+  if (mine) {
+    await db.prepare("DELETE FROM event_interest WHERE event_id = ?1 AND discord_id = ?2 AND source = 'site'").bind(eventId, discordId).run();
+    return false;
+  }
+  await db.prepare("INSERT INTO event_interest (event_id, discord_id, source, created_at) VALUES (?1, ?2, 'site', ?3)").bind(eventId, discordId, now).run();
+  return true;
+}
+
+// Discord's Interested list, as last read: replaced whole.
+export async function replaceDiscordInterest(db: D1Database, eventId: number, discordIds: string[], now: number): Promise<void> {
+  const statements = [db.prepare("DELETE FROM event_interest WHERE event_id = ?1 AND source = 'discord'").bind(eventId)];
+  for (const id of new Set(discordIds)) {
+    statements.push(db.prepare("INSERT OR IGNORE INTO event_interest (event_id, discord_id, source, created_at) VALUES (?1, ?2, 'discord', ?3)").bind(eventId, id, now));
+  }
+  statements.push(db.prepare('UPDATE events SET interest_synced_at = ?2 WHERE id = ?1').bind(eventId, now));
+  await db.batch(statements);
+}
+
 // --- settings ------------------------------------------------------------------
 // Board-editable configuration (migration 0010). Keys live here so a typo
 // cannot invent one.
@@ -2325,6 +2383,7 @@ export async function ticketOffer(
 ): Promise<{ ok: true; amount_cents: number; member: boolean } | { ok: false; reason: RuleError['code'] }> {
   if (event.cancelled_at !== null) return { ok: false, reason: 'cancelled' };
   if (event.published_at === null) return { ok: false, reason: 'sales_closed' };
+  if (!signupsOpen(event, now)) return { ok: false, reason: 'not_open' };
   if (type.active !== 1) return { ok: false, reason: 'sales_closed' };
   const closes = type.sales_close_at ?? event.starts_at;
   if (now >= closes) return { ok: false, reason: 'sales_closed' };

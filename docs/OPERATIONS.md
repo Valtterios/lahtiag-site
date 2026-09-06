@@ -118,6 +118,12 @@ tournament day, prefer the panel.
 
 ## Events on Discord: the event list, a role and a channel
 
+**Interested.** People who press Interested on Discord's event list are
+read back by the bot (at most every ten minutes, when someone opens the
+event page) and counted with the site's own ♡ Interested button; each
+person counts once. "Signups open on/at" in the event form holds signups
+and sales until then, so an announced event can collect interest first.
+
 **The event list.** When an event is published (or created straight from
 `/tournament`), the bot puts it on Discord's own event list, the "Events"
 entry at the top of the channel list, with the cover picture, the first

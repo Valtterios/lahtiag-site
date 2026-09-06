@@ -68,6 +68,11 @@ the bottom right lets you view a page as a member or a visitor would.
   signups. Add a ticket type and it sells tickets instead; a paid ticket
   is the signup. Set a price, a member price, members-only, a quantity,
   a sales deadline, and a line describing what the ticket includes.
+- **Signups open later, and the heart.** "Signups open on/at" in the
+  event form holds signups and sales until that moment; until then the
+  page shows the date and the ♡ Interested button. The count next to the
+  heart adds up the site's hearts and the Interested clicks on Discord's
+  event list, each person once.
 - **Capacity and reserved seats.** The event's capacity is the total.
   "Seats reserved for members" keeps that many for members; non-members
   stop at the rest.

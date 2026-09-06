@@ -72,7 +72,7 @@ const flash =
                 </span>
               ) : (
                 <span>
-                  {event.yes_count}{event.capacity !== null ? ` / ${event.capacity}` : ''} going
+                  {event.yes_count}{event.capacity !== null ? ` / ${event.capacity}` : ''} going{event.interest_count > 0 ? ` · ♡ ${event.interest_count}` : ''}
                   {event.maybe_count > 0 ? `, ${event.maybe_count} maybe` : ''}
                 </span>
               )}
@@ -149,6 +149,8 @@ const flash =
           Seats reserved for members
           <input name="member_slots" type="number" min="1" placeholder="empty = none; only with a capacity" />
         </label>
+        <label>Signups open on <input name="open_date" type="date" /></label>
+        <label>Signups open at (Helsinki) <input name="open_time" type="time" placeholder="empty = when published" /></label>
         <label>
           Organizers
           <input name="organizers" placeholder="LahtiAG, Kapital" maxlength="120" />

@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { updateEvent, getEvent, RuleError } from '../../../lib/db';
+import { updateEvent, getEvent, setSignupsOpenAt, RuleError } from '../../../lib/db';
 import { renameEventDiscord, syncScheduledEvent } from '../../../lib/event-discord';
 import { later, postEventLine, changeLine } from '../../../lib/event-channel';
 import { helsinkiToUnix } from '../../../lib/time';
@@ -23,6 +23,11 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
   if (endsAt === null) return redirect(`${back}?err=bad_time`, 303);
   if (endsAt <= startsAt) endsAt += 86400;
 
+  // Signups open at: both fields empty means from publication.
+  const openDate = String(form.get('open_date') ?? '').trim();
+  const openTime = String(form.get('open_time') ?? '').trim();
+  const opensAt = openDate === '' && openTime === '' ? null : helsinkiToUnix(openDate, openTime || '00:00');
+  if (opensAt === null && (openDate !== '' || openTime !== '')) return redirect(`${back}?err=bad_time`, 303);
   const capacityRaw = String(form.get('capacity') ?? '').trim();
   const description = String(form.get('description') ?? '').trim();
   const organizers = String(form.get('organizers') ?? '').trim();
@@ -46,6 +51,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
       members_only: membersOnly,
       member_slots: memberSlots,
     });
+    await setSignupsOpenAt(env.DB, id, opensAt);
     // Edit the original Discord announcement in place instead of reposting.
     if (event.discord_message_id && env.DISCORD_WEBHOOK_URL) {
       await editWebhookMessage(

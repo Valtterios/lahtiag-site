@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
-import { createEvent, RuleError } from '../../lib/db';
+import { createEvent, RuleError, setSignupsOpenAt } from '../../lib/db';
 import { helsinkiToUnix } from '../../lib/time';
 
 // A new event starts as a draft: only the board sees it, nothing goes to
@@ -30,6 +30,10 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
   const memberSlotsRaw = String(form.get('member_slots') ?? '').trim();
   const memberSlots = memberSlotsRaw ? Number(memberSlotsRaw) : null;
   const description = String(form.get('description') ?? '').trim();
+  const openDate = String(form.get('open_date') ?? '').trim();
+  const openTime = String(form.get('open_time') ?? '').trim();
+  const opensAt = openDate === '' && openTime === '' ? null : helsinkiToUnix(openDate, openTime || '00:00');
+  if (opensAt === null && (openDate !== '' || openTime !== '')) return redirect('/events?err=bad_time', 303);
 
   try {
     const now = Math.floor(Date.now() / 1000);
@@ -53,6 +57,7 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
       },
       now,
     );
+    if (opensAt !== null) await setSignupsOpenAt(env.DB, id, opensAt);
     return redirect(`/events/${id}?ok=draft`, 303);
   } catch (error) {
     if (error instanceof RuleError) return redirect('/events?err=bad_input', 303);

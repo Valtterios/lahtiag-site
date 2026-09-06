@@ -18,9 +18,11 @@ import {
   listEventQuestions,
   getAnswers,
   listAllAnswers,
+  isInterested,
+  signupsOpen,
   type TicketTypeWithSales,
 } from '../../../lib/db';
-import { channelUrl, scheduledEventUrl, countGrants, participantIds, listEventChannels, EVENT_CATEGORY_NAME } from '../../../lib/event-discord';
+import { channelUrl, scheduledEventUrl, countGrants, participantIds, listEventChannels, syncInterestInBackground, EVENT_CATEGORY_NAME } from '../../../lib/event-discord';
 import { questionOptions, answersComplete, QUESTION_KINDS } from '../../../lib/questions';
 import { purchaseOffer, pendingPurchaseFor, resumablePurchase } from '../../../lib/purchases';
 import { readBasket, basketCount } from '../../../lib/basket';
@@ -112,7 +114,11 @@ const isFull = !isTeamEvent
     going.filter((s) => s.discord_id !== session?.discordId).length >= event.capacity
   : event?.capacity != null && eventTeams.length >= event.capacity;
 const signupsClosed = event?.signups_closed_at != null;
-const open = event ? event.cancelled_at === null && !signupsClosed : false;
+// Signups can wait for an opening moment; until then only the heart works.
+const opensLater = event ? !signupsOpen(event, nowSeconds) : false;
+const open = event ? event.cancelled_at === null && !signupsClosed && !opensLater : false;
+const interested = event && session ? await isInterested(env.DB, event.id, session.discordId) : false;
+if (event && !draft && event.cancelled_at === null) syncInterestInBackground(Astro.locals.cfContext, env.DB, env, event, nowSeconds);
 
 // Flashes from board actions open the (otherwise folded) board tools.
 const DISCORD_OPEN = new Set(['discord_created', 'discord_synced', 'discord_removed', 'discord_upgraded', 'discord_archived', 'discord_team_voice', 'discord_needs_category', 'discord_no_teams', 'discord_event_created', 'discord_event_removed', 'discord_event_skipped', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
@@ -147,6 +153,7 @@ const FLASH: Record<string, string> = {
   cover_bad: 'The cover must be a JPEG, PNG or WebP under 1.5 MB.',
   ticket_holder: 'That person holds a paid ticket, so they are going. Refund it in Stripe to remove them.',
   too_few: 'A bracket needs at least two teams or players. Players without a team are grouped into teams when you generate.',
+  not_open: 'Signups are not open yet. Press Interested and come back when they open.',
   discord_unconfigured: 'The Discord bot is not set up (no bot token). The technical handbook, "Discord roles", has the steps.',
   discord_forbidden: "Discord refused. The bot's role needs Manage Roles, Manage Channels, Create Events and Manage Events, and must sit above the roles it creates.",
   discord_event_skipped: 'Discord events are made for published, upcoming events only.',
@@ -165,6 +172,7 @@ const TYPE_TAGS: Record<string, string> = {
   sales_closed: 'Sales closed',
   cancelled: 'Cancelled',
   has_ticket: 'Yours',
+  not_open: 'Not yet',
 };
 const OK: Record<string, string> = {
   draft: 'Saved as a draft. Only the board sees it; publish it when it is ready.',
@@ -181,6 +189,8 @@ const OK: Record<string, string> = {
   answers_saved: 'Your details are saved.',
   cover_saved: 'Cover image saved.',
   cover_removed: 'Cover image removed.',
+  interested: "Marked as interested. You'll see it under My events.",
+  uninterested: 'Interest removed.',
   discord_created: 'Role and channel created. Everyone on the roster has the role; new signups get it as they come.',
   discord_removed: 'Deleted from Discord: the role and every channel the bot made for this event.',
   discord_upgraded: 'Own category made. The channel moved in as discussion, with rules, bracket, teams, Commentators and Interviews beside it.',
@@ -222,6 +232,16 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
           <h1>{event.title}</h1>
           {event.organizers && <p class="event-by">by {event.organizers}</p>}
           <p class="event-actions">
+            {session ? (
+              <form method="post" action={`/events/${event.id}/interest`} class="inline-form">
+                <input type="hidden" name="csrf" value={csrf} />
+                <button class={`btn btn-sm btn-heart${interested ? ' btn-heart-on' : ''}`} type="submit" aria-pressed={interested}>
+                  <span aria-hidden="true">{interested ? '♥' : '♡'}</span> {event.interest_count} interested
+                </button>
+              </form>
+            ) : (
+              <span class="btn btn-sm btn-heart btn-heart-static"><span aria-hidden="true">♡</span> {event.interest_count} interested</span>
+            )}
             <a class="btn btn-ghost btn-sm" href={`/events/${event.id}/event.ics`}>Add to calendar</a>
             {event.discord_event_id && <a class="btn btn-ghost btn-sm" href={scheduledEventUrl(event.discord_event_id)} rel="noopener">On Discord</a>}
             <button class="btn btn-ghost btn-sm" type="button" id="share-event" data-title={event.title} hidden>Share</button>
@@ -262,9 +282,10 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               </li>
             )}
           </ul>
-          {(draft || event.cancelled_at !== null || (signupsClosed && event.cancelled_at === null) || event.members_only === 1 || event.member_slots !== null) && (
+          {(draft || opensLater || event.cancelled_at !== null || (signupsClosed && event.cancelled_at === null) || event.members_only === 1 || event.member_slots !== null) && (
             <p class="event-gating">
               {draft && <span class="status-badge status-muted">Draft</span>}
+              {opensLater && event.cancelled_at === null && <span class="status-badge">Signups open {formatHelsinki(event.signups_open_at!)}</span>}
               {event.cancelled_at !== null && <span class="status-badge status-danger">Cancelled</span>}
               {signupsClosed && event.cancelled_at === null && <span class="status-badge status-muted">Signups closed</span>}
               {event.members_only === 1 && <span class="status-badge status-member">Members only</span>}
@@ -684,6 +705,8 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 Seats reserved for members
                 <input name="member_slots" type="number" min="1" value={event.member_slots ?? ''} placeholder="empty = none; only with a capacity" />
               </label>
+              <label>Signups open on <input name="open_date" type="date" value={event.signups_open_at !== null ? unixToHelsinkiInputs(event.signups_open_at).date : ''} /></label>
+              <label>Signups open at (Helsinki) <input name="open_time" type="time" value={event.signups_open_at !== null ? unixToHelsinkiInputs(event.signups_open_at).time : ''} placeholder="empty = when published" /></label>
               <label>Description <textarea name="description" rows="3">{event.description ?? ''}</textarea></label>
               {event.team_size !== null && (
                 <p class="event-meta">Team size ({event.team_size}) can't change once teams exist.</p>
