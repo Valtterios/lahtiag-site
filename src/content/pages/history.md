@@ -38,4 +38,4 @@ next year with an even bigger event!
 
 ---
 
-Event photos: Toivo Harmaala, Siiri Hietala and Eve Väänänen.
+Photo credits for past events: Toivo Harmaala, Siiri Hietala and Eve Väänänen. Photos from events go up above as the board adds them.
