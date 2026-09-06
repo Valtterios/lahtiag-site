@@ -58,6 +58,7 @@ shot('event-danger', '/events/1', 'admin', open=['details.admin-panel'], openTex
 shot('bracket-draft', '/events/3/bracket', 'admin', clip='h1', skip=-40, extend=730, hl=['text=Save seeding', 'text=Go live'], nums=True)
 shot('bracket-live', '/events/4/bracket', 'admin', clip='h1', skip=-40, extend=430)
 shot('event-member-tickets', '/events/1', 'sara', clip='.tickets-box', hl=['text=Add for a friend'], pad=8)
+shot('presenter', '/events/4/bracket?display', viewportOnly=True, pad=0, width=1400, vw=1920, vh=1080)
 # Tickets, shop, door
 shot('shop-board-tools', '/shop', 'admin', open=['details.admin-panel'], clip='details.admin-panel', top=560, hl=['text=Items to hand over', 'text=Edit', 'text=Replace picture'], nums=True)
 shot('shop-new-product', '/shop', 'admin', open=['details.admin-panel'], clip='text=New product', skip=-10, extend=470, hl=['text=Add product'])

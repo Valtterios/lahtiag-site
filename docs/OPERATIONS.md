@@ -107,6 +107,10 @@ returns to the categories):
 | ![bracket-draft](images/site/bracket-draft.png) | ![bracket-live](images/site/bracket-live.png) |
 | The bracket page while the draw is a draft: rearrange round one, 1 Save seeding, then 2 Go live. | After the final: the champion banner; W records a winner, ↺ reverts a result. |
 
+![Presenter mode](images/site/presenter.png)
+
+*Presenter mode (`?display`) on a 1080p screen: the chart scaled to fill it, refreshing itself every ten seconds.*
+
 Editing event details (times, capacity, organizers, stream link,
 description) and permanently deleting an event are done on the website —
 event page → Admin. Delete (in the Danger zone) erases signups, teams, and

@@ -296,7 +296,11 @@ const benchKeys = poolKeys.filter((k) => !inDraw.has(k));
       const width = chart.offsetWidth;
       const height = chart.offsetHeight;
       if (!width || !height) return;
-      const availWidth = window.innerWidth - 64;
+      // Fit to the scroll box, not the window: the page padding around it
+      // would otherwise let the zoomed chart overflow by a few pixels, and
+      // centring then hides the first letter of the round label.
+      const box = chart.parentElement as HTMLElement;
+      const availWidth = box.clientWidth - 4;
       const availHeight = window.innerHeight - chart.getBoundingClientRect().top - 32;
       const scale = Math.max(1, Math.min(availWidth / width, availHeight / height, 4));
       chart.style.zoom = String(scale);

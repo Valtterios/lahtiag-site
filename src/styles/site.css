@@ -1600,7 +1600,7 @@ a:hover {
 
 .display-mode .bracket-scroll {
   display: flex;
-  justify-content: center;
+  justify-content: safe center;
   margin-bottom: 0;
 }
 
