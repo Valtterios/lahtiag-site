@@ -5,7 +5,7 @@ import RegisterToolbar from '../../components/RegisterToolbar.astro';
 import BoardGate from '../../components/BoardGate.astro';
 import { ensureCsrf, currentSession } from '../../lib/guard';
 import { requireBoard, boardStatus } from '../../lib/board';
-import { listUpcomingEvents } from '../../lib/db';
+import { listUpcomingEvents, getSettings } from '../../lib/db';
 import {
   listRegister,
   registerCounts,
@@ -78,6 +78,7 @@ const rolePlan: RolePlan | null = board.ok && rolesOn ? await planRoles(roleCfg,
 // IDs pasted by hand, checked against the server: wrong ones show up here.
 const warnings = rolePlan?.ok ? linkWarnings(await listLinkedEntries(env.DB), rolePlan.members, sameHandle) : [];
 const roleName = (id: string) => guildRoles?.find((r) => r.id === id)?.name ?? id;
+const championRoleId = board.ok ? ((await getSettings(env.DB)).champion_role_id ?? '') : '';
 const linkedNames = new Map<string, string>();
 if (rolePlan?.ok && rolePlan.changes.length > 0) {
   const ids = [...new Set(rolePlan.changes.map((c) => c.discordId))].slice(0, 40);
@@ -466,8 +467,18 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                     ))}
                   </select>
                 </label>
+                <label>
+                  Reigning champion role
+                  <select name="champion_role_id">
+                    <option value="" selected={!championRoleId}>not used</option>
+                    {guildRoles.filter((r) => !r.managed).map((r) => (
+                      <option value={r.id} selected={championRoleId === r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </label>
                 <button class="btn btn-ghost" type="submit">Save roles</button>
               </form>
+              <p class="queue-meta">The champion role goes to the latest tournament's winner or winning team and comes off the previous holders.</p>
               {rolePlan && !rolePlan.ok && rolePlan.reason === 'intent' && (
                 <p class="warn-tag">
                   The bot can't list the server's members, so Sync can't work yet: Developer Portal →

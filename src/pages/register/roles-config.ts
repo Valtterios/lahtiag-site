@@ -26,10 +26,12 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   };
   const member = pick('member_role_id');
   const actives = pick('actives_role_id');
-  if (member === null || actives === null) return redirect('/register?err=bad_role', 303);
+  const champion = pick('champion_role_id');
+  if (member === null || actives === null || champion === null) return redirect('/register?err=bad_role', 303);
 
   const now = Math.floor(Date.now() / 1000);
   await setSetting(env.DB, 'member_role_id', member, board.email, now);
   await setSetting(env.DB, 'actives_role_id', actives, board.email, now);
+  await setSetting(env.DB, 'champion_role_id', champion, board.email, now);
   return redirect('/register?ok=roles_saved#roles', 303);
 };

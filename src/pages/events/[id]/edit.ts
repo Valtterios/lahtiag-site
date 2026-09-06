@@ -6,7 +6,7 @@ import { renameEventDiscord, syncScheduledEvent } from '../../../lib/event-disco
 import { dropLiveBracket } from '../../../lib/event-channel';
 import { later, postEventLine, changeLine, announcePromotionsInBackground } from '../../../lib/event-channel';
 import { helsinkiToUnix } from '../../../lib/time';
-import { editWebhookMessage, eventAnnouncement } from '../../../lib/discord';
+import { refreshEventAnnouncement } from '../../../lib/announce';
 
 export const POST: APIRoute = async ({ request, params, redirect, url, locals }) => {
   const id = Number(params.id);
@@ -57,20 +57,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
     });
     await setSignupsOpenAt(env.DB, id, opensAt);
     // Edit the original Discord announcement in place instead of reposting.
-    if (event.discord_message_id && env.DISCORD_WEBHOOK_URL) {
-      await editWebhookMessage(
-        env.DISCORD_WEBHOOK_URL,
-        event.discord_message_id,
-        eventAnnouncement({
-          title: event.title,
-          startsAt: event.starts_at,
-          endsAt: event.ends_at,
-          organizers: event.organizers,
-          teamSize: event.team_size,
-          url: `${url.origin}/events/${id}`,
-        }),
-      );
-    }
+    await refreshEventAnnouncement(env.DB, env, id, url.origin);
     // A changed team size dropped the bracket; its pinned picture goes too.
     if (before && before.team_size !== event.team_size) await dropLiveBracket(env.DB, env, id);
     // A retitled event renames its Discord role and channel to match.

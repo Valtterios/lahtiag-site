@@ -28,12 +28,20 @@ import {
   RuleError,
   getRegisterByDiscord,
   memberStats,
+  toggleInterest,
+  joinWaitlist,
+  getEvent,
+  setSignup,
+  listEventQuestions,
   type RegisterRow,
 } from '../../lib/db';
 import { formatHelsinki, formatHelsinkiDate, helsinkiToUnix } from '../../lib/time';
 import { syncScheduledEvent, setUpEventDiscord } from '../../lib/event-discord';
 import { participantNames, postSignups, postBracketOut, postResult, postRevert, postEventLine, cancelLine, screenLine, dropLiveBracket } from '../../lib/event-channel';
 import { profileCardPng } from '../../lib/profile-card';
+import { postEventAnnouncement, refreshEventAnnouncement } from '../../lib/announce';
+import { syncEventRolesInBackground } from '../../lib/event-discord';
+import { announcePromotions } from '../../lib/event-channel';
 import { MEMBER_TYPE_LABELS } from '../../lib/register';
 import { DISCORD_GUILD_ID } from '../../lib/config';
 
@@ -173,6 +181,13 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     return json({ type: 4, data: { flags: 64, ...controlPanel() } });
   }
 
+  // Announcement buttons (e:go, e:maybe, e:heart): anyone in the server.
+  // Deferred privately, then the answer is only theirs to see.
+  if (interaction.type === 3 && interaction.data?.custom_id?.startsWith('e:')) {
+    locals.cfContext.waitUntil(handleEventButton(env, interaction, url.origin, locals.cfContext));
+    return json({ type: 5, data: { flags: 64 } });
+  }
+
   // Button and select-menu clicks (type 3). Opening a modal must be the
   // immediate response; everything else acks (type 6) and edits the panel
   // message once the work is done.
@@ -219,6 +234,58 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   locals.cfContext.waitUntil(handleCommand(env, interaction, url.origin));
   return json({ type: 5, data: { flags: 64 } }); // deferred, ephemeral
 };
+
+// --- announcement buttons ------------------------------------------------------
+
+async function handleEventButton(env: WorkerEnv, interaction: Interaction, origin: string, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<void> {
+  const reply = (content: string) => editInteractionReply(interaction.application_id, interaction.token, content);
+  const [, action, idText] = interaction.data!.custom_id!.split(':');
+  const eventId = Number(idText);
+  const user = interaction.member?.user;
+  if (!user || !Number.isInteger(eventId)) {
+    await reply('Could not tell who clicked.');
+    return;
+  }
+  const now = Math.floor(Date.now() / 1000);
+  await upsertMember(env.DB, { discord_id: user.id, username: interaction.member?.nick ?? user.global_name ?? user.username, avatar_hash: user.avatar }, now);
+  const url = `${origin}/events/${eventId}`;
+  try {
+    if (action === 'heart') {
+      const on = await toggleInterest(env.DB, eventId, user.id, now);
+      await reply(on ? `♥ Marked as interested. It shows under My events on the site: ${url}` : 'Interest removed.');
+    } else if (action === 'go' || action === 'maybe') {
+      const questions = await listEventQuestions(env.DB, eventId);
+      if (questions.some((q) => q.required === 1)) {
+        await reply(`This event asks a couple of questions first. Sign up on the site: ${url}`);
+        return;
+      }
+      try {
+        await setSignup(env.DB, eventId, user.id, action === 'go' ? 'yes' : 'maybe', now);
+        const event = await getEvent(env.DB, eventId);
+        await reply(action === 'go' ? `✅ You're going! ${event?.yes_count ?? ''} going now. Change it any time: ${url}` : `🤔 Marked as maybe. ${url}`);
+      } catch (error) {
+        if (error instanceof RuleError && error.code === 'full') {
+          try {
+            await joinWaitlist(env.DB, eventId, user.id, now);
+            await reply(`It's full, so you're on the waitlist. When a seat frees you're moved to Going and told here. ${url}`);
+          } catch (inner) {
+            await reply(inner instanceof RuleError ? `${inner.message} ${url}` : 'Something went wrong.');
+          }
+          return;
+        }
+        throw error;
+      }
+      syncEventRolesInBackground(ctx, env.DB, env, [eventId], now);
+      ctx.waitUntil(announcePromotions(env.DB, env, now).catch(() => {}));
+    } else {
+      await reply('Unknown button.');
+      return;
+    }
+    await refreshEventAnnouncement(env.DB, env, eventId, origin);
+  } catch (error) {
+    await reply(error instanceof RuleError ? `${error.message} ${url}` : 'Something went wrong.');
+  }
+}
 
 // --- /profile ------------------------------------------------------------------
 
@@ -564,13 +631,7 @@ async function handleCreateModal(env: WorkerEnv, interaction: Interaction, origi
       },
       now,
     );
-    if (env.DISCORD_WEBHOOK_URL) {
-      const messageId = await postWebhook(
-        env.DISCORD_WEBHOOK_URL,
-        eventAnnouncement({ title, startsAt, endsAt, organizers: null, teamSize, url: `${origin}/events/${id}` }),
-      );
-      if (messageId) await setEventMessageId(env.DB, id, messageId);
-    }
+    await postEventAnnouncement(env.DB, env, id, origin);
     await syncScheduledEvent(env.DB, env, id, origin, now);
     await setUpEventDiscord(env.DB, env, id, origin, invoker.id, now);
     await reply(`Created event #${id}: **${title.trim()}**\n${origin}/events/${id}`);
@@ -703,20 +764,7 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
         },
         now,
       );
-      if (env.DISCORD_WEBHOOK_URL) {
-        const messageId = await postWebhook(
-          env.DISCORD_WEBHOOK_URL,
-          eventAnnouncement({
-            title,
-            startsAt,
-            endsAt,
-            organizers,
-            teamSize,
-            url: `${origin}/events/${id}`,
-          }),
-        );
-        if (messageId) await setEventMessageId(env.DB, id, messageId);
-      }
+      await postEventAnnouncement(env.DB, env, id, origin);
       await syncScheduledEvent(env.DB, env, id, origin, now);
       await setUpEventDiscord(env.DB, env, id, origin, invoker.id, now);
       await reply(`Created event #${id}: **${title.trim()}**, ${formatHelsinki(startsAt)}\n${origin}/events/${id}`);

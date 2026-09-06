@@ -6,9 +6,11 @@
 // say the same thing; posting is best effort and never blocks a response.
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { getEvent, getBracket, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, memberStats, type BracketMatch, type EventRow } from './db';
+import { getEvent, getBracket, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, memberStats, getSettings, setSetting, getEventPhoto, type BracketMatch, type EventRow } from './db';
 import { profileCardPng } from './profile-card';
 import { syncEventRole } from './event-discord';
+import { setGuildMemberRole, postWebhookWithFile } from './discord';
+import { DISCORD_GUILD_ID } from './config';
 import {
   postChannelMessage,
   createChannelMessage,
@@ -170,6 +172,7 @@ export async function postChampionCards(db: D1Database, env: { DISCORD_BOT_TOKEN
     : [final.winner.slice(2)];
   const people = ids.filter((id) => /^\d{5,25}$/.test(id)).slice(0, 5);
   if (people.length === 0) return;
+  await awardChampionRole(db, env, people, now);
   const files: MessageFile[] = [];
   for (const id of people) {
     const name = signups.find((s) => s.discord_id === id)?.username ?? 'Champion';
@@ -177,6 +180,51 @@ export async function postChampionCards(db: D1Database, env: { DISCORD_BOT_TOKEN
   }
   const line = people.length === 1 ? `🏅 The champion's card.` : `🏅 The champions' cards.`;
   await createChannelMessageWithFile(token, event.discord_channel_id, line, files, NO_MENTIONS, SUPPRESS_EMBEDS);
+}
+
+// The reigning champion role: on the latest winners, off the previous
+// holders. Which role is chosen on the register page; the holders are
+// remembered in settings so they can be cleared next time.
+export async function awardChampionRole(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, winners: string[], now: number): Promise<void> {
+  const token = env.DISCORD_BOT_TOKEN;
+  const settings = await getSettings(db);
+  const role = settings.champion_role_id;
+  if (!token || !role) return;
+  const previous: string[] = (() => {
+    try {
+      return JSON.parse(settings.champion_holders ?? '[]') as string[];
+    } catch {
+      return [];
+    }
+  })();
+  for (const id of previous) if (!winners.includes(id)) await setGuildMemberRole(token, DISCORD_GUILD_ID, id, role, false);
+  for (const id of winners) await setGuildMemberRole(token, DISCORD_GUILD_ID, id, role, true);
+  await setSetting(db, 'champion_holders', JSON.stringify(winners), 'bot', now);
+}
+
+// "Photos are up": a few of the new pictures into the event's channel, or
+// the general channel when the event has none. Never the announcements.
+export async function postPhotosNotice(
+  db: D1Database,
+  env: { DISCORD_BOT_TOKEN?: string; WELCOME_WEBHOOK_URL?: string },
+  eventId: number,
+  photoIds: number[],
+  origin: string,
+): Promise<void> {
+  const event = await getEvent(db, eventId);
+  if (!event || photoIds.length === 0) return;
+  const files: MessageFile[] = [];
+  for (const id of photoIds.slice(0, 4)) {
+    const photo = await getEventPhoto(db, id, false);
+    if (photo) files.push({ name: `photo-${id}.${photo.content_type === 'image/png' ? 'png' : photo.content_type === 'image/webp' ? 'webp' : 'jpg'}`, bytes: new Uint8Array(photo.bytes), type: photo.content_type });
+  }
+  if (files.length === 0) return;
+  const line = `📸 Photos from **${safe(event.title)}** are up${photoIds.length > files.length ? ` (${photoIds.length} in all)` : ''}: ${origin}/events/${eventId}#photos`;
+  if (event.discord_channel_id && env.DISCORD_BOT_TOKEN) {
+    await createChannelMessageWithFile(env.DISCORD_BOT_TOKEN, event.discord_channel_id, line, files, NO_MENTIONS, SUPPRESS_EMBEDS);
+  } else if (env.WELCOME_WEBHOOK_URL) {
+    await postWebhookWithFile(env.WELCOME_WEBHOOK_URL, line, files);
+  }
 }
 
 // Where the live bracket lives: a big event's bot-only bracket channel,

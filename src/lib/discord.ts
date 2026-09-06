@@ -644,12 +644,32 @@ export async function createChannelMessage(
   content: string,
   allowedMentions: { parse: string[]; roles?: string[] } = NO_MENTIONS,
   flags = 0,
+  components: unknown[] = [],
 ): Promise<BotResult<{ id: string }>> {
-  return botCall<{ id: string }>(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions, flags });
+  return botCall<{ id: string }>(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions, flags, components });
 }
 
-export async function editChannelMessage(botToken: string, channelId: string, messageId: string, content: string, flags = 0): Promise<BotResult<unknown> & { status?: number }> {
-  return botCall(botToken, 'PATCH', `/channels/${channelId}/messages/${messageId}`, { content, allowed_mentions: NO_MENTIONS, flags });
+export async function editChannelMessage(
+  botToken: string,
+  channelId: string,
+  messageId: string,
+  content: string,
+  flags = 0,
+  components?: unknown[],
+): Promise<BotResult<unknown> & { status?: number }> {
+  return botCall(botToken, 'PATCH', `/channels/${channelId}/messages/${messageId}`, { content, allowed_mentions: NO_MENTIONS, flags, ...(components ? { components } : {}) });
+}
+
+// The channel behind a webhook URL, from Discord's own record of it.
+export async function fetchWebhookChannel(webhookUrl: string): Promise<string | null> {
+  try {
+    const response = await fetch(webhookUrl);
+    if (!response.ok) return null;
+    const data = (await response.json()) as { channel_id?: string };
+    return data.channel_id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteChannelMessage(botToken: string, channelId: string, messageId: string): Promise<boolean> {
@@ -714,8 +734,9 @@ export async function createChannelMessageWithFile(
   file: MessageFile | MessageFile[], // up to ten pictures on one message
   allowedMentions: { parse: string[]; roles?: string[]; users?: string[] } = NO_MENTIONS,
   flags = 0,
+  components: unknown[] = [],
 ): Promise<BotResult<{ id: string }>> {
-  return botUpload(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions, flags }, file);
+  return botUpload(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions, flags, components }, file);
 }
 
 export async function editChannelMessageWithFile(
@@ -736,14 +757,15 @@ export async function editChannelMessageWithFile(
 export async function postWebhookWithFile(
   webhookUrl: string,
   content: string,
-  file: MessageFile,
+  file: MessageFile | MessageFile[],
   allowedMentions: { parse: string[]; roles?: string[]; users?: string[] } = NO_MENTIONS,
   flags = SUPPRESS_EMBEDS,
 ): Promise<string | null> {
   try {
+    const files = Array.isArray(file) ? file : [file];
     const form = new FormData();
-    form.append('payload_json', JSON.stringify({ content, allowed_mentions: allowedMentions, flags, attachments: [{ id: 0, filename: file.name }] }));
-    form.append('files[0]', new Blob([file.bytes as BlobPart], { type: file.type }), file.name);
+    form.append('payload_json', JSON.stringify({ content, allowed_mentions: allowedMentions, flags, attachments: files.map((f, i) => ({ id: i, filename: f.name })) }));
+    files.forEach((f, i) => form.append(`files[${i}]`, new Blob([f.bytes as BlobPart], { type: f.type }), f.name));
     const response = await fetch(`${webhookUrl}?wait=true`, { method: 'POST', body: form });
     if (!response.ok) return null;
     const message = (await response.json()) as { id?: string };

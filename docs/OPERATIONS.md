@@ -170,9 +170,25 @@ roster, the bracket and the Discord objects are not copied. The history
 page shows each tournament's final bracket picture under its champion.
 
 **The announcement.** Publishing posts the announcement to the
-announcements channel with the cover picture attached (when there is
-one) and the link's preview card switched off; a new cover swaps the
-picture on the post.
+announcements channel, by the bot itself, with the cover attached (when
+there is one), a line of counts (going, maybe, interested) and buttons:
+**I'm going**, **Maybe** and **Interested** on a plain event, **Tickets**
+and **Interested** on a ticketed one. A click makes the signup on the site
+under the page's rules (members only, capacity, the waitlist when full)
+and answers the person privately; the counts on the post follow. Events
+with required questions send people to the site instead. For this the
+bot needs **Send Messages** in the announcements channel (allow its role
+there if the channel is locked); without it the plain webhook post goes
+out, buttons excluded. A new cover swaps the picture on the post.
+
+**Champion role.** The register page's Discord roles section has a
+"Reigning champion" pick: when a final is recorded the bot gives that role
+to the winner or the winning team and takes it off the previous holders.
+
+**Photos posted.** When photos are added, the bot posts up to four of
+them with a link to the rest into the event's channel, or into the general
+channel (the welcome webhook) when the event has none. Never into the
+announcements channel.
 
 **The event list.** When an event is published (or created straight from
 `/tournament`), the bot puts it on Discord's own event list, the "Events"

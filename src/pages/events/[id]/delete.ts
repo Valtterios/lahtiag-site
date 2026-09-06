@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { deleteEvent, RuleError } from '../../../lib/db';
-import { deleteWebhookMessage } from '../../../lib/discord';
+import { deleteEventAnnouncement } from '../../../lib/announce';
 import { deleteDiscordObjects, listEventChannels } from '../../../lib/event-discord';
 
 // Permanent removal, signups and bracket included — for events that should
@@ -21,9 +21,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   try {
     const channels = await listEventChannels(env.DB, id);
     const event = await deleteEvent(env.DB, id);
-    if (event.discord_message_id && env.DISCORD_WEBHOOK_URL) {
-      await deleteWebhookMessage(env.DISCORD_WEBHOOK_URL, event.discord_message_id);
-    }
+    await deleteEventAnnouncement(env.DB, env, event);
     // Its Discord role, channels, category and scheduled event, if it had them, go too.
     await deleteDiscordObjects(env, event, channels, true);
   } catch (error) {

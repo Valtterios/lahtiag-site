@@ -2560,7 +2560,7 @@ export async function replaceDiscordInterest(db: D1Database, eventId: number, di
 // Board-editable configuration (migration 0010). Keys live here so a typo
 // cannot invent one.
 
-export type SettingKey = 'member_role_id' | 'actives_role_id' | 'event_category_id';
+export type SettingKey = 'member_role_id' | 'actives_role_id' | 'event_category_id' | 'champion_role_id' | 'champion_holders' | 'announce_channel_id' | 'digest_sent_at';
 
 export async function getSettings(db: D1Database): Promise<Partial<Record<SettingKey, string>>> {
   const { results } = await db.prepare('SELECT key, value FROM settings').all<{ key: SettingKey; value: string }>();
