@@ -33,6 +33,7 @@ export class RuleError extends Error {
       | 'needs_ticket'
       | 'ticket_holder'
       | 'too_few'
+  | 'not_captain'
   | 'has_sales'
   | 'not_open'
   | 'not_full'
@@ -2185,6 +2186,39 @@ export async function listEndedEventsWithRole(db: D1Database, before: number): P
     .bind(before)
     .all<EventWithCounts>();
   return results;
+}
+
+// --- team captains ----------------------------------------------------------------
+// Whoever founded a team runs it while signups are open: adding someone
+// who is on the roster without a team, and taking a member out. The
+// board's roster tools do the rest.
+
+async function captainTeam(db: D1Database, eventId: number, teamId: number, captainId: string, now: number): Promise<EventWithCounts> {
+  const event = await requireOpenTeamEvent(db, eventId, now);
+  const team = await db.prepare('SELECT created_by FROM event_teams WHERE id = ?1 AND event_id = ?2').bind(teamId, eventId).first<{ created_by: string }>();
+  if (!team) throw new RuleError('missing', 'No such team on this event.');
+  if (team.created_by !== captainId) throw new RuleError('not_captain', 'Only the team founder can do that.');
+  return event;
+}
+
+export async function captainAddToTeam(db: D1Database, eventId: number, teamId: number, captainId: string, targetId: string, now: number): Promise<void> {
+  const event = await captainTeam(db, eventId, teamId, captainId, now);
+  const target = await db.prepare('SELECT event_team_id FROM signups WHERE event_id = ?1 AND discord_id = ?2').bind(eventId, targetId).first<{ event_team_id: number | null }>();
+  if (!target) throw new RuleError('missing', 'That person is not signed up for this event.');
+  if (target.event_team_id !== null) throw new RuleError('bad_input', 'That person is already in a team.');
+  const members = await db.prepare('SELECT COUNT(*) AS n FROM signups WHERE event_id = ?1 AND event_team_id = ?2').bind(eventId, teamId).first<{ n: number }>();
+  if ((members?.n ?? 0) >= event.team_size!) throw new RuleError('team_full', 'That team is already full.');
+  await db.prepare("UPDATE signups SET event_team_id = ?3, status = 'yes' WHERE event_id = ?1 AND discord_id = ?2").bind(eventId, targetId, teamId).run();
+}
+
+export async function captainRemoveFromTeam(db: D1Database, eventId: number, teamId: number, captainId: string, targetId: string, now: number): Promise<void> {
+  await captainTeam(db, eventId, teamId, captainId, now);
+  if (targetId === captainId) throw new RuleError('bad_input', 'Leave the team instead.');
+  const result = await db
+    .prepare('UPDATE signups SET event_team_id = NULL WHERE event_id = ?1 AND discord_id = ?2 AND event_team_id = ?3')
+    .bind(eventId, targetId, teamId)
+    .run();
+  if ((result.meta.changes ?? 0) === 0) throw new RuleError('missing', 'That person is not in this team.');
 }
 
 // --- a member's stats ---------------------------------------------------------------

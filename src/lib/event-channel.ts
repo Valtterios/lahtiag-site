@@ -6,7 +6,8 @@
 // say the same thing; posting is best effort and never blocks a response.
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { getEvent, getBracket, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, type BracketMatch, type EventRow } from './db';
+import { getEvent, getBracket, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, memberStats, type BracketMatch, type EventRow } from './db';
+import { profileCardPng } from './profile-card';
 import { syncEventRole } from './event-discord';
 import {
   postChannelMessage,
@@ -154,6 +155,30 @@ export async function bracketPicture(event: Pick<EventRow, 'title'>, matches: Br
   return { name: 'bracket.png', bytes, type: 'image/png' };
 }
 
+// After the final: the champion's stats card, or one per team member (at
+// most five), on a single message under the champion line.
+export async function postChampionCards(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, matches: BracketMatch[], now: number): Promise<void> {
+  const token = env.DISCORD_BOT_TOKEN;
+  const event = await getEvent(db, eventId);
+  if (!token || !event?.discord_channel_id) return;
+  const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
+  const final = matches.find((m) => m.round === total && m.slot === 0);
+  if (!final?.winner) return;
+  const signups = await listSignups(db, eventId);
+  const ids = final.winner.startsWith('t:')
+    ? signups.filter((s) => s.event_team_id === Number(final.winner!.slice(2))).map((s) => s.discord_id)
+    : [final.winner.slice(2)];
+  const people = ids.filter((id) => /^\d{5,25}$/.test(id)).slice(0, 5);
+  if (people.length === 0) return;
+  const files: MessageFile[] = [];
+  for (const id of people) {
+    const name = signups.find((s) => s.discord_id === id)?.username ?? 'Champion';
+    files.push({ name: `champion-${id}.png`, bytes: await profileCardPng(name, await memberStats(db, id, now + 1)), type: 'image/png' });
+  }
+  const line = people.length === 1 ? `🏅 The champion's card.` : `🏅 The champions' cards.`;
+  await createChannelMessageWithFile(token, event.discord_channel_id, line, files, NO_MENTIONS, SUPPRESS_EMBEDS);
+}
+
 // Where the live bracket lives: a big event's bot-only bracket channel,
 // else the event's one channel.
 async function bracketChannel(db: D1Database, event: Pick<EventRow, 'id' | 'discord_channel_id'>): Promise<string | null> {
@@ -267,6 +292,7 @@ export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: stri
   const picture = event && (await pictureBelongsInTalk(db, event)) ? await bracketPicture(event, matches, names, now) : undefined;
   await postEventLine(db, env, eventId, resultLine(story, `${origin}/events/${eventId}/bracket`), decided, picture);
   await refreshLiveBracket(db, env, eventId, origin, now);
+  if (decided) await postChampionCards(db, env, eventId, matches, now);
 }
 
 export async function postRevert(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, round: number, slot: number): Promise<void> {

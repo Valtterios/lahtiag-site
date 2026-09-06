@@ -689,12 +689,13 @@ async function botUpload(
   method: 'POST' | 'PATCH',
   path: string,
   payload: Record<string, unknown>,
-  file: MessageFile,
+  file: MessageFile | MessageFile[],
 ): Promise<BotResult<{ id: string }> & { status?: number }> {
   try {
+    const files = Array.isArray(file) ? file : [file];
     const form = new FormData();
-    form.append('payload_json', JSON.stringify({ ...payload, attachments: [{ id: 0, filename: file.name }] }));
-    form.append('files[0]', new Blob([file.bytes as BlobPart], { type: file.type }), file.name);
+    form.append('payload_json', JSON.stringify({ ...payload, attachments: files.map((f, i) => ({ id: i, filename: f.name })) }));
+    files.forEach((f, i) => form.append(`files[${i}]`, new Blob([f.bytes as BlobPart], { type: f.type }), f.name));
     const response = await fetch(`${API}${path}`, { method, headers: { authorization: `Bot ${botToken}` }, body: form });
     if (!response.ok) {
       if (response.status !== 404) console.warn(`discord ${method} ${path} (upload) -> ${response.status} ${(await response.text().catch(() => '')).slice(0, 300)}`);
@@ -710,8 +711,8 @@ export async function createChannelMessageWithFile(
   botToken: string,
   channelId: string,
   content: string,
-  file: MessageFile,
-  allowedMentions: { parse: string[]; roles?: string[] } = NO_MENTIONS,
+  file: MessageFile | MessageFile[], // up to ten pictures on one message
+  allowedMentions: { parse: string[]; roles?: string[]; users?: string[] } = NO_MENTIONS,
   flags = 0,
 ): Promise<BotResult<{ id: string }>> {
   return botUpload(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions, flags }, file);

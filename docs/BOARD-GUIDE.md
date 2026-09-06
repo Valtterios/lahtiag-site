@@ -90,6 +90,9 @@ the bottom right lets you view a page as a member or a visitor would.
   waiting (the board can take people off it).
 - **Questions** (T-shirt size, diet, team preference) are asked when
   someone signs up or buys, per ticket, and come out in the exports.
+- **Team captains.** Whoever founds a team can add people who signed up
+  without a team and take members out, while signups are open. The
+  board's Manage participants does the rest.
 - **Team events.** Set a team size; people form teams, or the board makes
   teams, renames them and groups loose players under Manage participants.
   Generate the bracket from Board tools: it starts as a draft only the

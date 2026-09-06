@@ -160,6 +160,7 @@ const FLASH: Record<string, string> = {
   ticket_holder: 'That person holds a paid ticket, so they are going. Refund it in Stripe to remove them.',
   too_few: 'A bracket needs at least two teams or players. Players without a team are grouped into teams when you generate.',
   not_open: 'Signups are not open yet. Press Interested and come back when they open.',
+  not_captain: 'Only the team founder can change the team.',
   not_full: 'A seat is free: sign up instead of waiting.',
   no_waitlist: 'This event has no waitlist.',
   duplicate: 'You are already going.',
@@ -188,6 +189,8 @@ const OK: Record<string, string> = {
   duplicated: 'Copied as a new draft, a week later, with the ticket types, questions and cover. Fix the date and title, then publish.',
   published: 'Published and posted on Discord.',
   team_saved: 'Team created. Put people in it with the team pickers below.',
+  team_added: 'Added to your team.',
+  team_kicked: 'Taken out of the team; they are still signed up.',
   grouped: 'Players without a team were grouped into teams.',
   team_renamed: 'Team renamed; its voice channel and the bracket follow.',
   reinstated: 'The event is back on. The Discord cancellation line was removed.',
@@ -591,6 +594,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             const members = teamMembers(team.id);
             const slotsLeft = event.team_size! - members.length;
             const inThisTeam = mine?.event_team_id === team.id;
+            const captain = session !== null && !session.isAdmin && team.created_by === session.discordId && open;
             return (
               <div class="team-card">
                 <h3>
@@ -611,8 +615,37 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                           </form>
                         </span>
                       ))
-                    : members.map((m) => m.username).join(', ')}
+                    : captain
+                      ? members.map((m) => (
+                          <span class="member-chip">
+                            {m.username}
+                            {m.discord_id !== session!.discordId && (
+                              <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form">
+                                <input type="hidden" name="csrf" value={csrf} />
+                                <input type="hidden" name="action" value="kick" />
+                                <input type="hidden" name="event_team_id" value={team.id} />
+                                <input type="hidden" name="discord_id" value={m.discord_id} />
+                                <button class="chip-remove" type="submit" title="Take out of the team">×</button>
+                              </form>
+                            )}
+                          </span>
+                        ))
+                      : members.map((m) => m.username).join(', ')}
                 </div>
+                {captain && slotsLeft > 0 && freeAgents.length > 0 && (
+                  <form method="post" action={`/events/${event.id}/team-captain`} class="participant-row">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="add" />
+                    <input type="hidden" name="event_team_id" value={team.id} />
+                    <label>
+                      Add to the team
+                      <select name="discord_id">
+                        {freeAgents.map((s) => <option value={s.discord_id}>{s.username}</option>)}
+                      </select>
+                    </label>
+                    <button class="btn btn-ghost btn-sm" type="submit">Add</button>
+                  </form>
+                )}
                 {session && open && !inThisTeam && slotsLeft > 0 && (!ticketed || hasTicket) && (
                   <form method="post" action={`/events/${event.id}/team`} class="inline-form">
                     <input type="hidden" name="csrf" value={csrf} />
