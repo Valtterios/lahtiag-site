@@ -4,6 +4,8 @@ import { listTicketsBySession, listTicketsByPaymentIntent, listTicketsByPurchase
 import { getPurchaseBySession, getPurchaseByPaymentIntent, getPurchase, markPurchasePaid, voidPurchase, refundPurchase } from '../../lib/purchases';
 import { verifyWebhookSignature, metadataInt, type StripeEvent } from '../../lib/stripe';
 import { syncEventRolesInBackground } from '../../lib/event-discord';
+import { refreshAnnouncementInBackground } from '../../lib/announce';
+import { SITE_ORIGIN } from '../../lib/config';
 
 // Stripe tells us what happened with the money. Everything here is
 // idempotent, because Stripe retries until it sees a 2xx.
@@ -114,5 +116,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
       break;
   }
   syncEventRolesInBackground(locals.cfContext, env.DB, env, touched, now);
+  refreshAnnouncementInBackground(locals.cfContext, env.DB, env, touched, SITE_ORIGIN);
   return new Response('ok', { status: 200 });
 };

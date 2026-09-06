@@ -3,9 +3,10 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { adminRemoveSignup, RuleError } from '../../../lib/db';
 import { syncEventRolesInBackground } from '../../../lib/event-discord';
+import { refreshAnnouncementInBackground } from '../../../lib/announce';
 import { announcePromotionsInBackground } from '../../../lib/event-channel';
 
-export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
+export const POST: APIRoute = async ({ request, params, redirect, locals, url }) => {
   const id = Number(params.id);
   const back = `/events/${id}`;
 
@@ -23,5 +24,6 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   }
   announcePromotionsInBackground(locals.cfContext, env.DB, env, Math.floor(Date.now() / 1000));
   syncEventRolesInBackground(locals.cfContext, env.DB, env, [id], Math.floor(Date.now() / 1000));
+  refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
   return redirect(back, 303);
 };

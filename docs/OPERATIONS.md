@@ -175,7 +175,8 @@ there is one), a line of counts (going, maybe, interested) and buttons:
 **I'm going**, **Maybe** and **Interested** on a plain event, **Tickets**
 and **Interested** on a ticketed one. A click makes the signup on the site
 under the page's rules (members only, capacity, the waitlist when full)
-and answers the person privately; the counts on the post follow. Events
+and answers the person privately. The counts on the post follow every
+change, from Discord or the site, and the job re-checks them hourly. Events
 with required questions send people to the site instead. For this the
 bot needs **Send Messages** in the announcements channel (allow its role
 there if the channel is locked); without it the plain webhook post goes

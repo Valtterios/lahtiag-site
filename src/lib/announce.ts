@@ -115,6 +115,19 @@ export async function refreshEventAnnouncement(db: D1Database, env: AnnounceEnv,
   await editWebhookMessage(env.DISCORD_WEBHOOK_URL, event.discord_message_id, text);
 }
 
+// From a route: the post follows the numbers without holding up the response.
+export function refreshAnnouncementInBackground(
+  ctx: { waitUntil(promise: Promise<unknown>): void } | undefined,
+  db: D1Database,
+  env: AnnounceEnv,
+  eventIds: Iterable<number>,
+  origin: string,
+): void {
+  const ids = [...new Set(eventIds)];
+  if (ids.length === 0) return;
+  ctx?.waitUntil((async () => { for (const id of ids) await refreshEventAnnouncement(db, env, id, origin); })().catch(() => {}));
+}
+
 export async function deleteEventAnnouncement(db: D1Database, env: AnnounceEnv, event: { discord_message_id: string | null }): Promise<void> {
   if (!env.DISCORD_WEBHOOK_URL || !event.discord_message_id) return;
   if (env.DISCORD_BOT_TOKEN) {

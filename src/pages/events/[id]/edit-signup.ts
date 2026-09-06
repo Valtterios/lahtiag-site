@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { adminUpdateSignup, RuleError } from '../../../lib/db';
 import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
+import { refreshAnnouncementInBackground } from '../../../lib/announce';
 import { announcePromotionsInBackground, later, notifyTeamPlacement } from '../../../lib/event-channel';
 
 export const POST: APIRoute = async ({ request, params, redirect, locals, url }) => {
@@ -32,5 +33,6 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   // Put into a team by the board: they hear about it.
   if (teamId !== null) later(locals.cfContext, notifyTeamPlacement(env.DB, env, id, [{ discordId: String(form.get('discord_id') ?? ''), teamId }], url.origin));
   announcePromotionsInBackground(locals.cfContext, env.DB, env, Math.floor(Date.now() / 1000));
+  refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
   return redirect(back, 303);
 };

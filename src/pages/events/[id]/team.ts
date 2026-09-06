@@ -12,11 +12,12 @@ import {
 } from '../../../lib/db';
 import { answersComplete } from '../../../lib/questions';
 import { syncEventRolesInBackground, syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
+import { refreshAnnouncementInBackground } from '../../../lib/announce';
 
 // Tournament team actions: any signed-in member, no admin needed — forming
 // teams is the members' own business.
 
-export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
+export const POST: APIRoute = async ({ request, params, redirect, locals, url }) => {
   const id = Number(params.id);
   const back = `/events/${id}`;
 
@@ -63,5 +64,6 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   // follows, and so do the team voice channels of a big event.
   syncEventRolesInBackground(locals.cfContext, env.DB, env, [id], now);
   syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, now);
+  refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
   return redirect(back, 303);
 };

@@ -4,6 +4,7 @@ import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { adminCreateTeam, autoTeamLoosePlayers, renameEventTeam, listSignups, RuleError } from '../../../lib/db';
 import { syncTeamVoiceChannelsInBackground, renameTeamVoiceChannel } from '../../../lib/event-discord';
 import { later, refreshLiveBracket, notifyTeamPlacement } from '../../../lib/event-channel';
+import { refreshAnnouncementInBackground } from '../../../lib/announce';
 
 // Board: make an empty team to assign people to, or group everyone
 // without a team into teams of the event's size.
@@ -34,11 +35,13 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
       // Everyone just grouped hears which team they landed in.
       const placed = (await listSignups(env.DB, id)).filter((s) => loose.includes(s.discord_id) && s.event_team_id !== null).map((s) => ({ discordId: s.discord_id, teamId: s.event_team_id! }));
       later(locals.cfContext, notifyTeamPlacement(env.DB, env, id, placed, url.origin));
+      refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
       return redirect(`${back}?ok=grouped`, 303);
     }
     await adminCreateTeam(env.DB, id, String(form.get('name') ?? ''), admin.session.discordId, now);
     // A big event's team voice channels follow the teams.
     syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, now);
+    refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
     return redirect(`${back}?ok=team_saved`, 303);
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);

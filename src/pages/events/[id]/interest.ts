@@ -1,11 +1,12 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession } from '../../../lib/guard';
+import { refreshAnnouncementInBackground } from '../../../lib/announce';
 import { toggleInterest, upsertMember, RuleError } from '../../../lib/db';
 
 // The Interested heart: on or off for the signed-in person.
 
-export const POST: APIRoute = async ({ request, params, redirect }) => {
+export const POST: APIRoute = async ({ request, params, redirect, locals, url }) => {
   const id = Number(params.id);
   const back = `/events/${id}`;
   const session = await currentSession(request, env);
@@ -16,6 +17,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   await upsertMember(env.DB, { discord_id: session.discordId, username: session.username, avatar_hash: session.avatarHash }, now);
   try {
     const on = await toggleInterest(env.DB, id, session.discordId, now);
+    refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
     return redirect(`${back}?ok=${on ? 'interested' : 'uninterested'}`, 303);
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);

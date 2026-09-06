@@ -30,6 +30,7 @@ import { postWebhook, NO_MENTIONS, SUPPRESS_EMBEDS } from './discord';
 import { syncInterest, archiveEventDiscord } from './event-discord';
 import { announcePromotions, postEventLine } from './event-channel';
 import { formatHelsinki } from './time';
+import { refreshEventAnnouncement } from './announce';
 
 export const REMINDER_WINDOW = 24 * 3600; // the reminder goes out within the last day before the start
 const OPENING_GRACE = 24 * 3600; // an opening older than this is not announced any more
@@ -212,6 +213,12 @@ export async function runHourly(db: D1Database, env: Env, origin: string, now: n
         summary.milestones++;
       }
     }
+  }
+
+  // Once an hour (the first run of the hour): the counts on every upcoming
+  // announcement, in case a change slipped past the event-driven refresh.
+  if (new Date(now * 1000).getUTCMinutes() < 15) {
+    for (const event of upcoming) if (event.discord_message_id) await refreshEventAnnouncement(db, env, event.id, origin);
   }
 
   // A week after the end: the role goes, the channels stay for the board.

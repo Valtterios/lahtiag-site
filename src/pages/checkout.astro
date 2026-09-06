@@ -18,6 +18,7 @@ import {
 } from '../lib/db';
 import { readBasket, writeBasket, basketCount, withLine, type BasketLine } from '../lib/basket';
 import { syncEventRolesInBackground } from '../lib/event-discord';
+import { refreshAnnouncementInBackground } from '../lib/announce';
 import {
   getProduct,
   getPurchase,
@@ -283,6 +284,7 @@ if (isPost && csrfOk && !adjust && lines.length > 0 && !problem) {
           for (const line of lines) if (line.quoted.kind === 'ticket' && line.quoted.ownTicket) ticketEvents.add(line.quoted.event.id);
           for (const eventId of ticketEvents) await repairTicketSignups(env.DB, eventId, now);
           syncEventRolesInBackground(Astro.locals.cfContext, env.DB, env, ticketEvents, now);
+          refreshAnnouncementInBackground(Astro.locals.cfContext, env.DB, env, ticketEvents, Astro.url.origin);
         }
         writeBasket(Astro.cookies, []);
         return Astro.redirect(`/purchase/${created.purchase.id}?ok=issued`, 303);
