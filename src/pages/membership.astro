@@ -113,6 +113,8 @@ const NOTES: Record<string, string> = {
   mc_name_taken: 'That name is already on the list.',
   mc_not_member: 'The whitelist needs a current membership.',
   mc_friend_limit: `${FRIENDS_PER_MEMBER} friends per member. Take one off first.`,
+  mc_no_account: 'No Minecraft account has that name. Check the spelling; it is the Java edition name.',
+  mc_mojang_down: "Mojang didn't answer. Try again in a minute.",
   mc_bad: "That didn't work. Try again.",
 };
 const note = NOTES[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
@@ -327,12 +329,13 @@ const MESSAGES: Record<FieldError, string> = {
         <>
           <p class="queue-meta">
             Your Java edition name goes on the server's whitelist within a few minutes, and up to {FRIENDS_PER_MEMBER} friends can come along on your membership.
-            In Discord, <code>/whitelist</code> does the same.
+            Every name is checked with Mojang and shown with its skin, so you can see it's the right account. In Discord, <code>/whitelist</code> does the same.
           </p>
           {mcNames.length > 0 && (
             <ul class="mc-names">
               {mcNames.map((n) => (
                 <li>
+                  {n.uuid && <img class="mc-face" src={`/membership/minecraft/face/${n.uuid}`} width="28" height="28" alt="" loading="lazy" />}
                   <span class="mc-name">{n.name}</span>
                   <span class="event-meta">{n.kind === 'own' ? 'you' : n.kind === 'friend' ? 'your friend' : 'added by the board'}</span>
                   {n.kind !== 'board' && (

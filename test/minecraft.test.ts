@@ -8,9 +8,12 @@ import {
   addBoardMinecraftName,
   dropMinecraftName,
   whitelistNames,
+  whitelistPlayers,
   tokenMatches,
   bearerToken,
+  dashedUuid,
   FRIENDS_PER_MEMBER,
+  type Resolver,
 } from '../src/lib/minecraft';
 
 // The Minecraft whitelist: a member's own name and friends, board names,
@@ -18,6 +21,14 @@ import {
 
 const NOW = 1_760_000_000;
 const db = () => env.DB;
+
+// Mojang, as a table: known names in their exact spelling, with UUIDs.
+const KNOWN = ['Steve', 'Steve_2', 'Alex', 'Friend1', 'Friend2', 'Friend3', 'Zed', 'Guest', 'Seeded', 'Seeded2', 'Buddy', 'Pending', 'Ghost', 'Nope'];
+const uuidOf = (name: string) => dashedUuid(name.toLowerCase().padEnd(32, '0').replace(/[^0-9a-f]/g, 'a').slice(0, 32));
+const mojang: Resolver = async (name) => {
+  const exact = KNOWN.find((k) => k.toLowerCase() === name.toLowerCase());
+  return exact ? { uuid: uuidOf(exact), name: exact } : null;
+};
 
 async function registered(discordId: string, status: 'member' | 'pending' | 'former'): Promise<void> {
   await db()
@@ -39,58 +50,64 @@ describe('minecraft whitelist', () => {
   });
 
   it('takes a member’s own name once, checks the name, and refuses non-members', async () => {
-    expect(await setOwnMinecraftName(db(), 'm1', ' Steve ', NOW)).toBe('Steve');
-    expect(await setOwnMinecraftName(db(), 'm1', 'Steve_2', NOW + 1)).toBe('Steve_2');
-    expect((await listMinecraftNames(db(), 'm1')).map((n) => [n.name, n.kind])).toEqual([['Steve_2', 'own']]);
-    await expect(setOwnMinecraftName(db(), 'm1', 'no spaces here', NOW)).rejects.toMatchObject({ code: 'bad_name' });
-    await expect(setOwnMinecraftName(db(), 'm1', 'ab', NOW)).rejects.toMatchObject({ code: 'bad_name' });
-    await expect(setOwnMinecraftName(db(), 'p1', 'Pending', NOW)).rejects.toMatchObject({ code: 'not_member' });
-    await expect(setOwnMinecraftName(db(), 'nobody', 'Ghost', NOW)).rejects.toMatchObject({ code: 'not_member' });
+    expect((await setOwnMinecraftName(db(), 'm1', ' steve ', NOW, mojang)).name).toBe('Steve'); // exact spelling from Mojang
+    expect(await setOwnMinecraftName(db(), 'm1', 'Steve_2', NOW + 1, mojang)).toEqual({ name: 'Steve_2', uuid: uuidOf('Steve_2') });
+    expect((await listMinecraftNames(db(), 'm1')).map((n) => [n.name, n.kind, n.uuid])).toEqual([['Steve_2', 'own', uuidOf('Steve_2')]]);
+    await expect(setOwnMinecraftName(db(), 'm1', 'Nobody99', NOW, mojang)).rejects.toMatchObject({ code: 'no_account' });
+    await expect(setOwnMinecraftName(db(), 'm1', 'no spaces here', NOW, mojang)).rejects.toMatchObject({ code: 'bad_name' });
+    await expect(setOwnMinecraftName(db(), 'm1', 'ab', NOW, mojang)).rejects.toMatchObject({ code: 'bad_name' });
+    await expect(setOwnMinecraftName(db(), 'p1', 'Pending', NOW, mojang)).rejects.toMatchObject({ code: 'not_member' });
+    await expect(setOwnMinecraftName(db(), 'nobody', 'Ghost', NOW, mojang)).rejects.toMatchObject({ code: 'not_member' });
     // Someone else's name, in any case, is taken.
-    await expect(setOwnMinecraftName(db(), 'm2', 'steve_2', NOW)).rejects.toMatchObject({ code: 'name_taken' });
+    await expect(setOwnMinecraftName(db(), 'm2', 'steve_2', NOW, mojang)).rejects.toMatchObject({ code: 'name_taken' });
   });
 
   it('brings friends up to the limit, and a friend promoted to own stays one row', async () => {
-    await setOwnMinecraftName(db(), 'm1', 'Alex', NOW);
-    await addMinecraftFriend(db(), 'm1', 'Friend1', NOW);
-    await addMinecraftFriend(db(), 'm1', 'Friend2', NOW);
+    await setOwnMinecraftName(db(), 'm1', 'Alex', NOW, mojang);
+    await addMinecraftFriend(db(), 'm1', 'Friend1', NOW, mojang);
+    await addMinecraftFriend(db(), 'm1', 'Friend2', NOW, mojang);
     expect(FRIENDS_PER_MEMBER).toBe(2);
-    await expect(addMinecraftFriend(db(), 'm1', 'Friend3', NOW)).rejects.toMatchObject({ code: 'friend_limit' });
-    await expect(addMinecraftFriend(db(), 'm2', 'friend1', NOW)).rejects.toMatchObject({ code: 'name_taken' });
-    await expect(addMinecraftFriend(db(), 'p1', 'Nope', NOW)).rejects.toMatchObject({ code: 'not_member' });
+    await expect(addMinecraftFriend(db(), 'm1', 'Friend3', NOW, mojang)).rejects.toMatchObject({ code: 'friend_limit' });
+    await expect(addMinecraftFriend(db(), 'm2', 'friend1', NOW, mojang)).rejects.toMatchObject({ code: 'name_taken' });
+    await expect(addMinecraftFriend(db(), 'p1', 'Nope', NOW, mojang)).rejects.toMatchObject({ code: 'not_member' });
     expect(await removeMinecraftName(db(), 'm1', 'Friend2')).toBe(true);
     expect(await removeMinecraftName(db(), 'm1', 'Friend2')).toBe(false);
     expect(await removeMinecraftName(db(), 'm2', 'Friend1')).toBe(false); // not theirs
-    await setOwnMinecraftName(db(), 'm1', 'friend1', NOW + 5);
-    expect((await listMinecraftNames(db(), 'm1')).map((n) => [n.name, n.kind])).toEqual([['friend1', 'own']]);
+    await setOwnMinecraftName(db(), 'm1', 'friend1', NOW + 5, mojang);
+    expect((await listMinecraftNames(db(), 'm1')).map((n) => [n.name, n.kind])).toEqual([['Friend1', 'own']]);
   });
 
   it('lists board names always and members’ names while they are current', async () => {
-    await setOwnMinecraftName(db(), 'm1', 'Alex', NOW);
-    await addMinecraftFriend(db(), 'm1', 'Buddy', NOW);
-    await setOwnMinecraftName(db(), 'm2', 'Zed', NOW);
-    await addBoardMinecraftName(db(), 'board', 'Guest', NOW);
-    await expect(addBoardMinecraftName(db(), 'board', 'guest', NOW)).rejects.toMatchObject({ code: 'name_taken' });
+    await setOwnMinecraftName(db(), 'm1', 'Alex', NOW, mojang);
+    await addMinecraftFriend(db(), 'm1', 'Buddy', NOW, mojang);
+    await setOwnMinecraftName(db(), 'm2', 'Zed', NOW, mojang);
+    await addBoardMinecraftName(db(), 'board', 'Guest', NOW, mojang);
+    await expect(addBoardMinecraftName(db(), 'board', 'guest', NOW, mojang)).rejects.toMatchObject({ code: 'name_taken' });
     expect(await whitelistNames(db())).toEqual(['Alex', 'Buddy', 'Guest', 'Zed']);
     await db().prepare(`UPDATE register SET status = 'former' WHERE discord_id = 'm1'`).run();
     expect(await whitelistNames(db())).toEqual(['Guest', 'Zed']);
     // A seeded board name is claimable by a member, as their own or as a friend; then it follows them.
-    await addBoardMinecraftName(db(), 'board', 'Seeded', NOW);
-    await addBoardMinecraftName(db(), 'board', 'Seeded2', NOW);
-    expect(await setOwnMinecraftName(db(), 'm2', 'seeded', NOW + 1)).toBe('seeded');
-    expect(await addMinecraftFriend(db(), 'm2', 'Seeded2', NOW + 1)).toBe('Seeded2');
+    await addBoardMinecraftName(db(), 'board', 'Seeded', NOW, mojang);
+    await addBoardMinecraftName(db(), 'board', 'Seeded2', NOW, mojang);
+    expect((await setOwnMinecraftName(db(), 'm2', 'seeded', NOW + 1, mojang)).name).toBe('Seeded');
+    expect((await addMinecraftFriend(db(), 'm2', 'Seeded2', NOW + 1, mojang)).name).toBe('Seeded2');
     // Their previous own name (Zed) went with the claim; the claimed names are theirs now.
-    expect((await listMinecraftNames(db(), 'm2')).map((n) => [n.name, n.kind])).toEqual([['seeded', 'own'], ['Seeded2', 'friend']]);
-    expect(await whitelistNames(db())).toEqual(['Guest', 'seeded', 'Seeded2']);
-    await expect(setOwnMinecraftName(db(), 'p1', 'Guest', NOW)).rejects.toMatchObject({ code: 'not_member' });
-    await expect(setOwnMinecraftName(db(), 'm3', 'Seeded2', NOW)).rejects.toMatchObject({ code: 'name_taken' });
-    await expect(addMinecraftFriend(db(), 'm3', 'seeded', NOW)).rejects.toMatchObject({ code: 'name_taken' });
+    expect((await listMinecraftNames(db(), 'm2')).map((n) => [n.name, n.kind])).toEqual([['Seeded', 'own'], ['Seeded2', 'friend']]);
+    expect(await whitelistNames(db())).toEqual(['Guest', 'Seeded', 'Seeded2']);
+    expect((await whitelistPlayers(db())).map((p) => p.uuid)).toEqual([uuidOf('Guest'), uuidOf('Seeded'), uuidOf('Seeded2')]);
+    await expect(setOwnMinecraftName(db(), 'p1', 'Guest', NOW, mojang)).rejects.toMatchObject({ code: 'not_member' });
+    await expect(setOwnMinecraftName(db(), 'm3', 'Seeded2', NOW, mojang)).rejects.toMatchObject({ code: 'name_taken' });
+    await expect(addMinecraftFriend(db(), 'm3', 'seeded', NOW, mojang)).rejects.toMatchObject({ code: 'name_taken' });
     // The board drops any name; a member cannot take a board name off.
     expect(await removeMinecraftName(db(), 'board', 'Guest')).toBe(false);
     expect((await dropMinecraftName(db(), 'guest'))?.kind).toBe('board');
     expect((await dropMinecraftName(db(), 'seeded'))?.discord_id).toBe('m2');
     expect(await dropMinecraftName(db(), 'Zed')).toBeNull();
     expect(await whitelistNames(db())).toEqual(['Seeded2']);
+  });
+
+  it('dashes a Mojang id', () => {
+    expect(dashedUuid('069A79F444E94726A5BEFCA90E38AAF5')).toBe('069a79f4-44e9-4726-a5be-fca90e38aaf5');
   });
 
   it('checks the bearer token without a length or prefix shortcut', () => {

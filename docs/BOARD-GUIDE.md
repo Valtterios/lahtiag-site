@@ -201,7 +201,8 @@ puts it on the page and on Discord.
   server") or with `/whitelist me <name>` in Discord. Each member can
   bring two friends with `/whitelist friend <name>`, and take names off
   with `/whitelist remove <name>`. The server picks changes up within
-  about five minutes.
+  about five minutes. Names are checked with Mojang, and the skin's face
+  shows next to the name so people can tell it's their account.
 - **Board.** `/whitelist add <name>` whitelists anyone, member or not;
   `/whitelist drop <name>` removes any name. A former member's names go
   off the server on their own.

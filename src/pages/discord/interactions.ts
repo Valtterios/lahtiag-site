@@ -46,7 +46,7 @@ import { syncEventRolesInBackground } from '../../lib/event-discord';
 import { announcePromotions } from '../../lib/event-channel';
 import { MEMBER_TYPE_LABELS } from '../../lib/register';
 import { DISCORD_GUILD_ID } from '../../lib/config';
-import { setOwnMinecraftName, addMinecraftFriend, removeMinecraftName, listMinecraftNames, addBoardMinecraftName, dropMinecraftName, FRIENDS_PER_MEMBER } from '../../lib/minecraft';
+import { setOwnMinecraftName, addMinecraftFriend, removeMinecraftName, listMinecraftNames, addBoardMinecraftName, dropMinecraftName, faceUrl, FRIENDS_PER_MEMBER } from '../../lib/minecraft';
 
 // The Discord bot: an HTTP Interactions endpoint inside the same Worker
 // (spec, Discord bot). No gateway, no second host, same database.
@@ -258,10 +258,17 @@ const WHITELIST_ERRORS: Record<string, string> = {
   name_taken: 'That name is already on the list.',
   not_member: 'The whitelist needs a current membership. `/join` gets you one, or links your account.',
   friend_limit: `${FRIENDS_PER_MEMBER} friends per member. Take one off first with \`/whitelist remove\`.`,
+  no_account: 'No Minecraft account has that name. Check the spelling (Java edition name).',
+  mojang_down: "Mojang didn't answer. Try again in a minute.",
 };
 
+// The skin's face beside the answer, so people see it's their account.
+function faceEmbed(origin: string, name: string, uuid: string, note: string): unknown[] {
+  return [{ title: name, description: note, thumbnail: { url: faceUrl(origin, uuid) }, color: 0x2b5cff }];
+}
+
 async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin: string, isAdmin: boolean): Promise<void> {
-  const reply = (content: string) => editInteractionReply(interaction.application_id, interaction.token, content);
+  const reply = (content: string, embeds: unknown[] = []) => editInteractionReply(interaction.application_id, interaction.token, content, [], embeds);
   const sub = interaction.data?.options?.[0];
   const userId = interaction.member?.user?.id;
   if (!sub || !userId) {
@@ -276,20 +283,22 @@ async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin:
   const page = `${origin}/membership#minecraft`;
   try {
     if (sub.name === 'me') {
-      const name = await setOwnMinecraftName(env.DB, userId, raw, now);
-      await reply(`✅ **${name}** is on the whitelist as you. ${soon}`);
+      const p = await setOwnMinecraftName(env.DB, userId, raw, now);
+      await reply(`✅ **${p.name}** is on the whitelist as you. ${soon}`, faceEmbed(origin, p.name, p.uuid, 'Your skin? Then it is the right account.'));
     } else if (sub.name === 'friend') {
-      const name = await addMinecraftFriend(env.DB, userId, raw, now);
-      await reply(`✅ **${name}** is on the whitelist as your friend. ${soon}`);
+      const p = await addMinecraftFriend(env.DB, userId, raw, now);
+      await reply(`✅ **${p.name}** is on the whitelist as your friend. ${soon}`, faceEmbed(origin, p.name, p.uuid, "Your friend's skin? Then it is the right account."));
     } else if (sub.name === 'remove') {
       const gone = await removeMinecraftName(env.DB, userId, raw);
       await reply(gone ? `Took **${shown}** off the list. The server drops it within a few minutes.` : `**${shown}** is not one of your names.`);
     } else if (sub.name === 'list') {
       const names = await listMinecraftNames(env.DB, userId);
+      const own = names.find((n) => n.kind === 'own' && n.uuid);
       await reply(
         names.length > 0
           ? `${names.map((n) => `• **${n.name}** (${n.kind === 'own' ? 'you' : n.kind === 'friend' ? 'your friend' : 'board'})`).join('\n')}\n${page}`
           : `No names yet. \`/whitelist me <name>\` puts yours on the list, members only. ${page}`,
+        own ? faceEmbed(origin, own.name, own.uuid!, 'Your skin.') : [],
       );
     } else if (sub.name === 'add' || sub.name === 'drop') {
       if (!isAdmin) {
@@ -297,8 +306,8 @@ async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin:
         return;
       }
       if (sub.name === 'add') {
-        const name = await addBoardMinecraftName(env.DB, userId, raw, now);
-        await reply(`✅ **${name}** is on the whitelist, added by the board. ${soon}`);
+        const p = await addBoardMinecraftName(env.DB, userId, raw, now);
+        await reply(`✅ **${p.name}** is on the whitelist, added by the board. ${soon}`, faceEmbed(origin, p.name, p.uuid, 'The account behind that name.'));
       } else {
         const gone = await dropMinecraftName(env.DB, raw);
         await reply(gone ? `Dropped **${gone.name}** (${gone.kind === 'own' ? 'a member' : gone.kind === 'friend' ? "a member's friend" : 'board'}). The server removes it within a few minutes.` : `**${shown}** is not on the list.`);

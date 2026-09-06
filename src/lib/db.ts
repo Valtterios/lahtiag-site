@@ -21,6 +21,8 @@ export class RuleError extends Error {
       | 'name_taken'
       | 'not_member'
       | 'friend_limit'
+      | 'no_account' // no Minecraft account has that name
+      | 'mojang_down'
       | 'team_full'
       | 'dup_name'
       | 'not_team_event'

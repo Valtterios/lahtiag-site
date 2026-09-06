@@ -615,6 +615,13 @@ a:hover {
   font-weight: 700;
 }
 
+.mc-face {
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
 .signup-bar {
   display: flex;
   gap: 0.7rem;

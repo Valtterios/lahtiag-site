@@ -667,6 +667,15 @@ member whose status in the register turns to former loses their names on
 the next pull, board names stay. A name can be on the list once, in any
 letter case.
 
+Every name is checked with Mojang when it is saved: a name with no
+account is refused, the exact spelling and the account's UUID are stored,
+and the skin's face shows beside the name on the membership page and in
+the bot's answer, so people can see it is their own account. The server
+gets the UUIDs with the names, so a stopped server's file is written
+without asking Mojang again. The faces come through
+`/membership/minecraft/face/<uuid>` from a public skin renderer
+(crafatar.com, mc-heads.net as the fallback), cached a day.
+
 The server side is `scripts/minecraft/whitelist-sync.py`, run every five
 minutes by a systemd timer on the machine that runs AMP. It fetches
 `https://lahtiag.fi/api/minecraft/whitelist` with the

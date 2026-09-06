@@ -292,11 +292,12 @@ export async function editInteractionReply(
   interactionToken: string,
   content: string,
   components: unknown[] = [],
+  embeds: unknown[] = [],
 ): Promise<void> {
   await fetch(`${API}/webhooks/${applicationId}/${interactionToken}/messages/@original`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ content, components }),
+    body: JSON.stringify({ content, components, embeds }),
   }).catch(() => {});
 }
 

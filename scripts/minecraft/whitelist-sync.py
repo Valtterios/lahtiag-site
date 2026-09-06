@@ -70,10 +70,11 @@ def fetch_wanted(conf):
     req = urllib.request.Request(conf['URL'], headers={'Authorization': f"Bearer {conf['TOKEN']}", 'Accept': 'application/json', 'User-Agent': UA})
     with urllib.request.urlopen(req, timeout=20) as r:
         data = json.load(r)
-    names = data.get('names')
-    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
-        raise ValueError('the site answered without a names list')
-    return names
+    players = data.get('players')
+    if not isinstance(players, list) or not all(isinstance(p, dict) and isinstance(p.get('name'), str) for p in players):
+        raise ValueError('the site answered without a players list')
+    # name -> the site's UUID for it (None for a name from before the lookup)
+    return {p['name']: (p.get('uuid') or None) for p in players}
 
 
 def read_entries(path):
@@ -146,12 +147,12 @@ def mojang_uuid(name):
     return f'{raw[0:8]}-{raw[8:12]}-{raw[12:16]}-{raw[16:20]}-{raw[20:32]}', data.get('name', name)
 
 
-def write_file(path, entries, adds, removes):
+def write_file(path, entries, adds, removes, uuids):
     gone = {n.lower() for n in removes}
     kept = [e for e in entries if e['name'].lower() not in gone]
     unknown = []
     for name in adds:
-        uuid, exact = mojang_uuid(name)
+        uuid, exact = (uuids.get(name), name) if uuids.get(name) else mojang_uuid(name)
         if not uuid:
             unknown.append(name)
             continue
@@ -179,6 +180,7 @@ def main():
         sys.exit(f'whitelist fetch failed, nothing changed: {e}')
 
     entries = read_entries(conf['WHITELIST_FILE'])
+    uuids = dict(wanted)
     wanted_all = {n.lower(): n for n in list(wanted) + list(keep)}
     current = {e['name'].lower(): e['name'] for e in entries}
     adds = [wanted_all[k] for k in sorted(wanted_all) if k not in current]
@@ -237,7 +239,7 @@ def main():
         return
 
     try:
-        unknown = write_file(conf['WHITELIST_FILE'], entries, adds, removes)
+        unknown = write_file(conf['WHITELIST_FILE'], entries, adds, removes, uuids)
     except (OSError, urllib.error.URLError) as e:
         sys.exit(f'writing whitelist.json failed: {e}')
     added = [n for n in adds if n not in unknown]

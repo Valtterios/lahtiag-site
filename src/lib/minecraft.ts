@@ -7,6 +7,10 @@ import { RuleError } from './db';
 // bring a couple of friends along on their membership; the board can add
 // any name. A member's names count while the register lists them as a
 // current member, board names always.
+//
+// Every name is checked against Mojang when it is saved: the account's
+// UUID and the exact spelling are stored, an unknown name is refused, and
+// the skin's face shows next to the name so people see it is theirs.
 
 export const MC_NAME = /^[A-Za-z0-9_]{3,16}$/;
 export const FRIENDS_PER_MEMBER = 2;
@@ -19,12 +23,55 @@ export interface MinecraftName {
   name: string;
   kind: MinecraftKind;
   added_at: number;
+  uuid: string | null; // null only on names from before the lookup existed
 }
+
+export interface MojangProfile {
+  uuid: string; // dashed
+  name: string; // the account's exact spelling
+}
+
+// Mojang's lookup, swapped for a table in tests.
+export type Resolver = (name: string) => Promise<MojangProfile | null>;
 
 export function checkMinecraftName(raw: string): string {
   const name = raw.trim();
   if (!MC_NAME.test(name)) throw new RuleError('bad_name', 'A Minecraft name is 3 to 16 letters, digits or underscores.');
   return name;
+}
+
+export function dashedUuid(hex: string): string {
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`.toLowerCase();
+}
+
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export async function lookupMojang(name: string): Promise<MojangProfile | null> {
+  let response: Response;
+  try {
+    response = await fetch(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(name)}`, {
+      headers: { accept: 'application/json', 'user-agent': 'lahtiag.fi whitelist (+https://lahtiag.fi)' },
+    });
+  } catch {
+    throw new RuleError('mojang_down', "Mojang didn't answer. Try again in a minute.");
+  }
+  if (response.status === 404 || response.status === 204) return null;
+  if (!response.ok) throw new RuleError('mojang_down', "Mojang didn't answer. Try again in a minute.");
+  const data = (await response.json()) as { id?: string; name?: string };
+  if (!data.id || data.id.length !== 32 || !data.name) return null;
+  return { uuid: dashedUuid(data.id), name: data.name };
+}
+
+async function resolveName(raw: string, resolve: Resolver): Promise<MojangProfile> {
+  const typed = checkMinecraftName(raw);
+  const profile = await resolve(typed);
+  if (!profile) throw new RuleError('no_account', 'No Minecraft account has that name. Check the spelling.');
+  return profile;
+}
+
+// The face of a skin, served through the site (src/pages/membership/minecraft/face).
+export function faceUrl(origin: string, uuid: string): string {
+  return `${origin}/membership/minecraft/face/${uuid}`;
 }
 
 export async function isCurrentMember(db: D1Database, discordId: string): Promise<boolean> {
@@ -60,26 +107,26 @@ function claimable(holder: MinecraftName | null, discordId: string): boolean {
 
 // One own name per member: the previous one goes. A name already listed
 // as one of their friends becomes their own.
-export async function setOwnMinecraftName(db: D1Database, discordId: string, raw: string, now: number): Promise<string> {
-  const name = checkMinecraftName(raw);
+export async function setOwnMinecraftName(db: D1Database, discordId: string, raw: string, now: number, resolve: Resolver = lookupMojang): Promise<MojangProfile> {
+  const profile = await resolveName(raw, resolve);
   await requireMember(db, discordId);
-  if (!claimable(await holderOf(db, name), discordId)) throw new RuleError('name_taken', 'That name is already on the list.');
+  if (!claimable(await holderOf(db, profile.name), discordId)) throw new RuleError('name_taken', 'That name is already on the list.');
   await db.batch([
     db
       .prepare(
         `DELETE FROM minecraft_names WHERE (discord_id = ?1 AND kind = 'own')
          OR (name = ?2 COLLATE NOCASE AND (discord_id = ?1 OR kind = 'board'))`,
       )
-      .bind(discordId, name),
-    db.prepare(`INSERT INTO minecraft_names (discord_id, name, kind, added_at) VALUES (?1, ?2, 'own', ?3)`).bind(discordId, name, now),
+      .bind(discordId, profile.name),
+    db.prepare(`INSERT INTO minecraft_names (discord_id, name, kind, added_at, uuid) VALUES (?1, ?2, 'own', ?3, ?4)`).bind(discordId, profile.name, now, profile.uuid),
   ]);
-  return name;
+  return profile;
 }
 
-export async function addMinecraftFriend(db: D1Database, discordId: string, raw: string, now: number): Promise<string> {
-  const name = checkMinecraftName(raw);
+export async function addMinecraftFriend(db: D1Database, discordId: string, raw: string, now: number, resolve: Resolver = lookupMojang): Promise<MojangProfile> {
+  const profile = await resolveName(raw, resolve);
   await requireMember(db, discordId);
-  const holder = await holderOf(db, name);
+  const holder = await holderOf(db, profile.name);
   if (holder && holder.kind !== 'board') throw new RuleError('name_taken', 'That name is already on the list.');
   const friends = await db
     .prepare(`SELECT COUNT(*) AS n FROM minecraft_names WHERE discord_id = ?1 AND kind = 'friend'`)
@@ -87,10 +134,10 @@ export async function addMinecraftFriend(db: D1Database, discordId: string, raw:
     .first<{ n: number }>();
   if ((friends?.n ?? 0) >= FRIENDS_PER_MEMBER) throw new RuleError('friend_limit', `${FRIENDS_PER_MEMBER} friends per member.`);
   await db.batch([
-    db.prepare(`DELETE FROM minecraft_names WHERE name = ?1 COLLATE NOCASE AND kind = 'board'`).bind(name),
-    db.prepare(`INSERT INTO minecraft_names (discord_id, name, kind, added_at) VALUES (?1, ?2, 'friend', ?3)`).bind(discordId, name, now),
+    db.prepare(`DELETE FROM minecraft_names WHERE name = ?1 COLLATE NOCASE AND kind = 'board'`).bind(profile.name),
+    db.prepare(`INSERT INTO minecraft_names (discord_id, name, kind, added_at, uuid) VALUES (?1, ?2, 'friend', ?3, ?4)`).bind(discordId, profile.name, now, profile.uuid),
   ]);
-  return name;
+  return profile;
 }
 
 // A member takes one of their own names off; board names stay.
@@ -105,11 +152,11 @@ export async function removeMinecraftName(db: D1Database, discordId: string, raw
 }
 
 // The board: any name, membership or not, and any name off again.
-export async function addBoardMinecraftName(db: D1Database, byDiscordId: string, raw: string, now: number): Promise<string> {
-  const name = checkMinecraftName(raw);
-  if (await holderOf(db, name)) throw new RuleError('name_taken', 'That name is already on the list.');
-  await db.prepare(`INSERT INTO minecraft_names (discord_id, name, kind, added_at) VALUES (?1, ?2, 'board', ?3)`).bind(byDiscordId, name, now).run();
-  return name;
+export async function addBoardMinecraftName(db: D1Database, byDiscordId: string, raw: string, now: number, resolve: Resolver = lookupMojang): Promise<MojangProfile> {
+  const profile = await resolveName(raw, resolve);
+  if (await holderOf(db, profile.name)) throw new RuleError('name_taken', 'That name is already on the list.');
+  await db.prepare(`INSERT INTO minecraft_names (discord_id, name, kind, added_at, uuid) VALUES (?1, ?2, 'board', ?3, ?4)`).bind(byDiscordId, profile.name, now, profile.uuid).run();
+  return profile;
 }
 
 export async function dropMinecraftName(db: D1Database, raw: string): Promise<MinecraftName | null> {
@@ -123,16 +170,20 @@ export async function dropMinecraftName(db: D1Database, raw: string): Promise<Mi
 
 // What the server should have: board names, and every name whose member
 // is current. A lapsed membership takes its names off on the next pull.
-export async function whitelistNames(db: D1Database): Promise<string[]> {
+export async function whitelistPlayers(db: D1Database): Promise<{ name: string; uuid: string | null }[]> {
   const { results } = await db
     .prepare(
-      `SELECT n.name FROM minecraft_names n
+      `SELECT n.name, n.uuid FROM minecraft_names n
        LEFT JOIN register r ON r.discord_id = n.discord_id AND r.status = 'member'
        WHERE n.kind = 'board' OR r.id IS NOT NULL
        ORDER BY n.name COLLATE NOCASE`,
     )
-    .all<{ name: string }>();
-  return results.map((r) => r.name);
+    .all<{ name: string; uuid: string | null }>();
+  return results;
+}
+
+export async function whitelistNames(db: D1Database): Promise<string[]> {
+  return (await whitelistPlayers(db)).map((p) => p.name);
 }
 
 // The server's bearer token, compared without leaking where it differs.
