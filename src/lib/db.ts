@@ -33,6 +33,7 @@ export class RuleError extends Error {
       | 'needs_ticket'
       | 'ticket_holder'
       | 'too_few'
+  | 'has_sales'
   | 'not_open'
   | 'not_full'
   | 'no_waitlist'

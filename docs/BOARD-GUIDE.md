@@ -99,7 +99,9 @@ the bottom right lets you view a page as a member or a visitor would.
   Interviews voice channels, plus a voice channel per team that follows
   the teams as they form.
   The role follows the roster on its own: sign up and you have it, leave
-  and it's gone. Edits and cancellations carry over, and the tournament
+  and it's gone. A week after the event the role is removed on its own
+  and the channels stay for the board. Edits and cancellations carry
+  over, and the tournament
   talks in the channel: the bracket, every result, the champion and the
   screen messages are posted there by the bot. Board tools → Discord
   shows the state. Afterwards, Archive keeps the channels for the board
@@ -108,6 +110,10 @@ the bottom right lets you view a page as a member or a visitor would.
   Reinstate. Delete removes the event for good. Both ask first.
 
 ## Tickets and the shop
+
+- **Removing a shop item.** Delete is offered for products nothing was
+  ever bought on. One that sold stays for the purchase history: untick
+  On sale to hide it from the shop.
 
 - **Buying.** Event pages and the shop only add to a **basket**. The
   checkout takes names and answers for every ticket and one payment for

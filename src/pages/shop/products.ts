@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
 import { RuleError } from '../../lib/db';
-import { createProduct, updateProduct } from '../../lib/purchases';
+import { createProduct, updateProduct, deleteProduct } from '../../lib/purchases';
 
 // Board: add or change a product. Prices arrive in euros.
 
@@ -19,6 +19,17 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   const form = await request.formData();
   if (!(await checkCsrf(request, form))) return redirect('/shop?err=csrf', 303);
 
+  if (form.get('action') === 'delete') {
+    const id = Number(form.get('id'));
+    if (!Number.isInteger(id)) return redirect('/shop?err=bad_input', 303);
+    try {
+      await deleteProduct(env.DB, id);
+    } catch (error) {
+      if (error instanceof RuleError) return redirect(`/shop?err=${error.code}`, 303);
+      throw error;
+    }
+    return redirect('/shop?ok=product_deleted', 303);
+  }
   const price = cents(form.get('price'));
   const memberPrice = cents(form.get('member_price'));
   const stockRaw = String(form.get('stock') ?? '').trim();

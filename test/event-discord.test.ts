@@ -25,6 +25,7 @@ import {
   createTeamVoiceChannels,
   type SetRole,
 } from '../src/lib/event-discord';
+import { listEndedEventsWithRole } from '../src/lib/db';
 import type { RoleResult } from '../src/lib/discord';
 
 // The per-event Discord role: naming, the pure plan, and the sync against
@@ -294,5 +295,20 @@ describe('a big event: its own category', () => {
     await recordEventChannel(db(), id, 'C9', 'discussion', null, NOW);
     await deleteEvent(db(), id);
     expect(await listEventChannels(db(), id)).toEqual([]);
+  });
+});
+
+describe('auto-archive selection', () => {
+  beforeEach(wipe);
+
+  it('finds ended events whose role is still out, and nothing else', async () => {
+    await seedMember('100');
+    const ended = await createEvent(db(), { title: 'Old', description: null, starts_at: NOW - 86400 * 10, ends_at: NOW - 86400 * 10 + 3600, capacity: null, created_by: '100' }, NOW - 86400 * 20);
+    const fresh = await createEvent(db(), { title: 'Recent', description: null, starts_at: NOW - 3600, capacity: null, created_by: '100' }, NOW - 86400);
+    const done = await createEvent(db(), { title: 'Archived', description: null, starts_at: NOW - 86400 * 10, capacity: null, created_by: '100' }, NOW - 86400 * 20);
+    for (const id of [ended, fresh]) await db().prepare("UPDATE events SET discord_role_id = 'R', discord_channel_id = 'C' WHERE id = ?1").bind(id).run();
+    await db().prepare("UPDATE events SET discord_channel_id = 'C' WHERE id = ?1").bind(done).run();
+    expect((await listEndedEventsWithRole(db(), NOW - 86400 * 7)).map((e) => e.id)).toEqual([ended]);
+    expect((await listEndedEventsWithRole(db(), NOW)).map((e) => e.id).sort()).toEqual([ended, fresh].sort());
   });
 });

@@ -124,6 +124,20 @@ export async function createProduct(db: D1Database, input: ProductInput, now: nu
   return row!.id;
 }
 
+// Gone for good, picture included: only for a product nothing was ever
+// bought on. One that sold is hidden instead, so purchases keep their
+// line.
+export async function deleteProduct(db: D1Database, id: number): Promise<void> {
+  const product = await db.prepare('SELECT id FROM products WHERE id = ?1').bind(id).first();
+  if (!product) throw new RuleError('missing', 'No such product.');
+  const sold = await db.prepare('SELECT 1 AS x FROM purchase_items WHERE product_id = ?1 LIMIT 1').bind(id).first();
+  if (sold) throw new RuleError('has_sales', 'This product was bought; hide it instead.');
+  await db.batch([
+    db.prepare('DELETE FROM product_images WHERE product_id = ?1').bind(id),
+    db.prepare('DELETE FROM products WHERE id = ?1').bind(id),
+  ]);
+}
+
 export async function updateProduct(db: D1Database, id: number, input: ProductInput): Promise<void> {
   checkProductInput(input);
   const result = await db

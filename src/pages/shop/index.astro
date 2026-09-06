@@ -29,6 +29,8 @@ const editing = isAdmin && Number.isInteger(editId) ? products.find((p) => p.id 
 const FLASH: Record<string, string> = {
   added: 'Added to your basket.',
   product_saved: 'Product saved.',
+  product_deleted: 'Product deleted.',
+  has_sales: 'That product was bought at some point, so it stays for the purchase history. Untick On sale to hide it instead.',
   image_saved: 'Picture saved.',
   image_removed: 'Picture removed.',
   image_missing: 'Pick an image file first.',
@@ -119,6 +121,14 @@ Astro.response.headers.set('cache-control', 'no-store');
               </div>
               <div class="entry-actions admin-product-tools">
                 <a class="btn btn-ghost btn-sm" href={`/shop?edit=${p.id}#product-form`}>Edit</a>
+                {p.sold === 0 && (
+                  <form method="post" action="/shop/products" class="inline-form">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="delete" />
+                    <input type="hidden" name="id" value={p.id} />
+                    <button class="btn btn-ghost btn-sm" type="submit" data-confirm={`Delete ${p.name} for good?`}>Delete</button>
+                  </form>
+                )}
                 <form method="post" action={`/shop/${p.id}/image`} enctype="multipart/form-data" class="basket-add">
                   <input type="hidden" name="csrf" value={csrf} />
                   <input type="file" name="image" accept="image/jpeg,image/png,image/webp" aria-label={`Picture for ${p.name}`} />
