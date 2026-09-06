@@ -17,6 +17,7 @@ import {
   pinChannelMessage,
   isMessagePinned,
   NO_MENTIONS,
+  SUPPRESS_EMBEDS,
   type MessageFile,
 } from './discord';
 import { bracketPng } from './bracket-image';
@@ -180,7 +181,7 @@ export async function refreshLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKE
   const text = liveBracketText(matches, names, `${origin}/events/${eventId}/bracket`, now);
   const picture = await bracketPicture(event, matches, names, now);
   if (event.discord_bracket_message_id) {
-    const edited = await editChannelMessageWithFile(token, channelId, event.discord_bracket_message_id, text, picture);
+    const edited = await editChannelMessageWithFile(token, channelId, event.discord_bracket_message_id, text, picture, SUPPRESS_EMBEDS);
     if (edited.ok) {
       // A pin that failed earlier (or was removed) is put back.
       if ((await isMessagePinned(token, channelId, event.discord_bracket_message_id)) === false) await pinChannelMessage(token, channelId, event.discord_bracket_message_id);
@@ -188,7 +189,7 @@ export async function refreshLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKE
     }
     if (edited.status !== 404) return;
   }
-  const created = await createChannelMessageWithFile(token, channelId, text, picture);
+  const created = await createChannelMessageWithFile(token, channelId, text, picture, NO_MENTIONS, SUPPRESS_EMBEDS);
   if (!created.ok) return;
   await db.prepare('UPDATE events SET discord_bracket_message_id = ?2 WHERE id = ?1').bind(eventId, created.value.id).run();
   await pinChannelMessage(token, channelId, created.value.id);
@@ -225,8 +226,15 @@ export async function postEventLine(
   const role = ping && event.discord_role_id ? event.discord_role_id : null;
   const text = role ? `<@&${role}> ${content}` : content;
   const mentions = role ? { parse: [], roles: [role] } : NO_MENTIONS;
-  if (file) return (await createChannelMessageWithFile(token, event.discord_channel_id, text, file, mentions)).ok;
-  return postChannelMessage(token, event.discord_channel_id, text, mentions);
+  if (file) return (await createChannelMessageWithFile(token, event.discord_channel_id, text, file, mentions, SUPPRESS_EMBEDS)).ok;
+  return postChannelMessage(token, event.discord_channel_id, text, mentions, SUPPRESS_EMBEDS);
+}
+
+// A one-channel event has the pinned live bracket, picture and all, in
+// the same channel as the talk, so its lines skip the picture; a big
+// event's talk is in discussion while the live bracket sits elsewhere.
+async function pictureBelongsInTalk(db: D1Database, event: Pick<EventRow, 'id' | 'discord_channel_id'>): Promise<boolean> {
+  return (await bracketChannel(db, event)) !== event.discord_channel_id;
 }
 
 // The lines that need the bracket read back after a change.
@@ -237,7 +245,8 @@ export async function postBracketOut(db: D1Database, env: { DISCORD_BOT_TOKEN?: 
   if (!event) return;
   const names = await participantNames(db, eventId);
   const now = Math.floor(Date.now() / 1000);
-  await postEventLine(db, env, eventId, bracketLine(matches, names, `${origin}/events/${eventId}/bracket`, regenerated), true, await bracketPicture(event, matches, names, now));
+  const picture = (await pictureBelongsInTalk(db, event)) ? await bracketPicture(event, matches, names, now) : undefined;
+  await postEventLine(db, env, eventId, bracketLine(matches, names, `${origin}/events/${eventId}/bracket`, regenerated), true, picture);
   await refreshLiveBracket(db, env, eventId, origin, now);
 }
 
@@ -249,8 +258,9 @@ export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: stri
   const now = Math.floor(Date.now() / 1000);
   const decided = story.round === story.totalRounds;
   const event = decided ? await getEvent(db, eventId) : null;
-  // The champion's line carries the finished picture.
-  await postEventLine(db, env, eventId, resultLine(story, `${origin}/events/${eventId}/bracket`), decided, event ? await bracketPicture(event, matches, names, now) : undefined);
+  // The champion's line carries the finished picture, unless the pinned one is right there.
+  const picture = event && (await pictureBelongsInTalk(db, event)) ? await bracketPicture(event, matches, names, now) : undefined;
+  await postEventLine(db, env, eventId, resultLine(story, `${origin}/events/${eventId}/bracket`), decided, picture);
   await refreshLiveBracket(db, env, eventId, origin, now);
 }
 

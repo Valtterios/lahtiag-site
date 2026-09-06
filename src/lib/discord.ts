@@ -532,13 +532,18 @@ export async function deleteChannel(botToken: string, channelId: string, reason:
   return result.ok || result.status === 404;
 }
 
+// Links in the bot's lines don't unfurl: the event page and the bracket
+// page would otherwise each drop a preview card under every message.
+export const SUPPRESS_EMBEDS = 4;
+
 export async function postChannelMessage(
   botToken: string,
   channelId: string,
   content: string,
   allowedMentions: { parse: string[]; roles?: string[] } = NO_MENTIONS,
+  flags = 0,
 ): Promise<boolean> {
-  const result = await botCall(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions });
+  const result = await botCall(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions, flags });
   return result.ok;
 }
 
@@ -620,12 +625,13 @@ export async function createChannelMessage(
   channelId: string,
   content: string,
   allowedMentions: { parse: string[]; roles?: string[] } = NO_MENTIONS,
+  flags = 0,
 ): Promise<BotResult<{ id: string }>> {
-  return botCall<{ id: string }>(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions });
+  return botCall<{ id: string }>(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions, flags });
 }
 
-export async function editChannelMessage(botToken: string, channelId: string, messageId: string, content: string): Promise<BotResult<unknown> & { status?: number }> {
-  return botCall(botToken, 'PATCH', `/channels/${channelId}/messages/${messageId}`, { content, allowed_mentions: NO_MENTIONS });
+export async function editChannelMessage(botToken: string, channelId: string, messageId: string, content: string, flags = 0): Promise<BotResult<unknown> & { status?: number }> {
+  return botCall(botToken, 'PATCH', `/channels/${channelId}/messages/${messageId}`, { content, allowed_mentions: NO_MENTIONS, flags });
 }
 
 export async function deleteChannelMessage(botToken: string, channelId: string, messageId: string): Promise<boolean> {
@@ -687,8 +693,9 @@ export async function createChannelMessageWithFile(
   content: string,
   file: MessageFile,
   allowedMentions: { parse: string[]; roles?: string[] } = NO_MENTIONS,
+  flags = 0,
 ): Promise<BotResult<{ id: string }>> {
-  return botUpload(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions }, file);
+  return botUpload(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions, flags }, file);
 }
 
 export async function editChannelMessageWithFile(
@@ -697,6 +704,7 @@ export async function editChannelMessageWithFile(
   messageId: string,
   content: string,
   file: MessageFile,
+  flags = 0,
 ): Promise<BotResult<{ id: string }> & { status?: number }> {
-  return botUpload(botToken, 'PATCH', `/channels/${channelId}/messages/${messageId}`, { content, allowed_mentions: NO_MENTIONS }, file);
+  return botUpload(botToken, 'PATCH', `/channels/${channelId}/messages/${messageId}`, { content, allowed_mentions: NO_MENTIONS, flags }, file);
 }
