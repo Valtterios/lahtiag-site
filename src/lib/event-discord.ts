@@ -8,10 +8,15 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { DISCORD_GUILD_ID } from './config';
-import { getEvent, listSignups, setSetting, type EventRow } from './db';
+import { getEvent, listSignups, getSettings, setSetting, getEventCover, type EventRow } from './db';
 import {
   createGuildRole,
   createGuildChannel,
+  createGuildCategory,
+  fetchChannel,
+  createScheduledEvent,
+  updateScheduledEvent,
+  deleteScheduledEvent,
   deleteGuildRole,
   deleteChannel,
   renameGuildRole,
@@ -24,6 +29,7 @@ import {
   PERM_READ_HISTORY,
   PERM_MANAGE_CHANNELS,
   type ChannelOverwrite,
+  type ScheduledEventInput,
   type RoleResult,
 } from './discord';
 import { formatHelsinkiRange } from './time';
@@ -63,6 +69,10 @@ export function roleName(title: string): string {
 
 export function channelUrl(channelId: string): string {
   return `https://discord.com/channels/${DISCORD_GUILD_ID}/${channelId}`;
+}
+
+export function scheduledEventUrl(eventId: string): string {
+  return `https://discord.com/events/${DISCORD_GUILD_ID}/${eventId}`;
 }
 
 // Everyone on the roster with a real Discord account, going or maybe.
@@ -190,6 +200,36 @@ function boardRoleIds(env: DiscordEnv): string[] {
     .filter((id) => id !== '' && id !== '0');
 }
 
+// Hidden from @everyone; the board and the bot see it.
+function privateOverwrites(env: DiscordEnv, botId: string): ChannelOverwrite[] {
+  const view = PERM_VIEW_CHANNEL.toString();
+  return [
+    { id: DISCORD_GUILD_ID, type: 0, allow: '0', deny: view },
+    { id: botId, type: 1, allow: (PERM_VIEW_CHANNEL | PERM_SEND_MESSAGES | PERM_READ_HISTORY | PERM_MANAGE_CHANNELS).toString(), deny: '0' },
+    ...boardRoleIds(env).map((id): ChannelOverwrite => ({ id, type: 0, allow: view, deny: '0' })),
+  ];
+}
+
+export const EVENT_CATEGORY_NAME = 'Events';
+
+// The category every event channel lives in. The bot creates it the first
+// time and remembers it; if someone deletes it in Discord, the next event
+// makes a new one. Null when Discord refused, and the channel then goes
+// to the top of the list instead.
+export async function ensureEventCategory(db: D1Database, env: DiscordEnv, botId: string, by: string, now: number): Promise<string | null> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return null;
+  const saved = (await getSettings(db)).event_category_id;
+  if (saved) {
+    const found = await fetchChannel(token, saved);
+    if (found.ok ? found.type === 4 : !found.gone) return saved;
+  }
+  const created = await createGuildCategory(token, DISCORD_GUILD_ID, EVENT_CATEGORY_NAME, privateOverwrites(env, botId), 'lahtiag.fi event channels');
+  if (!created.ok) return null;
+  await setSetting(db, 'event_category_id', created.value.id, by, now);
+  return created.value.id;
+}
+
 export function welcomeMessage(event: Pick<EventRow, 'title' | 'starts_at' | 'ends_at'>, roleId: string, url: string): string {
   return `👋 This channel is for everyone signed up to **${event.title.trim()}** (${formatHelsinkiRange(event.starts_at, event.ends_at)}). The site gives the <@&${roleId}> role to everyone on the roster and takes it away when someone leaves.\n${url}`;
 }
@@ -199,14 +239,13 @@ export type SetupResult =
   | { ok: false; reason: 'unconfigured' | 'missing' | 'exists' | 'forbidden' | 'error' };
 
 // Create the role and the channel, remember them, and give the role to
-// everyone already on the roster. The channel is hidden from @everyone and
-// open to the role, the board's roles and the bot itself. A category, when
-// chosen, is remembered as the default for the next event.
+// everyone already on the roster. The channel goes under the bot's Events
+// category, hidden from @everyone and open to the role, the board's roles
+// and the bot itself.
 export async function setUpEventDiscord(
   db: D1Database,
   env: DiscordEnv,
   eventId: number,
-  categoryId: string | null,
   origin: string,
   by: string,
   now: number,
@@ -224,12 +263,10 @@ export async function setUpEventDiscord(
   const role = await createGuildRole(token, DISCORD_GUILD_ID, roleName(event.title), reason);
   if (!role.ok) return { ok: false, reason: role.reason };
 
-  const view = PERM_VIEW_CHANNEL.toString();
+  const categoryId = await ensureEventCategory(db, env, botId, by, now);
   const overwrites: ChannelOverwrite[] = [
-    { id: DISCORD_GUILD_ID, type: 0, allow: '0', deny: view },
-    { id: role.value.id, type: 0, allow: view, deny: '0' },
-    { id: botId, type: 1, allow: (PERM_VIEW_CHANNEL | PERM_SEND_MESSAGES | PERM_READ_HISTORY | PERM_MANAGE_CHANNELS).toString(), deny: '0' },
-    ...boardRoleIds(env).map((id): ChannelOverwrite => ({ id, type: 0, allow: view, deny: '0' })),
+    ...privateOverwrites(env, botId),
+    { id: role.value.id, type: 0, allow: PERM_VIEW_CHANNEL.toString(), deny: '0' },
   ];
   const channel = await createGuildChannel(
     token,
@@ -251,17 +288,18 @@ export async function setUpEventDiscord(
     .prepare('UPDATE events SET discord_role_id = ?2, discord_channel_id = ?3 WHERE id = ?1')
     .bind(eventId, role.value.id, channel.value.id)
     .run();
-  if (categoryId) await setSetting(db, 'event_category_id', categoryId, by, now);
   await postChannelMessage(token, channel.value.id, welcomeMessage(event, role.value.id, url));
   await syncEventRole(db, env, eventId, now);
   return { ok: true, channelId: channel.value.id };
 }
 
-// Delete the role and the channel in Discord, best effort. True when both
-// are gone (or were already).
+// Delete the role and the channel in Discord, best effort, and the
+// scheduled event when asked (the site's delete). True when everything
+// asked for is gone (or was already).
 export async function removeEventDiscordObjects(
   env: { DISCORD_BOT_TOKEN?: string },
-  event: Pick<EventRow, 'id' | 'discord_role_id' | 'discord_channel_id'>,
+  event: Pick<EventRow, 'id' | 'discord_role_id' | 'discord_channel_id'> & { discord_event_id?: string | null },
+  scheduledToo = false,
 ): Promise<boolean> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return !event.discord_role_id && !event.discord_channel_id;
@@ -269,7 +307,88 @@ export async function removeEventDiscordObjects(
   let ok = true;
   if (event.discord_channel_id && !(await deleteChannel(token, event.discord_channel_id, reason))) ok = false;
   if (event.discord_role_id && !(await deleteGuildRole(token, DISCORD_GUILD_ID, event.discord_role_id, reason))) ok = false;
+  if (scheduledToo && event.discord_event_id && !(await deleteScheduledEvent(token, DISCORD_GUILD_ID, event.discord_event_id, reason))) ok = false;
   return ok;
+}
+
+// --- Discord's scheduled events ------------------------------------------------
+
+export const DEFAULT_EVENT_HOURS = 4; // when ours has no end time
+const DESCRIPTION_MAX = 1000;
+
+// What Discord shows for the event: the first paragraph of ours, who
+// organizes it, and the sign-up link; the place, or the link when there
+// is no place yet.
+export function scheduledEventFields(
+  event: Pick<EventRow, 'id' | 'title' | 'description' | 'starts_at' | 'ends_at' | 'location' | 'organizers'>,
+  origin: string,
+): ScheduledEventInput {
+  const url = `${origin}/events/${event.id}`;
+  const tail = `${event.organizers ? `Organized by ${event.organizers.trim()}\n\n` : ''}Sign up: ${url}`;
+  const room = DESCRIPTION_MAX - tail.length - 2;
+  let blurb = ((event.description ?? '').trim().split(/\n\s*\n/)[0] ?? '').trim();
+  if (blurb.length > room) blurb = `${blurb.slice(0, Math.max(0, room - 1)).trimEnd()}…`;
+  return {
+    name: roleName(event.title),
+    description: blurb ? `${blurb}\n\n${tail}` : tail,
+    startIso: new Date(event.starts_at * 1000).toISOString(),
+    endIso: new Date((event.ends_at ?? event.starts_at + DEFAULT_EVENT_HOURS * 3600) * 1000).toISOString(),
+    location: (event.location?.trim() || url).slice(0, 100),
+  };
+}
+
+// The cover as a data URI for the Discord event's picture.
+async function coverDataUri(db: D1Database, eventId: number): Promise<string | undefined> {
+  const cover = await getEventCover(db, eventId);
+  if (!cover || cover.bytes.byteLength === 0) return undefined;
+  const bytes = new Uint8Array(cover.bytes);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:${cover.content_type};base64,${btoa(binary)}`;
+}
+
+export type ScheduledSync = 'created' | 'updated' | 'removed' | 'skipped' | 'forbidden' | 'error' | 'unconfigured';
+
+// Keep Discord's scheduled event in step with ours: made when a published,
+// upcoming event has none, updated when it has one, removed when ours is
+// cancelled or back to a draft. Past or already-running events are left
+// alone. The cover goes along on creation; `withImage` sends it on an
+// update too (a new cover), other edits skip the upload.
+export async function syncScheduledEvent(
+  db: D1Database,
+  env: { DISCORD_BOT_TOKEN?: string },
+  eventId: number,
+  origin: string,
+  now: number,
+  withImage = false,
+): Promise<ScheduledSync> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return 'unconfigured';
+  const event = await getEvent(db, eventId);
+  if (!event) return 'error';
+  const reason = `lahtiag.fi event ${eventId}`;
+  const live = event.published_at !== null && event.cancelled_at === null;
+  if (!live) {
+    if (!event.discord_event_id) return 'skipped';
+    if (!(await deleteScheduledEvent(token, DISCORD_GUILD_ID, event.discord_event_id, reason))) return 'error';
+    await db.prepare('UPDATE events SET discord_event_id = NULL WHERE id = ?1').bind(eventId).run();
+    return 'removed';
+  }
+  if (event.starts_at <= now) return 'skipped';
+  const fields = scheduledEventFields(event, origin);
+  if (event.discord_event_id) {
+    const image = withImage ? await coverDataUri(db, eventId) : undefined;
+    const result = await updateScheduledEvent(token, DISCORD_GUILD_ID, event.discord_event_id, image ? { ...fields, image } : fields);
+    if (result.ok) return 'updated';
+    if (result.status !== 404) return result.reason;
+    // Deleted on Discord's side: make it again.
+  }
+  const image = await coverDataUri(db, eventId);
+  let created = await createScheduledEvent(token, DISCORD_GUILD_ID, image ? { ...fields, image } : fields, reason);
+  if (!created.ok && image && created.reason === 'error') created = await createScheduledEvent(token, DISCORD_GUILD_ID, fields, reason);
+  if (!created.ok) return created.reason;
+  await db.prepare('UPDATE events SET discord_event_id = ?2 WHERE id = ?1').bind(eventId, created.value.id).run();
+  return 'created';
 }
 
 export type TeardownResult = 'ok' | 'partial' | 'nothing';

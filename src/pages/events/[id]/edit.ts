@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { updateEvent, getEvent, RuleError } from '../../../lib/db';
-import { renameEventDiscord } from '../../../lib/event-discord';
+import { renameEventDiscord, syncScheduledEvent } from '../../../lib/event-discord';
 import { helsinkiToUnix } from '../../../lib/time';
 import { editWebhookMessage, eventAnnouncement } from '../../../lib/discord';
 
@@ -64,6 +64,8 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
     if (before && before.title !== event.title && (event.discord_role_id || event.discord_channel_id)) {
       await renameEventDiscord(env, event, url.origin);
     }
+    // ...and Discord's scheduled event follows the new details.
+    await syncScheduledEvent(env.DB, env, id, url.origin, Math.floor(Date.now() / 1000));
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
     throw error;

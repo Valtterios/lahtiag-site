@@ -23,8 +23,8 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     if (event.discord_message_id && env.DISCORD_WEBHOOK_URL) {
       await deleteWebhookMessage(env.DISCORD_WEBHOOK_URL, event.discord_message_id);
     }
-    // Its Discord role and channel, if it had them, go too.
-    await removeEventDiscordObjects(env, event);
+    // Its Discord role, channel and scheduled event, if it had them, go too.
+    await removeEventDiscordObjects(env, event, true);
   } catch (error) {
     if (error instanceof RuleError) return redirect(`/events/${id}?err=${error.code}`, 303);
     throw error;

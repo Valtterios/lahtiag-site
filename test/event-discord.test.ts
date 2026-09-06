@@ -13,6 +13,10 @@ import {
   tearDownEventDiscord,
   welcomeMessage,
   isDiscordSnowflake,
+  scheduledEventFields,
+  scheduledEventUrl,
+  syncScheduledEvent,
+  DEFAULT_EVENT_HOURS,
   type SetRole,
 } from '../src/lib/event-discord';
 import type { RoleResult } from '../src/lib/discord';
@@ -193,5 +197,43 @@ describe('syncEventRole', () => {
     expect(await countGrants(db(), id)).toBe(1);
     await deleteEvent(db(), id);
     expect(await countGrants(db(), id)).toBe(0);
+  });
+});
+
+describe("Discord's scheduled event", () => {
+  beforeEach(wipe);
+
+  it('takes the first paragraph, the organizers and the link, and falls back for the end and the place', () => {
+    const fields = scheduledEventFields(
+      { id: 5, title: ' LAN ', description: 'First paragraph.\n\nSecond one.', starts_at: NOW, ends_at: null, location: null, organizers: 'LahtiAG, Kapital' },
+      'https://lahtiag.fi',
+    );
+    expect(fields.name).toBe('LAN');
+    expect(fields.description).toBe('First paragraph.\n\nOrganized by LahtiAG, Kapital\n\nSign up: https://lahtiag.fi/events/5');
+    expect(fields.startIso).toBe(new Date(NOW * 1000).toISOString());
+    expect(fields.endIso).toBe(new Date((NOW + DEFAULT_EVENT_HOURS * 3600) * 1000).toISOString());
+    expect(fields.location).toBe('https://lahtiag.fi/events/5');
+
+    const placed = scheduledEventFields(
+      { id: 5, title: 'LAN', description: 'x'.repeat(2000), starts_at: NOW, ends_at: NOW + 60, location: ' Mukkulankatu 19 ', organizers: null },
+      'https://lahtiag.fi',
+    );
+    expect(placed.location).toBe('Mukkulankatu 19');
+    expect(placed.endIso).toBe(new Date((NOW + 60) * 1000).toISOString());
+    expect(placed.description.length).toBeLessThanOrEqual(1000);
+    expect(placed.description.endsWith('Sign up: https://lahtiag.fi/events/5')).toBe(true);
+    expect(scheduledEventUrl('E1')).toMatch(/^https:\/\/discord\.com\/events\/\d+\/E1$/);
+  });
+
+  it('touches Discord only for published, upcoming events', async () => {
+    const id = await seedEvent();
+    expect(await syncScheduledEvent(db(), {}, id, 'https://lahtiag.fi', NOW)).toBe('unconfigured');
+    // A draft without a Discord event: nothing to make or remove.
+    await db().prepare('UPDATE events SET published_at = NULL WHERE id = ?1').bind(id).run();
+    expect(await syncScheduledEvent(db(), cfg, id, 'https://lahtiag.fi', NOW)).toBe('skipped');
+    // Published but already started: left alone.
+    await db().prepare('UPDATE events SET published_at = ?2 WHERE id = ?1').bind(id, NOW).run();
+    expect(await syncScheduledEvent(db(), cfg, id, 'https://lahtiag.fi', NOW + 86400 * 2)).toBe('skipped');
+    expect(await syncScheduledEvent(db(), cfg, 999, 'https://lahtiag.fi', NOW)).toBe('error');
   });
 });

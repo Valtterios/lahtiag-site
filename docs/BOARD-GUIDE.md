@@ -76,10 +76,12 @@ the bottom right lets you view a page as a member or a visitor would.
 - **Team events.** Set a team size; people form teams, or the board makes
   teams and groups loose players under Manage participants. Generate the
   bracket from Board tools; results are recorded there too.
-- **Discord channel.** Board tools → Discord role and channel gives the
-  event its own role and a private channel on the server. The role follows
-  the roster on its own: sign up and you have it, leave and it's gone.
-  Remove deletes both again, messages included.
+- **On Discord.** Publishing also puts the event on Discord's event list
+  (cover, blurb, place, link) and, unless you untick it, gives the event
+  its own role and a private channel under the Events category. The role
+  follows the roster on its own: sign up and you have it, leave and it's
+  gone. Edits and cancellations carry over. Board tools → Discord shows
+  the state; Remove deletes the role and channel, messages included.
 - **Cancel** posts a cancellation on Discord and can be undone with
   Reinstate. Delete removes the event for good. Both ask first.
 

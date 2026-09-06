@@ -3,9 +3,12 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { publishEvent, setEventMessageId, RuleError } from '../../../lib/db';
 import { postWebhook, eventAnnouncement } from '../../../lib/discord';
+import { syncScheduledEvent, setUpEventDiscord } from '../../../lib/event-discord';
 
-// Publish a draft: it lists, takes signups and sells from now on, and the
-// announcement goes to Discord (its message id is kept for later edits).
+// Publish a draft: it lists, takes signups and sells from now on, the
+// announcement goes to Discord (its message id is kept for later edits),
+// and the bot puts it on Discord's event list and, unless the box was
+// unticked, makes the event's role and private channel.
 
 export const POST: APIRoute = async ({ request, params, redirect, url }) => {
   const id = Number(params.id);
@@ -30,6 +33,9 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
       );
       if (messageId) await setEventMessageId(env.DB, id, messageId);
     }
+    const now = Math.floor(Date.now() / 1000);
+    await syncScheduledEvent(env.DB, env, id, url.origin, now);
+    if (form.get('discord_channel') === 'on') await setUpEventDiscord(env.DB, env, id, url.origin, admin.session.discordId, now);
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
     throw error;

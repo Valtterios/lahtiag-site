@@ -9,7 +9,7 @@ revision: September 2026.
 - [What this is](#what-this-is)
 - [Who can do what](#who-can-do-what)
 - [Hosting a tournament, start to finish](#hosting-a-tournament-start-to-finish)
-- [A Discord role and channel per event](#a-discord-role-and-channel-per-event)
+- [Events on Discord: the event list, a role and a channel](#events-on-discord-the-event-list-a-role-and-a-channel)
 - [The member register](#the-member-register)
 - [The privacy policy](#the-privacy-policy)
 - [Selling tickets](#selling-tickets)
@@ -107,13 +107,28 @@ Winner clicks on the *website* re-verify your role against Discord each
 time; the Discord panel doesn't need to and is immune to rate limits — on
 tournament day, prefer the panel.
 
-## A Discord role and channel per event
+## Events on Discord: the event list, a role and a channel
 
-Any event can have its own private channel on the server: event page →
-Board tools → **Discord role and channel** → pick a category → **Create
-role and channel**. The bot makes a role named after the event and a text
-channel that only that role (and the board) can see, posts a welcome line
-in it, and gives the role to everyone already on the roster. From then on
+**The event list.** When an event is published (or created straight from
+`/tournament`), the bot puts it on Discord's own event list, the "Events"
+entry at the top of the channel list, with the cover picture, the first
+paragraph of the description, the place and the sign-up link. Members can
+mark themselves interested there and Discord reminds them. Edits, a new
+cover and a changed time carry over; cancelling removes it, reinstating
+makes it again; deleting the event deletes it. Events that already started
+are left alone. An event published before the bot did this has a
+**Create Discord event** button in Board tools → Discord.
+
+**A role and a channel.** Every event also gets its own private channel
+by default: the Publish card has "Also a Discord role and private channel
+for participants" ticked (untick it for an event that doesn't need one;
+Board tools → **Discord** → **Create role and channel** adds it later),
+and events created from `/tournament` get one straight away. The bot makes a
+role named after the event and a text channel that only that role (and the
+board) can see, under an **Events** category the bot creates the first
+time and keeps for all event channels (rename or move it freely; if it is
+deleted, the next event makes a new one). It posts a welcome line in the
+channel and gives the role to everyone already on the roster. From then on
 every signup, team join and paid ticket gets the role, and every
 departure, removal, refund or erasure loses it; the event page shows
 participants a link to the channel. Walk-ins added by name have no Discord
@@ -127,12 +142,14 @@ channel** deletes both from Discord, messages included, so archive first
 if you want to keep them. Deleting the event removes them too; cancelling
 leaves them. Editing the title renames both.
 
-If Discord refuses ("the bot's role needs Manage Roles and Manage
-Channels"): Server Settings → Roles → the bot's role → turn on **Manage
-Channels** (Manage Roles is already there from the register setup). New
-roles land at the bottom of the list, below the bot's, so the order takes
-care of itself. The category picked is remembered as the default for the
-next event.
+The bot needs, on its own role (Server Settings → Roles → the role named
+after the application): **View Channels**, **Manage Roles**, **Manage
+Channels**, **Manage Events** and **Send Messages**. Re-inviting it with
+those permissions ticked does the same in one go:
+`https://discord.com/oauth2/authorize?client_id=1544746714135793756&scope=bot&permissions=8858438672`.
+If Discord refuses ("the bot's role needs Manage Roles, Manage Channels
+and Manage Events"), one of those is missing. New roles land at the bottom
+of the list, below the bot's, so the order takes care of itself.
 
 ## The member register
 

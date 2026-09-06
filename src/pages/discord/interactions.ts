@@ -28,6 +28,7 @@ import {
   type RegisterRow,
 } from '../../lib/db';
 import { formatHelsinki, formatHelsinkiDate, helsinkiToUnix } from '../../lib/time';
+import { syncScheduledEvent, setUpEventDiscord } from '../../lib/event-discord';
 import { MEMBER_TYPE_LABELS } from '../../lib/register';
 import { DISCORD_GUILD_ID } from '../../lib/config';
 
@@ -532,6 +533,8 @@ async function handleCreateModal(env: WorkerEnv, interaction: Interaction, origi
       );
       if (messageId) await setEventMessageId(env.DB, id, messageId);
     }
+    await syncScheduledEvent(env.DB, env, id, origin, now);
+    await setUpEventDiscord(env.DB, env, id, origin, invoker.id, now);
     await reply(`Created event #${id}: **${title.trim()}**\n${origin}/events/${id}`);
   } catch (error) {
     await reply(error instanceof RuleError ? error.message : 'Something went wrong.');
@@ -674,6 +677,8 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
         );
         if (messageId) await setEventMessageId(env.DB, id, messageId);
       }
+      await syncScheduledEvent(env.DB, env, id, origin, now);
+      await setUpEventDiscord(env.DB, env, id, origin, invoker.id, now);
       await reply(`Created event #${id}: **${title.trim()}**, ${formatHelsinki(startsAt)}\n${origin}/events/${id}`);
     } else if (name === 'event cancel') {
       const id = Number(opts.get('id'));
@@ -684,6 +689,7 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
           `❌ Cancelled: **${event.title}** (was ${formatHelsinki(event.starts_at)})`,
         );
       }
+      await syncScheduledEvent(env.DB, env, id, origin, now);
       await reply(`Cancelled event #${id}: **${event.title}**.`);
     } else if (name === 'event close' || name === 'event reopen') {
       const id = Number(opts.get('id'));

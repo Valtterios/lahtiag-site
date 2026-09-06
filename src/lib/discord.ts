@@ -530,3 +530,73 @@ export async function postChannelMessage(
   const result = await botCall(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions });
   return result.ok;
 }
+
+export const PERM_MANAGE_EVENTS = 1n << 33n;
+
+// A category (type 4) for the event channels, with its own overwrites.
+export async function createGuildCategory(
+  botToken: string,
+  guildId: string,
+  name: string,
+  overwrites: ChannelOverwrite[],
+  reason: string,
+): Promise<BotResult<{ id: string }>> {
+  return botCall<{ id: string }>(botToken, 'POST', `/guilds/${guildId}/channels`, { name, type: 4, permission_overwrites: overwrites }, reason);
+}
+
+// Whether a channel still exists: its type, or "gone" for a 404 as
+// opposed to Discord not answering.
+export async function fetchChannel(botToken: string, channelId: string): Promise<{ ok: true; type: number } | { ok: false; gone: boolean }> {
+  const result = await botCall<{ type: number }>(botToken, 'GET', `/channels/${channelId}`);
+  if (result.ok) return { ok: true, type: result.value.type };
+  return { ok: false, gone: result.status === 404 };
+}
+
+// --- bot: scheduled events -------------------------------------------------------
+// Discord's own event listing ("Events" at the top of the channel list),
+// external type: a place and a time, RSVPs on Discord's side.
+
+export interface ScheduledEventInput {
+  name: string;
+  description: string;
+  startIso: string;
+  endIso: string;
+  location: string;
+  image?: string; // data URI
+}
+
+function scheduledEventBody(input: ScheduledEventInput): Record<string, unknown> {
+  return {
+    name: input.name,
+    description: input.description,
+    scheduled_start_time: input.startIso,
+    scheduled_end_time: input.endIso,
+    privacy_level: 2,
+    entity_type: 3,
+    entity_metadata: { location: input.location },
+    ...(input.image ? { image: input.image } : {}),
+  };
+}
+
+export async function createScheduledEvent(
+  botToken: string,
+  guildId: string,
+  input: ScheduledEventInput,
+  reason: string,
+): Promise<BotResult<{ id: string }>> {
+  return botCall<{ id: string }>(botToken, 'POST', `/guilds/${guildId}/scheduled-events`, scheduledEventBody(input), reason);
+}
+
+export async function updateScheduledEvent(
+  botToken: string,
+  guildId: string,
+  eventId: string,
+  input: ScheduledEventInput,
+): Promise<BotResult<unknown> & { status?: number }> {
+  return botCall(botToken, 'PATCH', `/guilds/${guildId}/scheduled-events/${eventId}`, scheduledEventBody(input));
+}
+
+export async function deleteScheduledEvent(botToken: string, guildId: string, eventId: string, reason: string): Promise<boolean> {
+  const result = await botCall(botToken, 'DELETE', `/guilds/${guildId}/scheduled-events/${eventId}`, undefined, reason);
+  return result.ok || result.status === 404;
+}

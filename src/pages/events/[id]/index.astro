@@ -18,12 +18,9 @@ import {
   listEventQuestions,
   getAnswers,
   listAllAnswers,
-  getSettings,
   type TicketTypeWithSales,
 } from '../../../lib/db';
-import { channelUrl, countGrants, participantIds } from '../../../lib/event-discord';
-import { listGuildCategories } from '../../../lib/discord';
-import { DISCORD_GUILD_ID } from '../../../lib/config';
+import { channelUrl, scheduledEventUrl, countGrants, participantIds, EVENT_CATEGORY_NAME } from '../../../lib/event-discord';
 import { questionOptions, answersComplete, QUESTION_KINDS } from '../../../lib/questions';
 import { purchaseOffer, pendingPurchaseFor, resumablePurchase } from '../../../lib/purchases';
 import { readBasket, basketCount } from '../../../lib/basket';
@@ -72,16 +69,10 @@ if (event && ticketed) {
 const myTicket = event && session ? await getTicketForHolder(env.DB, event.id, session.discordId) : null;
 const access = event && session ? await signupAccess(env.DB, event, session.discordId, true) : null;
 const sales = event && session?.isAdmin && types.length > 0 ? await salesSummary(env.DB, event.id) : null;
-// The event's own Discord role and channel (board tools): who holds the
-// role, and the server's categories for placing a new channel.
+// The event's own Discord role and channel (board tools): who holds the role.
 const botOn = Boolean(env.DISCORD_BOT_TOKEN);
 const discordParticipants = event ? participantIds(signups).length : 0;
 const discordGrants = event && session?.isAdmin && event.discord_role_id ? await countGrants(env.DB, event.id) : 0;
-const categories =
-  event && session?.isAdmin && botOn && !event.discord_role_id && event.cancelled_at === null
-    ? await listGuildCategories(env.DISCORD_BOT_TOKEN!, DISCORD_GUILD_ID)
-    : null;
-const lastCategory = categories && categories.length > 0 ? ((await getSettings(env.DB)).event_category_id ?? '') : '';
 const hasTicket = myTicket?.status === 'paid';
 const pendingPurchase = event && session ? await pendingPurchaseFor(env.DB, session.discordId, nowSeconds) : null;
 const resume = resumablePurchase(pendingPurchase, nowSeconds);
@@ -120,7 +111,7 @@ const signupsClosed = event?.signups_closed_at != null;
 const open = event ? event.cancelled_at === null && !signupsClosed : false;
 
 // Flashes from board actions open the (otherwise folded) board tools.
-const DISCORD_OPEN = new Set(['discord_created', 'discord_synced', 'discord_removed', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
+const DISCORD_OPEN = new Set(['discord_created', 'discord_synced', 'discord_removed', 'discord_event_created', 'discord_event_removed', 'discord_event_skipped', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
 const ADMIN_OPEN = new Set(['cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
 const okKey = Astro.url.searchParams.get('ok') ?? '';
 const errKey = Astro.url.searchParams.get('err') ?? '';
@@ -153,7 +144,8 @@ const FLASH: Record<string, string> = {
   ticket_holder: 'That person holds a paid ticket, so they are going. Refund it in Stripe to remove them.',
   too_few: 'A bracket needs at least two teams or players. Players without a team are grouped into teams when you generate.',
   discord_unconfigured: 'The Discord bot is not set up (no bot token). The technical handbook, "Discord roles", has the steps.',
-  discord_forbidden: "Discord refused. The bot's role needs Manage Roles and Manage Channels, and must sit above the roles it creates.",
+  discord_forbidden: "Discord refused. The bot's role needs Manage Roles, Manage Channels and Manage Events, and must sit above the roles it creates.",
+  discord_event_skipped: 'Discord events are made for published, upcoming events only.',
   discord_error: "Discord didn't answer. Try again in a moment.",
   discord_exists: 'This event already has a role and channel.',
   discord_missing: 'No such event.',
@@ -184,6 +176,8 @@ const OK: Record<string, string> = {
   cover_removed: 'Cover image removed.',
   discord_created: 'Role and channel created. Everyone on the roster has the role; new signups get it as they come.',
   discord_removed: 'The role and the channel are deleted from Discord.',
+  discord_event_created: "The event is on Discord's event list.",
+  discord_event_removed: "The Discord event was removed, as this event isn't published or is cancelled.",
 };
 // The sync's tally rides along in the query.
 function syncedMessage(p: URLSearchParams): string {
@@ -217,6 +211,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
           {event.organizers && <p class="event-by">by {event.organizers}</p>}
           <p class="event-actions">
             <a class="btn btn-ghost btn-sm" href={`/events/${event.id}/event.ics`}>Add to calendar</a>
+            {event.discord_event_id && <a class="btn btn-ghost btn-sm" href={scheduledEventUrl(event.discord_event_id)} rel="noopener">On Discord</a>}
             <button class="btn btn-ghost btn-sm" type="button" id="share-event" data-title={event.title} hidden>Share</button>
           </p>
           <ul class="event-facts">
@@ -274,10 +269,13 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
         <div class="queue-card">
           <div class="queue-body">
             <p class="queue-name">Draft</p>
-            <p class="queue-meta">Only the board sees this page. Publishing lists it, opens signups and sales, and posts it on Discord.</p>
+            <p class="queue-meta">Only the board sees this page. Publishing lists it, opens signups and sales, posts it on Discord and puts it on Discord's event list.</p>
           </div>
-          <form method="post" action={`/events/${event.id}/publish`}>
+          <form method="post" action={`/events/${event.id}/publish`} class="publish-form">
             <input type="hidden" name="csrf" value={csrf} />
+            {botOn && !event.discord_role_id && (
+              <label class="check"><input type="checkbox" name="discord_channel" checked /> <span>Also a Discord role and private channel for participants</span></label>
+            )}
             <button class="btn btn-cta" type="submit" data-confirm="Publish this event? It goes on Discord right away.">Publish</button>
           </form>
         </div>
@@ -683,10 +681,32 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
           )}
           {event.cancelled_at === null && (
           <details class="admin-edit" id="discord" open={DISCORD_OPEN.has(okKey) || DISCORD_OPEN.has(errKey)}>
-            <summary>Discord role and channel</summary>
+            <summary>Discord</summary>
             {!botOn ? (
               <p class="event-meta">Needs the Discord bot token; the technical handbook, "Discord roles", has the steps.</p>
-            ) : event.discord_role_id || event.discord_channel_id ? (
+            ) : (
+              <>
+              <h3>Discord event</h3>
+              <p class="event-meta">
+                {event.discord_event_id ? (
+                  <>On Discord's event list: <a href={scheduledEventUrl(event.discord_event_id)} rel="noopener">open it</a>. Edits, a new cover and cancelling carry over.</>
+                ) : draft ? (
+                  <>Made on Discord's event list when this event is published.</>
+                ) : (
+                  <>Not on Discord's event list yet (published before the bot did that, or Discord refused).</>
+                )}
+              </p>
+              {!event.discord_event_id && !draft && (
+                <form method="post" action={`/events/${event.id}/discord`} class="signup-bar">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="action" value="event" />
+                  <button class="btn btn-ghost" type="submit">Create Discord event</button>
+                </form>
+              )}
+              <h3>Role and channel</h3>
+              </>
+            )}
+            {!botOn ? null : event.discord_role_id || event.discord_channel_id ? (
               <>
                 <p class="event-meta">
                   This event has its own role and a private channel{event.discord_channel_id && <>: <a href={channelUrl(event.discord_channel_id)} rel="noopener">open the channel</a></>}.
@@ -711,18 +731,11 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 <input type="hidden" name="csrf" value={csrf} />
                 <input type="hidden" name="action" value="create" />
                 <p class="event-meta">
-                  A role named after the event and a private text channel only that role and the board can see. Everyone on the
-                  roster gets the role now; from then on each signup, team join and paid ticket gets it and each departure loses
-                  it. Walk-ins added by name have no Discord account and are skipped.
+                  A role named after the event and a private text channel only that role and the board can see, under the
+                  bot's <strong>{EVENT_CATEGORY_NAME}</strong> category (made the first time). Everyone on the roster gets the
+                  role now; from then on each signup, team join and paid ticket gets it and each departure loses it. Walk-ins
+                  added by name have no Discord account and are skipped.
                 </p>
-                <label>
-                  Category for the channel
-                  <select name="category_id">
-                    <option value="">No category (top of the channel list)</option>
-                    {(categories ?? []).map((c) => <option value={c.id} selected={c.id === lastCategory}>{c.name}</option>)}
-                  </select>
-                </label>
-                {categories === null && <p class="event-meta">Discord didn't list the server's categories: the bot may not be in the server, or the token is wrong.</p>}
                 <button class="btn btn-primary" type="submit">Create role and channel</button>
               </form>
             )}

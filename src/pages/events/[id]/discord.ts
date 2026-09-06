@@ -1,10 +1,11 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { setUpEventDiscord, syncEventRole, tearDownEventDiscord } from '../../../lib/event-discord';
+import { setUpEventDiscord, syncEventRole, tearDownEventDiscord, syncScheduledEvent } from '../../../lib/event-discord';
 
 // Board: give the event its own Discord role and private channel, sync
-// the role against the roster, or delete both again.
+// the role against the roster, delete both again, or (re)make the
+// Discord scheduled event for one published before the bot did that.
 
 export const POST: APIRoute = async ({ request, params, redirect, url }) => {
   const id = Number(params.id);
@@ -16,10 +17,14 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
   const now = Math.floor(Date.now() / 1000);
   const action = String(form.get('action') ?? '');
 
+  if (action === 'event') {
+    const result = await syncScheduledEvent(env.DB, env, id, url.origin, now, true);
+    if (result === 'created' || result === 'updated') return redirect(`${back}?ok=discord_event_created#discord`, 303);
+    if (result === 'removed') return redirect(`${back}?ok=discord_event_removed#discord`, 303);
+    return redirect(`${back}?err=discord_${result === 'skipped' ? 'event_skipped' : result}`, 303);
+  }
   if (action === 'create') {
-    const categoryRaw = String(form.get('category_id') ?? '').trim();
-    const category = /^\d{5,25}$/.test(categoryRaw) ? categoryRaw : null;
-    const result = await setUpEventDiscord(env.DB, env, id, category, url.origin, admin.session.discordId, now);
+    const result = await setUpEventDiscord(env.DB, env, id, url.origin, admin.session.discordId, now);
     if (!result.ok) return redirect(`${back}?err=discord_${result.reason}`, 303);
     return redirect(`${back}?ok=discord_created#discord`, 303);
   }

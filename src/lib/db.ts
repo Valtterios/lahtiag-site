@@ -70,6 +70,7 @@ export interface EventRow {
   discord_message_id: string | null;
   discord_role_id: string | null; // the event's own role, given to everyone on the roster (src/lib/event-discord.ts)
   discord_channel_id: string | null; // its private channel
+  discord_event_id: string | null; // Discord's scheduled event, made on publish
 }
 
 export interface EventWithCounts extends EventRow {

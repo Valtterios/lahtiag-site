@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { getEventCover, setEventCover, deleteEventCover, RuleError } from '../../../lib/db';
+import { syncScheduledEvent } from '../../../lib/event-discord';
 
 // An event's cover image. GET serves it (cached a day; the page links it
 // with the upload time as a version). POST, for the board, replaces or
@@ -24,7 +25,7 @@ export const GET: APIRoute = async ({ params, request }) => {
   });
 };
 
-export const POST: APIRoute = async ({ request, params, redirect }) => {
+export const POST: APIRoute = async ({ request, params, redirect, url }) => {
   const id = Number(params.id);
   const back = `/events/${id}`;
   const admin = await requireAdmin(request, env);
@@ -38,7 +39,10 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     }
     const file = form.get('cover');
     if (!(file instanceof File) || file.size === 0) return redirect(`${back}?err=cover_missing`, 303);
-    await setEventCover(env.DB, id, file.type, await file.arrayBuffer(), Math.floor(Date.now() / 1000));
+    const now = Math.floor(Date.now() / 1000);
+    await setEventCover(env.DB, id, file.type, await file.arrayBuffer(), now);
+    // The Discord event shows the new picture too.
+    await syncScheduledEvent(env.DB, env, id, url.origin, now, true);
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code === 'bad_input' ? 'cover_bad' : error.code}`, 303);
     throw error;
