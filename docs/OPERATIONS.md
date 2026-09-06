@@ -19,6 +19,7 @@ revision: September 2026.
   - [Link the payment to a person](#link-the-payment-to-a-person)
   - [Buyers with their own phone](#buyers-with-their-own-phone)
   - [Shop items on the spot](#shop-items-on-the-spot)
+- [The Minecraft whitelist](#the-minecraft-whitelist)
 - [Editing this handbook](#editing-this-handbook)
 - [Editing the site's pages](#editing-the-sites-pages)
 - [The moving parts](#the-moving-parts)
@@ -148,6 +149,13 @@ and sales until then, so an announced event can collect interest first.
 out on its own within 15 minutes of that moment, to the site and to
 Discord, for a general meeting notice written ahead. Publish sends it
 right away instead.
+
+**A picture on a news post.** The new-post form takes an optional cover
+(JPEG, PNG or WebP up to 1.5 MB), and every post on the news page has
+Add cover / Replace cover / Remove cover for the board. The picture shows
+under the title on the site and goes to Discord attached to the post; a
+cover changed after publishing replaces the picture on the Discord
+message too.
 
 **Stats and the profile card.** The membership page shows each member's
 events attended, tournaments played and won, with a card picture drawn
@@ -645,6 +653,51 @@ so a stand without an event works too. Pick the item and the quantity,
 press Attach, and it is sold and marked handed over in one go, with the
 amount that was tapped. Stock goes down; the buyer gets no link, they
 have the item.
+
+## The Minecraft whitelist
+
+The site keeps the Minecraft server's whitelist, and the server pulls it.
+A current member puts their own Java edition name on the list and can
+bring two friends along on their membership, on the membership page
+(lahtiag.fi/membership, "Minecraft server") or in Discord with
+`/whitelist me <name>`, `/whitelist friend <name>`, `/whitelist remove
+<name>` and `/whitelist list`. The board adds any name with `/whitelist
+add <name>` and takes any name off with `/whitelist drop <name>`. A
+member whose status in the register turns to former loses their names on
+the next pull, board names stay. A name can be on the list once, in any
+letter case.
+
+The server side is `scripts/minecraft/whitelist-sync.py`, run every five
+minutes by a systemd timer on the machine that runs AMP. It fetches
+`https://lahtiag.fi/api/minecraft/whitelist` with the
+`MINECRAFT_WHITELIST_TOKEN` secret as a bearer token, compares the answer
+with the instance's own `whitelist.json`, and sends `whitelist add` and
+`whitelist remove` console commands through the instance's AMP API. A
+failed fetch changes nothing, names in `KEEP` are never removed, and
+`REMOVE=no` makes it add-only. A name that never appears on the server is
+usually not a real Mojang account; the script prints those on each run.
+
+Setting it up, once:
+
+1. Make the token and hand it to the site, without it ever passing
+   through a chat: on the server `openssl rand -hex 32 > /etc/lahtiag-whitelist.token && chmod 600 /etc/lahtiag-whitelist.token`,
+   then from a laptop `ssh server cat /etc/lahtiag-whitelist.token | npx wrangler secret put MINECRAFT_WHITELIST_TOKEN`
+   in the site's checkout.
+2. In AMP, create a user (say `whitelist`) with console access to the
+   Minecraft instance, nothing more.
+3. On the server: copy `scripts/minecraft/whitelist-sync.py` to
+   `/usr/local/bin/lahtiag-whitelist-sync.py` (executable), the
+   `.service` and `.timer` to `/etc/systemd/system/`, and
+   `lahtiag-whitelist.conf.example` to `/etc/lahtiag-whitelist.conf`
+   (mode 600) with the token, the AMP user and password, the instance's
+   AMP address and its `whitelist.json` path filled in.
+4. `systemctl daemon-reload && systemctl enable --now lahtiag-whitelist.timer`,
+   then `journalctl -u lahtiag-whitelist` shows each run ("in sync: 12
+   names", or what it sent).
+
+Without the secret the API answers 404 and nothing on the site changes;
+the membership page and the command still take names, ready for when the
+server starts pulling.
 
 ## Editing this handbook
 

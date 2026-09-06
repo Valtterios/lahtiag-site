@@ -106,6 +106,43 @@ const commands = [
     name: 'join',
     description: 'Become a LahtiAG member, or link your Discord to your membership',
   },
+  {
+    name: 'whitelist',
+    description: 'The LahtiAG Minecraft server whitelist',
+    options: [
+      {
+        type: SUB_COMMAND,
+        name: 'me',
+        description: 'Put your own Minecraft name on the whitelist (members)',
+        options: [{ type: STRING, name: 'name', description: 'Your Java edition name', required: true }],
+      },
+      {
+        type: SUB_COMMAND,
+        name: 'friend',
+        description: 'Bring a friend along on your membership (two at most)',
+        options: [{ type: STRING, name: 'name', description: "Your friend's Java edition name", required: true }],
+      },
+      {
+        type: SUB_COMMAND,
+        name: 'remove',
+        description: 'Take one of your names off the list',
+        options: [{ type: STRING, name: 'name', description: 'The name', required: true }],
+      },
+      { type: SUB_COMMAND, name: 'list', description: 'Your names on the whitelist' },
+      {
+        type: SUB_COMMAND,
+        name: 'add',
+        description: 'Board: whitelist any name, membership or not',
+        options: [{ type: STRING, name: 'name', description: 'The Java edition name', required: true }],
+      },
+      {
+        type: SUB_COMMAND,
+        name: 'drop',
+        description: 'Board: take any name off the list',
+        options: [{ type: STRING, name: 'name', description: 'The name', required: true }],
+      },
+    ],
+  },
 ];
 
 const tokenResponse = await fetch('https://discord.com/api/v10/oauth2/token', {

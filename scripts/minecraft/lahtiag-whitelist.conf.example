@@ -1,0 +1,9 @@
+# /etc/lahtiag-whitelist.conf — root-only (chmod 600). See docs/OPERATIONS.md.
+URL=https://lahtiag.fi/api/minecraft/whitelist
+TOKEN=the MINECRAFT_WHITELIST_TOKEN secret
+AMP_URL=http://127.0.0.1:8091
+AMP_USER=whitelist
+AMP_PASS=the AMP user's password
+WHITELIST_FILE=/mnt/storage/amp-instances/LahtiAG02/Minecraft/whitelist.json
+KEEP=Axinikk
+REMOVE=yes

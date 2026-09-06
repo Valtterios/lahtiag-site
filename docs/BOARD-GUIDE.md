@@ -14,6 +14,7 @@ has the details, the settings and the fixes.
 - [At the door](#at-the-door)
 - [Money](#money)
 - [News](#news)
+- [Minecraft server](#minecraft-server)
 - [Where things are](#where-things-are)
 
 ## Signing in
@@ -180,6 +181,9 @@ puts it on the page and on Discord.
 - **Scheduled news.** Save a news post with a publish date and time and
   it goes out by itself, to the site and Discord. Handy for general
   meeting notices written ahead.
+- **A picture.** The post form takes a cover picture, and each post has
+  Add cover / Remove cover. It shows under the title and goes to Discord
+  with the post.
 - **The bot in Discord.** Announcements carry I'm going, Maybe and
   Interested buttons; a click signs up under the same rules as the site.
   People get a private message when put in a team or let in from a
@@ -188,6 +192,17 @@ puts it on the page and on Discord.
   and `/pick` are there for fun.
 - **Your stats.** The membership page shows your events, tournaments and
   wins, with a card; `/profile` in Discord posts the card for everyone.
+
+## Minecraft server
+
+- **Members whitelist themselves.** On the membership page ("Minecraft
+  server") or with `/whitelist me <name>` in Discord. Each member can
+  bring two friends with `/whitelist friend <name>`, and take names off
+  with `/whitelist remove <name>`. The server picks changes up within
+  about five minutes.
+- **Board.** `/whitelist add <name>` whitelists anyone, member or not;
+  `/whitelist drop <name>` removes any name. A former member's names go
+  off the server on their own.
   A tick there puts you on the public leaderboard on the history page.
 
 ## Where things are

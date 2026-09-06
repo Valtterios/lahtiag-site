@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
 import { publishAnnouncement, setAnnouncementMessageId } from '../../lib/db';
-import { postWebhook } from '../../lib/discord';
+import { postNews } from '../../lib/news';
 
 // Publish a draft post: it appears on the news page and goes to Discord.
 
@@ -16,7 +16,7 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   const post = await publishAnnouncement(env.DB, id, Math.floor(Date.now() / 1000));
   if (!post) return redirect('/announcements?err=missing', 303);
   if (env.DISCORD_WEBHOOK_URL && !post.discord_message_id) {
-    const messageId = await postWebhook(env.DISCORD_WEBHOOK_URL, `📣 **${post.title}**\n${post.body_md}`);
+    const messageId = await postNews(env.DB, env.DISCORD_WEBHOOK_URL, post);
     if (messageId) await setAnnouncementMessageId(env.DB, id, messageId);
   }
   return redirect('/announcements?ok=published', 303);

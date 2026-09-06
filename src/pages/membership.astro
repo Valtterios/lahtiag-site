@@ -18,6 +18,7 @@ import {
 import { postWebhook, activeNotice, NO_MENTIONS } from '../lib/discord';
 import { applyRoles, loadRoleConfig } from '../lib/roles';
 import { formatHelsinkiDate, formatHelsinkiRange } from '../lib/time';
+import { listMinecraftNames, FRIENDS_PER_MEMBER } from '../lib/minecraft';
 
 // A member's own page: their status, the actives request, and every
 // detail they gave on the application, editable by them. Needs a Discord
@@ -31,6 +32,9 @@ const entry = session ? await getRegisterByDiscord(env.DB, session.discordId) : 
 const myEvents = session ? await listMyEvents(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : [];
 const stats = session ? await memberStats(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : null;
 const onLeaderboard = session ? await isLeaderboardOptIn(env.DB, session.discordId) : false;
+const mcNames = session ? await listMinecraftNames(env.DB, session.discordId) : [];
+const mcOwn = mcNames.find((n) => n.kind === 'own') ?? null;
+const mcFriends = mcNames.filter((n) => n.kind === 'friend');
 const RELATION: Record<string, string> = { ticket: 'Ticket', going: 'Going', maybe: 'Maybe', waitlist: 'On the waitlist', interested: 'Interested' };
 const pendingLink = session && !entry ? await getPendingLinkByDiscord(env.DB, session.discordId) : null;
 
@@ -102,6 +106,14 @@ const NOTES: Record<string, string> = {
   details: 'Your details are updated.',
   leaderboard: 'Leaderboard choice saved.',
   telegram: 'That Telegram handle is too long.',
+  mc_own: 'Your Minecraft name is on the list. The server picks it up within a few minutes.',
+  mc_friend: 'Your friend is on the list. The server picks it up within a few minutes.',
+  mc_remove: 'Taken off the list. The server drops the name within a few minutes.',
+  mc_bad_name: 'A Minecraft name is 3 to 16 letters, digits or underscores.',
+  mc_name_taken: 'That name is already on the list.',
+  mc_not_member: 'The whitelist needs a current membership.',
+  mc_friend_limit: `${FRIENDS_PER_MEMBER} friends per member. Take one off first.`,
+  mc_bad: "That didn't work. Try again.",
 };
 const note = NOTES[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
 const bad = (f: FieldError) => (errors.includes(f) ? 'field-error' : undefined);
@@ -306,6 +318,53 @@ const MESSAGES: Record<FieldError, string> = {
         <label class="check"><input type="checkbox" name="leaderboard" checked={onLeaderboard} /> <span>Show me on the public leaderboard on the history page (your Discord name, events and wins)</span></label>
         <button class="btn btn-ghost btn-sm" type="submit">Save</button>
       </form>
+    </section>
+  )}
+  {session && entry && (
+    <section class="list" id="minecraft">
+      <h2 class="section-label">Minecraft server</h2>
+      {entry.status === 'member' ? (
+        <>
+          <p class="queue-meta">
+            Your Java edition name goes on the server's whitelist within a few minutes, and up to {FRIENDS_PER_MEMBER} friends can come along on your membership.
+            In Discord, <code>/whitelist</code> does the same.
+          </p>
+          {mcNames.length > 0 && (
+            <ul class="mc-names">
+              {mcNames.map((n) => (
+                <li>
+                  <span class="mc-name">{n.name}</span>
+                  <span class="event-meta">{n.kind === 'own' ? 'you' : n.kind === 'friend' ? 'your friend' : 'added by the board'}</span>
+                  {n.kind !== 'board' && (
+                    <form method="post" action="/membership/minecraft" class="inline-form">
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="action" value="remove" />
+                      <input type="hidden" name="name" value={n.name} />
+                      <button class="btn btn-ghost btn-sm" type="submit">Remove</button>
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          <form method="post" action="/membership/minecraft" class="app-form-row">
+            <input type="hidden" name="csrf" value={csrf} />
+            <input type="hidden" name="action" value="own" />
+            <label>Your Minecraft name <input name="name" required maxlength="16" pattern="[A-Za-z0-9_]{3,16}" value={mcOwn?.name ?? ''} placeholder="Steve" /></label>
+            <button class="btn btn-primary btn-sm" type="submit">{mcOwn ? 'Change' : 'Whitelist me'}</button>
+          </form>
+          {mcFriends.length < FRIENDS_PER_MEMBER && (
+            <form method="post" action="/membership/minecraft" class="app-form-row">
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="action" value="friend" />
+              <label>Bring a friend <input name="name" required maxlength="16" pattern="[A-Za-z0-9_]{3,16}" placeholder="Their Minecraft name" /></label>
+              <button class="btn btn-ghost btn-sm" type="submit">Add friend</button>
+            </form>
+          )}
+        </>
+      ) : (
+        <p class="queue-meta">The Minecraft whitelist opens once your membership is approved.</p>
+      )}
     </section>
   )}
 

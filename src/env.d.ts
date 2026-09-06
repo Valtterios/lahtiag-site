@@ -34,6 +34,8 @@ type WorkerEnv = {
   // Ticket payments (src/lib/stripe.ts). Off until both exist.
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  // The Minecraft server's bearer token for /api/minecraft/whitelist (src/lib/minecraft.ts).
+  MINECRAFT_WHITELIST_TOKEN?: string;
 };
 
 // Astro v6+ with @astrojs/cloudflare 14: request env is imported from

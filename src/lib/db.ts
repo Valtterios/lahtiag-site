@@ -17,6 +17,10 @@ export class RuleError extends Error {
       | 'full'
       | 'started'
       | 'bad_input'
+      | 'bad_name' // a Minecraft name: 3 to 16 letters, digits or underscores
+      | 'name_taken'
+      | 'not_member'
+      | 'friend_limit'
       | 'team_full'
       | 'dup_name'
       | 'not_team_event'
@@ -125,6 +129,7 @@ export interface AnnouncementRow {
   author_name: string | null;
   draft: number; // 1 until the board publishes it (and it goes to Discord)
   publish_at: number | null; // a draft with a time: the 15-minute job publishes it then
+  cover_at?: number | null; // the cover's upload time (the image URL's version), from listAnnouncements
 }
 
 // The members table is a display cache, not an account table: written on
@@ -1242,8 +1247,9 @@ export async function listResults(db: D1Database, limit = 20): Promise<ResultRow
 export async function listAnnouncements(db: D1Database, limit = 20, includeDrafts = false): Promise<AnnouncementRow[]> {
   const { results } = await db
     .prepare(
-      `SELECT a.*, m.username AS author_name
+      `SELECT a.*, m.username AS author_name, c.updated_at AS cover_at
        FROM announcements a LEFT JOIN members m ON m.discord_id = a.author_id
+       LEFT JOIN announcement_covers c ON c.announcement_id = a.id
        ${includeDrafts ? '' : 'WHERE a.draft = 0'}
        ORDER BY a.draft DESC, a.published_at DESC LIMIT ?1`,
     )
@@ -1265,8 +1271,15 @@ export async function deleteAnnouncement(
     .bind(id)
     .first<AnnouncementRow>();
   if (!row) return null;
-  await db.prepare('DELETE FROM announcements WHERE id = ?1').bind(id).run();
+  await db.batch([
+    db.prepare('DELETE FROM announcement_covers WHERE announcement_id = ?1').bind(id),
+    db.prepare('DELETE FROM announcements WHERE id = ?1').bind(id),
+  ]);
   return row;
+}
+
+export async function getAnnouncement(db: D1Database, id: number): Promise<AnnouncementRow | null> {
+  return db.prepare('SELECT a.*, NULL AS author_name FROM announcements a WHERE id = ?1').bind(id).first<AnnouncementRow>();
 }
 
 export async function createAnnouncement(
@@ -3123,6 +3136,39 @@ export async function setEventCover(db: D1Database, eventId: number, contentType
 
 export async function deleteEventCover(db: D1Database, eventId: number): Promise<boolean> {
   const result = await db.prepare('DELETE FROM event_covers WHERE event_id = ?1').bind(eventId).run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+// --- news covers --------------------------------------------------------------------
+// A picture on a news post: on the news page and attached to the Discord
+// post. Same file rules as the event covers.
+
+export async function getAnnouncementCover(db: D1Database, id: number): Promise<{ content_type: string; bytes: ArrayBuffer; updated_at: number } | null> {
+  const row = await db
+    .prepare('SELECT content_type, bytes, updated_at FROM announcement_covers WHERE announcement_id = ?1')
+    .bind(id)
+    .first<{ content_type: string; bytes: unknown; updated_at: number }>();
+  return row ? { content_type: row.content_type, bytes: blobBytes(row.bytes), updated_at: row.updated_at } : null;
+}
+
+export async function setAnnouncementCover(db: D1Database, id: number, contentType: string, bytes: ArrayBuffer, now: number): Promise<void> {
+  if (!(COVER_TYPES as readonly string[]).includes(contentType)) throw new RuleError('bad_input', 'JPEG, PNG or WebP only.');
+  if (bytes.byteLength === 0 || bytes.byteLength > COVER_MAX_BYTES) throw new RuleError('bad_input', 'The image is empty or over 1.5 MB.');
+  const size = imageSize(bytes);
+  if (!size || size.width < 1 || size.height < 1) throw new RuleError('bad_input', 'That file is not a readable image.');
+  if (!(await getAnnouncement(db, id))) throw new RuleError('missing', `No post with id ${id}.`);
+  await db
+    .prepare(
+      `INSERT INTO announcement_covers (announcement_id, content_type, bytes, size, updated_at, width, height) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+       ON CONFLICT (announcement_id) DO UPDATE SET content_type = excluded.content_type, bytes = excluded.bytes, size = excluded.size,
+         updated_at = excluded.updated_at, width = excluded.width, height = excluded.height`,
+    )
+    .bind(id, contentType, bytes, bytes.byteLength, now, size.width, size.height)
+    .run();
+}
+
+export async function deleteAnnouncementCover(db: D1Database, id: number): Promise<boolean> {
+  const result = await db.prepare('DELETE FROM announcement_covers WHERE announcement_id = ?1').bind(id).run();
   return (result.meta.changes ?? 0) > 0;
 }
 

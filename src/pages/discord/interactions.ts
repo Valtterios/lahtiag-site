@@ -46,6 +46,7 @@ import { syncEventRolesInBackground } from '../../lib/event-discord';
 import { announcePromotions } from '../../lib/event-channel';
 import { MEMBER_TYPE_LABELS } from '../../lib/register';
 import { DISCORD_GUILD_ID } from '../../lib/config';
+import { setOwnMinecraftName, addMinecraftFriend, removeMinecraftName, listMinecraftNames, addBoardMinecraftName, dropMinecraftName, FRIENDS_PER_MEMBER } from '../../lib/minecraft';
 
 // The Discord bot: an HTTP Interactions endpoint inside the same Worker
 // (spec, Discord bot). No gateway, no second host, same database.
@@ -173,6 +174,13 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     return json({ type: 5 });
   }
 
+  // /whitelist: the Minecraft server's list. Private answers; the board
+  // subcommands check the role themselves.
+  if (interaction.type === 2 && interaction.data?.name === 'whitelist') {
+    locals.cfContext.waitUntil(handleWhitelist(env, interaction, url.origin, isAdmin));
+    return json({ type: 5, data: { flags: 64 } });
+  }
+
   // /profile: anyone's stats card, for everyone to see. Deferred without
   // the ephemeral flag, then the picture is attached.
   if (interaction.type === 2 && interaction.data?.name === 'profile') {
@@ -242,6 +250,70 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   locals.cfContext.waitUntil(handleCommand(env, interaction, url.origin));
   return json({ type: 5, data: { flags: 64 } }); // deferred, ephemeral
 };
+
+// --- the Minecraft whitelist ---------------------------------------------------------
+
+const WHITELIST_ERRORS: Record<string, string> = {
+  bad_name: 'A Minecraft name is 3 to 16 letters, digits or underscores.',
+  name_taken: 'That name is already on the list.',
+  not_member: 'The whitelist needs a current membership. `/join` gets you one, or links your account.',
+  friend_limit: `${FRIENDS_PER_MEMBER} friends per member. Take one off first with \`/whitelist remove\`.`,
+};
+
+async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin: string, isAdmin: boolean): Promise<void> {
+  const reply = (content: string) => editInteractionReply(interaction.application_id, interaction.token, content);
+  const sub = interaction.data?.options?.[0];
+  const userId = interaction.member?.user?.id;
+  if (!sub || !userId) {
+    await reply('Something is missing from that command.');
+    return;
+  }
+  const opts = optionMap(sub.options);
+  const raw = String(opts.get('name') ?? '');
+  const shown = raw.replace(/[^A-Za-z0-9_]/g, '').slice(0, 16) || 'that';
+  const now = Math.floor(Date.now() / 1000);
+  const soon = 'The server picks it up within a few minutes.';
+  const page = `${origin}/membership#minecraft`;
+  try {
+    if (sub.name === 'me') {
+      const name = await setOwnMinecraftName(env.DB, userId, raw, now);
+      await reply(`✅ **${name}** is on the whitelist as you. ${soon}`);
+    } else if (sub.name === 'friend') {
+      const name = await addMinecraftFriend(env.DB, userId, raw, now);
+      await reply(`✅ **${name}** is on the whitelist as your friend. ${soon}`);
+    } else if (sub.name === 'remove') {
+      const gone = await removeMinecraftName(env.DB, userId, raw);
+      await reply(gone ? `Took **${shown}** off the list. The server drops it within a few minutes.` : `**${shown}** is not one of your names.`);
+    } else if (sub.name === 'list') {
+      const names = await listMinecraftNames(env.DB, userId);
+      await reply(
+        names.length > 0
+          ? `${names.map((n) => `• **${n.name}** (${n.kind === 'own' ? 'you' : n.kind === 'friend' ? 'your friend' : 'board'})`).join('\n')}\n${page}`
+          : `No names yet. \`/whitelist me <name>\` puts yours on the list, members only. ${page}`,
+      );
+    } else if (sub.name === 'add' || sub.name === 'drop') {
+      if (!isAdmin) {
+        await reply('This needs the admin role.');
+        return;
+      }
+      if (sub.name === 'add') {
+        const name = await addBoardMinecraftName(env.DB, userId, raw, now);
+        await reply(`✅ **${name}** is on the whitelist, added by the board. ${soon}`);
+      } else {
+        const gone = await dropMinecraftName(env.DB, raw);
+        await reply(gone ? `Dropped **${gone.name}** (${gone.kind === 'own' ? 'a member' : gone.kind === 'friend' ? "a member's friend" : 'board'}). The server removes it within a few minutes.` : `**${shown}** is not on the list.`);
+      }
+    } else {
+      await reply('Unknown subcommand.');
+    }
+  } catch (error) {
+    if (error instanceof RuleError) {
+      await reply(WHITELIST_ERRORS[error.code] ?? error.message);
+      return;
+    }
+    throw error;
+  }
+}
 
 // --- fun and info commands ----------------------------------------------------------
 

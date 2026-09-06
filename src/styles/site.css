@@ -540,6 +540,44 @@ a:hover {
   display: none;
 }
 
+/* A news post's cover: whatever shape it comes in, never taller than a
+   screen's worth, centred under the title. */
+.news-cover {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 26rem;
+  margin: 0.2rem auto 1rem;
+  border: 1px solid var(--line);
+}
+
+.cover-form input[type='file'] {
+  max-width: 14rem;
+  font-size: 0.85rem;
+}
+
+/* The Minecraft whitelist on the membership page. */
+.mc-names {
+  list-style: none;
+  margin: 0 0 0.9rem;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.mc-names li {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.mc-names .mc-name {
+  font-family: ui-monospace, 'Cascadia Mono', 'Fira Mono', monospace;
+  font-weight: 700;
+}
+
 .signup-bar {
   display: flex;
   gap: 0.7rem;
