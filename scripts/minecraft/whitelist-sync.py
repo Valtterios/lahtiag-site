@@ -17,9 +17,12 @@ Nothing happens when the fetch fails, names in KEEP are never removed, and
 REMOVE=no makes it add-only, so a bad day on the site cannot empty the
 list.
 
-Config file, KEY=value lines (default /etc/lahtiag-whitelist.conf):
+Config file, KEY=value lines, one per server (LAHTIAG_WHITELIST_CONF, default
+/etc/lahtiag-whitelist-smp.conf; the lahtiag-whitelist@<server> units set it):
 
   URL=https://lahtiag.fi/api/minecraft/whitelist
+  SERVER=smp                      this server's slug on the site (see SERVERS
+                                  in src/lib/minecraft.ts); empty = every name
   TOKEN=...                       the site's MINECRAFT_WHITELIST_TOKEN secret
   WHITELIST_FILE=/mnt/storage/amp-instances/LahtiAG02/Minecraft/whitelist.json
   AMP_URL=http://127.0.0.1:8081   the instance's own AMP endpoint on this host
@@ -39,13 +42,13 @@ import time
 import urllib.error
 import urllib.request
 
-CONFIG = os.environ.get('LAHTIAG_WHITELIST_CONF', '/etc/lahtiag-whitelist.conf')
+CONFIG = os.environ.get('LAHTIAG_WHITELIST_CONF', '/etc/lahtiag-whitelist-smp.conf')
 AMP_READY = 20  # AMP's ApplicationState.Ready: the game server is up
 AMP_BUSY = {5, 7, 10, 30, 40, 45}  # starting, stopping, restarting: try again next run
 
 
 def load_config(path):
-    conf = {'REMOVE': 'yes', 'KEEP': '', 'URL': 'https://lahtiag.fi/api/minecraft/whitelist', 'AMP_URL': '', 'AMP_USER': '', 'AMP_PASS': '', 'CONTAINER': ''}
+    conf = {'REMOVE': 'yes', 'KEEP': '', 'URL': 'https://lahtiag.fi/api/minecraft/whitelist', 'SERVER': '', 'AMP_URL': '', 'AMP_USER': '', 'AMP_PASS': '', 'CONTAINER': ''}
     try:
         with open(path) as f:
             for line in f:
@@ -67,7 +70,8 @@ UA = 'lahtiag-whitelist-sync/1 (+https://lahtiag.fi)'
 
 
 def fetch_wanted(conf):
-    req = urllib.request.Request(conf['URL'], headers={'Authorization': f"Bearer {conf['TOKEN']}", 'Accept': 'application/json', 'User-Agent': UA})
+    url = conf['URL'] + (('&' if '?' in conf['URL'] else '?') + 'server=' + conf['SERVER'] if conf['SERVER'] else '')
+    req = urllib.request.Request(url, headers={'Authorization': f"Bearer {conf['TOKEN']}", 'Accept': 'application/json', 'User-Agent': UA})
     with urllib.request.urlopen(req, timeout=20) as r:
         data = json.load(r)
     players = data.get('players')

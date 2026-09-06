@@ -1,5 +1,5 @@
 [Unit]
-Description=Sync the LahtiAG Minecraft whitelist every five minutes
+Description=Sync the LahtiAG Minecraft whitelist for the %i server every five minutes
 
 [Timer]
 OnBootSec=2min

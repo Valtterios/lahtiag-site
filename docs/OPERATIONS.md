@@ -667,6 +667,15 @@ member whose status in the register turns to former loses their names on
 the next pull, board names stay. A name can be on the list once, in any
 letter case.
 
+A friend is an application: it sits in the table at lahtiag.fi/whitelist
+and in the board channel as a line with Approve and Decline buttons (the
+bot posts it, since a webhook cannot carry buttons; without the bot the
+webhook posts it without them). Any board member decides, on the buttons,
+with `/whitelist approve <name>` or `/whitelist decline <name>`, or on
+the table; the member gets a DM. The name reaches the servers only once
+approved. Actives requests from the membership page arrive the same way,
+and approving one gives the Actives role right there.
+
 Every name is checked with Mojang when it is saved: a name with no
 account is refused, the exact spelling and the account's UUID are stored,
 and the skin's face shows beside the name on the membership page and in
@@ -676,9 +685,16 @@ without asking Mojang again. The faces come through
 `/membership/minecraft/face/<uuid>` from a public skin renderer
 (crafatar.com, mc-heads.net as the fallback), cached a day.
 
+Every name is for every server (the SMP and the GT:NH modpack) unless
+the person narrows it with the optional server choice on `/whitelist`;
+the list of servers is `SERVERS` in `src/lib/minecraft.ts`, and adding a
+server there plus a config file on the machine is all a new server needs.
+
 The server side is `scripts/minecraft/whitelist-sync.py`, run every five
-minutes by a systemd timer on the machine that runs AMP. It fetches
-`https://lahtiag.fi/api/minecraft/whitelist` with the
+minutes per server by `lahtiag-whitelist@<server>.timer` on the machine
+that runs AMP, each with its own `/etc/lahtiag-whitelist-<server>.conf`
+(`SERVER=<slug>` in it). It fetches
+`https://lahtiag.fi/api/minecraft/whitelist?server=<slug>` with the
 `MINECRAFT_WHITELIST_TOKEN` secret as a bearer token and compares the
 answer with the instance's own `whitelist.json`. A running server gets
 `whitelist add` and `whitelist remove` console commands through the
@@ -712,13 +728,14 @@ Setting it up, once:
    terminal and writes them into the config.
 3. On the server: copy `scripts/minecraft/whitelist-sync.py` to
    `/usr/local/bin/lahtiag-whitelist-sync.py` (executable), the
-   `.service` and `.timer` to `/etc/systemd/system/`, and
-   `lahtiag-whitelist.conf.example` to `/etc/lahtiag-whitelist.conf`
-   (mode 600) with the token, the AMP user and password, the instance's
-   AMP address and its `whitelist.json` path filled in.
-4. `systemctl daemon-reload && systemctl enable --now lahtiag-whitelist.timer`,
-   then `journalctl -u lahtiag-whitelist` shows each run ("in sync: 12
-   names", or what it sent).
+   `lahtiag-whitelist@.service` and `.timer` to `/etc/systemd/system/`,
+   and `lahtiag-whitelist.conf.example` to
+   `/etc/lahtiag-whitelist-<server>.conf` for each server (mode 600) with
+   the server's slug, the token, the AMP user and password, the
+   instance's AMP address and its `whitelist.json` path filled in.
+4. `systemctl daemon-reload && systemctl enable --now lahtiag-whitelist@smp.timer`
+   (and `@gtnh`), then `journalctl -u lahtiag-whitelist@smp` shows each
+   run ("in sync: 12 names", or what it sent).
 
 Without the secret the API answers 404 and nothing on the site changes;
 the membership page and the command still take names, ready for when the

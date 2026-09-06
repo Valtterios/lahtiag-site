@@ -1,0 +1,9 @@
+[Unit]
+Description=Sync the LahtiAG Minecraft whitelist for the %i server from lahtiag.fi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=LAHTIAG_WHITELIST_CONF=/etc/lahtiag-whitelist-%i.conf
+ExecStart=/usr/local/bin/lahtiag-whitelist-sync.py

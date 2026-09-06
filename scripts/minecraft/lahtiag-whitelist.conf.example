@@ -1,10 +1,13 @@
-# /etc/lahtiag-whitelist.conf — root-only (chmod 600). See docs/OPERATIONS.md.
+# /etc/lahtiag-whitelist-<server>.conf — root-only (chmod 600), one per
+# server, run by lahtiag-whitelist@<server>.timer. See docs/OPERATIONS.md.
 URL=https://lahtiag.fi/api/minecraft/whitelist
+SERVER=smp
 TOKEN=the MINECRAFT_WHITELIST_TOKEN secret
 WHITELIST_FILE=/mnt/storage/amp-instances/LahtiAG02/Minecraft/whitelist.json
 AMP_URL=http://127.0.0.1:8081
-# An AMP user with console access to the instance. Without these a running
-# server is left alone; a stopped one still gets its whitelist.json updated.
+# An AMP user with console access to the instance (lahtiag-whitelist-setcreds
+# fills these in). Without them a running server is left alone; a stopped
+# one still gets its whitelist.json updated.
 AMP_USER=
 AMP_PASS=
 CONTAINER=AMP_LahtiAG02

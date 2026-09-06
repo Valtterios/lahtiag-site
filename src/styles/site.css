@@ -622,6 +622,44 @@ a:hover {
   flex-shrink: 0;
 }
 
+/* The board's whitelist table. */
+.table-scroll {
+  overflow-x: auto;
+  margin: 0 0 1.5rem;
+}
+
+.wl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.wl-table th,
+.wl-table td {
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.wl-table th {
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted, inherit);
+}
+
+.wl-table .mc-name {
+  font-family: ui-monospace, 'Cascadia Mono', 'Fira Mono', monospace;
+  font-weight: 700;
+}
+
+.wl-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
 .signup-bar {
   display: flex;
   gap: 0.7rem;

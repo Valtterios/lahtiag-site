@@ -8,7 +8,7 @@ import os
 import re
 import sys
 
-CONF = os.environ.get('LAHTIAG_WHITELIST_CONF', '/etc/lahtiag-whitelist.conf')
+CONF = os.environ.get('LAHTIAG_WHITELIST_CONF', '/etc/lahtiag-whitelist-smp.conf')
 
 if os.geteuid() != 0:
     sys.exit('run as root (sudo lahtiag-whitelist-setcreds)')

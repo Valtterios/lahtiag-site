@@ -9,6 +9,14 @@ import {
   dropMinecraftName,
   whitelistNames,
   whitelistPlayers,
+  listPendingFriends,
+  listAllMinecraftNames,
+  approveMinecraftName,
+  declineMinecraftName,
+  friendRequestLine,
+  parseServers,
+  serversLabel,
+  narrowed,
   tokenMatches,
   bearerToken,
   dashedUuid,
@@ -80,6 +88,7 @@ describe('minecraft whitelist', () => {
   it('lists board names always and members’ names while they are current', async () => {
     await setOwnMinecraftName(db(), 'm1', 'Alex', NOW, mojang);
     await addMinecraftFriend(db(), 'm1', 'Buddy', NOW, mojang);
+    expect((await approveMinecraftName(db(), 'buddy', 'board', NOW))?.name).toBe('Buddy');
     await setOwnMinecraftName(db(), 'm2', 'Zed', NOW, mojang);
     await addBoardMinecraftName(db(), 'board', 'Guest', NOW, mojang);
     await expect(addBoardMinecraftName(db(), 'board', 'guest', NOW, mojang)).rejects.toMatchObject({ code: 'name_taken' });
@@ -90,7 +99,7 @@ describe('minecraft whitelist', () => {
     await addBoardMinecraftName(db(), 'board', 'Seeded', NOW, mojang);
     await addBoardMinecraftName(db(), 'board', 'Seeded2', NOW, mojang);
     expect((await setOwnMinecraftName(db(), 'm2', 'seeded', NOW + 1, mojang)).name).toBe('Seeded');
-    expect((await addMinecraftFriend(db(), 'm2', 'Seeded2', NOW + 1, mojang)).name).toBe('Seeded2');
+    expect(await addMinecraftFriend(db(), 'm2', 'Seeded2', NOW + 1, mojang)).toMatchObject({ name: 'Seeded2', approved: true }); // a board name stays approved
     // Their previous own name (Zed) went with the claim; the claimed names are theirs now.
     expect((await listMinecraftNames(db(), 'm2')).map((n) => [n.name, n.kind])).toEqual([['Seeded', 'own'], ['Seeded2', 'friend']]);
     expect(await whitelistNames(db())).toEqual(['Guest', 'Seeded', 'Seeded2']);
@@ -104,6 +113,41 @@ describe('minecraft whitelist', () => {
     expect((await dropMinecraftName(db(), 'seeded'))?.discord_id).toBe('m2');
     expect(await dropMinecraftName(db(), 'Zed')).toBeNull();
     expect(await whitelistNames(db())).toEqual(['Seeded2']);
+  });
+
+  it('puts a name on every server unless narrowed, and serves each server its own list', async () => {
+    await setOwnMinecraftName(db(), 'm1', 'Alex', NOW, mojang);
+    await addMinecraftFriend(db(), 'm1', 'Buddy', NOW, mojang, 'smp');
+    await approveMinecraftName(db(), 'Buddy', 'board', NOW);
+    await addBoardMinecraftName(db(), 'board', 'Guest', NOW, mojang, 'gtnh');
+    expect((await listMinecraftNames(db(), 'm1')).map((n) => n.servers)).toEqual(['smp,gtnh', 'smp']);
+    expect(await whitelistNames(db())).toEqual(['Alex', 'Buddy', 'Guest']);
+    expect(await whitelistNames(db(), 'smp')).toEqual(['Alex', 'Buddy']);
+    expect(await whitelistNames(db(), 'gtnh')).toEqual(['Alex', 'Guest']);
+    await expect(setOwnMinecraftName(db(), 'm1', 'Alex', NOW, mojang, 'moon')).rejects.toMatchObject({ code: 'bad_input' });
+    expect(parseServers(undefined)).toEqual(['smp', 'gtnh']);
+    expect(parseServers('all')).toEqual(['smp', 'gtnh']);
+    expect(parseServers('gtnh,smp')).toEqual(['smp', 'gtnh']);
+    expect(narrowed('smp,gtnh')).toBe(false);
+    expect(narrowed('gtnh')).toBe(true);
+    expect(serversLabel('gtnh')).toBe('GT:NH modpack');
+  });
+
+  it('a friend waits for the board, then goes on the servers or away', async () => {
+    await setOwnMinecraftName(db(), 'm1', 'Alex', NOW, mojang);
+    expect((await addMinecraftFriend(db(), 'm1', 'Friend1', NOW, mojang)).approved).toBe(false);
+    await addMinecraftFriend(db(), 'm1', 'Friend2', NOW + 1, mojang, 'gtnh');
+    expect(await whitelistNames(db())).toEqual(['Alex']);
+    expect((await listPendingFriends(db())).map((n) => [n.name, n.by_name, n.member_current])).toEqual([['Friend1', null, 1], ['Friend2', null, 1]]);
+    expect((await listMinecraftNames(db(), 'm1')).map((n) => n.approved_at)).toEqual([NOW, null, null]);
+    expect((await approveMinecraftName(db(), 'friend1', 'board', NOW + 5))?.approved_by).toBe('board');
+    expect(await approveMinecraftName(db(), 'friend1', 'board', NOW + 5)).toBeNull();
+    expect((await declineMinecraftName(db(), 'Friend2'))?.discord_id).toBe('m1');
+    expect(await declineMinecraftName(db(), 'Friend2')).toBeNull();
+    expect(await whitelistNames(db())).toEqual(['Alex', 'Friend1']);
+    expect((await listAllMinecraftNames(db())).map((n) => n.name)).toEqual(['Alex', 'Friend1']);
+    expect(friendRequestLine('Axi', 'Friend1', '', 'https://x')).toContain('asks to whitelist **Friend1** (a friend) on every server');
+    expect(friendRequestLine('Axi', 'Friend1', 'gtnh', 'https://x')).toContain('on GT:NH modpack only');
   });
 
   it('dashes a Mojang id', () => {

@@ -18,6 +18,20 @@ const INTEGER = 4;
 
 const SUB_COMMAND = 1;
 
+// Which server a whitelisted name is for; every server unless narrowed.
+// Keep the values in step with SERVERS in src/lib/minecraft.ts.
+const SERVER_CHOICE = {
+  type: STRING,
+  name: 'server',
+  description: 'Which server (every server unless you pick one)',
+  required: false,
+  choices: [
+    { name: 'All servers', value: 'all' },
+    { name: 'SMP only', value: 'smp' },
+    { name: 'GT:NH modpack only', value: 'gtnh' },
+  ],
+};
+
 const commands = [
   {
     name: 'event',
@@ -108,19 +122,19 @@ const commands = [
   },
   {
     name: 'whitelist',
-    description: 'The LahtiAG Minecraft server whitelist',
+    description: 'The LahtiAG Minecraft servers\' whitelist',
     options: [
       {
         type: SUB_COMMAND,
         name: 'me',
-        description: 'Put your own Minecraft name on the whitelist (members)',
+        description: 'Put your own Minecraft name on the whitelist (members, every server)',
         options: [{ type: STRING, name: 'name', description: 'Your Java edition name', required: true }],
       },
       {
         type: SUB_COMMAND,
         name: 'friend',
-        description: 'Bring a friend along on your membership (two at most)',
-        options: [{ type: STRING, name: 'name', description: "Your friend's Java edition name", required: true }],
+        description: 'Ask the board to whitelist a friend on your membership (two at most)',
+        options: [{ type: STRING, name: 'name', description: "Your friend's Java edition name", required: true }, SERVER_CHOICE],
       },
       {
         type: SUB_COMMAND,
@@ -133,12 +147,25 @@ const commands = [
         type: SUB_COMMAND,
         name: 'add',
         description: 'Board: whitelist any name, membership or not',
-        options: [{ type: STRING, name: 'name', description: 'The Java edition name', required: true }],
+        options: [{ type: STRING, name: 'name', description: 'The Java edition name', required: true }, SERVER_CHOICE],
       },
       {
         type: SUB_COMMAND,
         name: 'drop',
         description: 'Board: take any name off the list',
+        options: [{ type: STRING, name: 'name', description: 'The name', required: true }],
+      },
+      { type: SUB_COMMAND, name: 'pending', description: 'Board: friend requests waiting for a decision' },
+      {
+        type: SUB_COMMAND,
+        name: 'approve',
+        description: 'Board: approve a waiting friend',
+        options: [{ type: STRING, name: 'name', description: 'The name', required: true }],
+      },
+      {
+        type: SUB_COMMAND,
+        name: 'decline',
+        description: 'Board: turn a waiting friend down',
         options: [{ type: STRING, name: 'name', description: 'The name', required: true }],
       },
     ],

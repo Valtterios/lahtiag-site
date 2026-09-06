@@ -46,7 +46,26 @@ import { syncEventRolesInBackground } from '../../lib/event-discord';
 import { announcePromotions } from '../../lib/event-channel';
 import { MEMBER_TYPE_LABELS } from '../../lib/register';
 import { DISCORD_GUILD_ID } from '../../lib/config';
-import { setOwnMinecraftName, addMinecraftFriend, removeMinecraftName, listMinecraftNames, addBoardMinecraftName, dropMinecraftName, faceUrl, FRIENDS_PER_MEMBER } from '../../lib/minecraft';
+import {
+  setOwnMinecraftName,
+  addMinecraftFriend,
+  removeMinecraftName,
+  listMinecraftNames,
+  addBoardMinecraftName,
+  dropMinecraftName,
+  listPendingFriends,
+  approveMinecraftName,
+  declineMinecraftName,
+  friendRequestLine,
+  faceUrl,
+  serversLabel,
+  narrowed,
+  FRIENDS_PER_MEMBER,
+} from '../../lib/minecraft';
+import { postBoardLine, approveButtons, decidedLine } from '../../lib/board-channel';
+import { setActive as setRegisterActive } from '../../lib/db';
+import { applyRoles as applyRegisterRoles, loadRoleConfig as loadRegisterRoleConfig } from '../../lib/roles';
+import { editChannelMessage as editBoardMessage, dmUser as dmMember, SUPPRESS_EMBEDS as NO_EMBEDS } from '../../lib/discord';
 
 // The Discord bot: an HTTP Interactions endpoint inside the same Worker
 // (spec, Discord bot). No gateway, no second host, same database.
@@ -65,6 +84,8 @@ interface ModalRow {
 interface Interaction {
   type: number;
   application_id: string;
+  channel_id?: string;
+  message?: { id: string; content?: string }; // the message a button sits on
   token: string;
   guild_id?: string;
   data?: {
@@ -204,6 +225,16 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     return json({ type: 5, data: { flags: 64 } });
   }
 
+  // Approve / Decline under a board line (a whitelist friend, an actives
+  // request): any board member. The line itself is rewritten, no reply.
+  if (interaction.type === 3 && interaction.data?.custom_id && /^[wa]:(ok|no):/.test(interaction.data.custom_id)) {
+    if (!isAdmin) {
+      return json({ type: 4, data: { content: 'This needs the admin role.', flags: 64 } });
+    }
+    locals.cfContext.waitUntil(handleBoardButton(env, interaction, url.origin));
+    return json({ type: 6 });
+  }
+
   // Button and select-menu clicks (type 3). Opening a modal must be the
   // immediate response; everything else acks (type 6) and edits the panel
   // message once the work is done.
@@ -277,6 +308,8 @@ async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin:
   }
   const opts = optionMap(sub.options);
   const raw = String(opts.get('name') ?? '');
+  const servers = String(opts.get('server') ?? 'all');
+  const where = servers === 'all' ? 'every server' : `${serversLabel(servers)} only`;
   const shown = raw.replace(/[^A-Za-z0-9_]/g, '').slice(0, 16) || 'that';
   const now = Math.floor(Date.now() / 1000);
   const soon = 'The server picks it up within a few minutes.';
@@ -284,10 +317,16 @@ async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin:
   try {
     if (sub.name === 'me') {
       const p = await setOwnMinecraftName(env.DB, userId, raw, now);
-      await reply(`✅ **${p.name}** is on the whitelist as you. ${soon}`, faceEmbed(origin, p.name, p.uuid, 'Your skin? Then it is the right account.'));
+      await reply(`✅ **${p.name}** is on the whitelist as you, on every server. ${soon}`, faceEmbed(origin, p.name, p.uuid, 'Your skin? Then it is the right account.'));
     } else if (sub.name === 'friend') {
-      const p = await addMinecraftFriend(env.DB, userId, raw, now);
-      await reply(`✅ **${p.name}** is on the whitelist as your friend. ${soon}`, faceEmbed(origin, p.name, p.uuid, "Your friend's skin? Then it is the right account."));
+      const p = await addMinecraftFriend(env.DB, userId, raw, now, undefined, servers);
+      if (p.approved) {
+        await reply(`✅ **${p.name}** was on the list already, so it is your friend now, for ${where}. ${soon}`, faceEmbed(origin, p.name, p.uuid, "Your friend's skin? Then it is the right account."));
+        return;
+      }
+      const who = interaction.member?.nick ?? interaction.member?.user?.global_name ?? interaction.member?.user?.username ?? 'A member';
+      await postBoardLine(env.DB, env, friendRequestLine(who, p.name, servers === 'all' ? '' : servers, origin), approveButtons('w', p.name));
+      await reply(`📨 Asked the board to whitelist **${p.name}** as your friend, for ${where}. You get a DM once a board member approves.`, faceEmbed(origin, p.name, p.uuid, "Your friend's skin? Then it is the right account."));
     } else if (sub.name === 'remove') {
       const gone = await removeMinecraftName(env.DB, userId, raw);
       await reply(gone ? `Took **${shown}** off the list. The server drops it within a few minutes.` : `**${shown}** is not one of your names.`);
@@ -296,21 +335,48 @@ async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin:
       const own = names.find((n) => n.kind === 'own' && n.uuid);
       await reply(
         names.length > 0
-          ? `${names.map((n) => `• **${n.name}** (${n.kind === 'own' ? 'you' : n.kind === 'friend' ? 'your friend' : 'board'})`).join('\n')}\n${page}`
+          ? `${names.map((n) => `• **${n.name}** (${n.kind === 'own' ? 'you' : n.kind === 'friend' ? 'your friend' : 'board'}${narrowed(n.servers) ? `, ${serversLabel(n.servers)} only` : ''}${n.approved_at === null ? ', waiting for the board' : ''})`).join('\n')}\n${page}`
           : `No names yet. \`/whitelist me <name>\` puts yours on the list, members only. ${page}`,
         own ? faceEmbed(origin, own.name, own.uuid!, 'Your skin.') : [],
       );
-    } else if (sub.name === 'add' || sub.name === 'drop') {
+    } else if (['add', 'drop', 'pending', 'approve', 'decline'].includes(sub.name)) {
       if (!isAdmin) {
         await reply('This needs the admin role.');
         return;
       }
       if (sub.name === 'add') {
-        const p = await addBoardMinecraftName(env.DB, userId, raw, now);
-        await reply(`✅ **${p.name}** is on the whitelist, added by the board. ${soon}`, faceEmbed(origin, p.name, p.uuid, 'The account behind that name.'));
-      } else {
+        const p = await addBoardMinecraftName(env.DB, userId, raw, now, undefined, servers);
+        await reply(`✅ **${p.name}** is on the whitelist for ${where}, added by the board. ${soon}`, faceEmbed(origin, p.name, p.uuid, 'The account behind that name.'));
+      } else if (sub.name === 'drop') {
         const gone = await dropMinecraftName(env.DB, raw);
         await reply(gone ? `Dropped **${gone.name}** (${gone.kind === 'own' ? 'a member' : gone.kind === 'friend' ? "a member's friend" : 'board'}). The server removes it within a few minutes.` : `**${shown}** is not on the list.`);
+      } else if (sub.name === 'pending') {
+        const rows = await listPendingFriends(env.DB);
+        await reply(
+          rows.length > 0
+            ? `${rows.map((r) => `• **${r.name}** for ${narrowed(r.servers) ? `${serversLabel(r.servers)} only` : 'every server'}, brought by ${r.by_name ?? r.discord_id}`).join('\n')}\n\`/whitelist approve <name>\` or ${origin}/whitelist`
+            : `Nothing waiting. ${origin}/whitelist`,
+        );
+      } else if (sub.name === 'approve') {
+        const row = await approveMinecraftName(env.DB, raw, userId, now);
+        if (!row) {
+          await reply(`**${shown}** is not waiting for a decision.`);
+          return;
+        }
+        if (env.DISCORD_BOT_TOKEN) await dmMember(env.DISCORD_BOT_TOKEN, row.discord_id, `✅ Your friend **${row.name}** is on the whitelist now. The servers pick it up within a few minutes. ${page}`);
+        const by = interaction.member?.nick ?? interaction.member?.user?.global_name ?? interaction.member?.user?.username ?? 'the board';
+        await postBoardLine(env.DB, env, `✅ Whitelist: **${row.name}** (friend of ${row.by_name ?? row.discord_id}) approved by ${by}.`);
+        await reply(`✅ **${row.name}** approved. ${soon}`);
+      } else {
+        const row = await declineMinecraftName(env.DB, raw);
+        if (!row) {
+          await reply(`**${shown}** is not waiting for a decision.`);
+          return;
+        }
+        if (env.DISCORD_BOT_TOKEN) await dmMember(env.DISCORD_BOT_TOKEN, row.discord_id, `The board didn't approve **${row.name}** for the whitelist. Ask a board member if you want to know more.`);
+        const by = interaction.member?.nick ?? interaction.member?.user?.global_name ?? interaction.member?.user?.username ?? 'the board';
+        await postBoardLine(env.DB, env, `❌ Whitelist: **${row.name}** (friend of ${row.by_name ?? row.discord_id}) declined by ${by}.`);
+        await reply(`❌ **${row.name}** declined; the member got a DM.`);
       }
     } else {
       await reply('Unknown subcommand.');
@@ -318,6 +384,54 @@ async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin:
   } catch (error) {
     if (error instanceof RuleError) {
       await reply(WHITELIST_ERRORS[error.code] ?? error.message);
+      return;
+    }
+    throw error;
+  }
+}
+
+// Approve / Decline pressed under a board line: a whitelist friend ("w",
+// keyed by name) or an actives request ("a", keyed by register id). The
+// line is rewritten with the outcome and loses its buttons.
+async function handleBoardButton(env: WorkerEnv, interaction: Interaction, origin: string): Promise<void> {
+  const [kind, verdict, key] = interaction.data!.custom_id!.split(':');
+  const user = interaction.member?.user;
+  const who = interaction.member?.nick ?? user?.global_name ?? user?.username ?? 'a board member';
+  const token = env.DISCORD_BOT_TOKEN;
+  const now = Math.floor(Date.now() / 1000);
+  const original = interaction.message?.content ?? '';
+  const settle = async (outcome: string) => {
+    if (token && interaction.channel_id && interaction.message?.id) {
+      await editBoardMessage(token, interaction.channel_id, interaction.message.id, decidedLine(original, outcome), NO_EMBEDS, []);
+    }
+  };
+  try {
+    if (kind === 'w') {
+      if (verdict === 'ok') {
+        const row = await approveMinecraftName(env.DB, key, user?.id ?? 'board', now);
+        if (!row) {
+          await settle('ℹ️ Already handled.');
+          return;
+        }
+        if (token) await dmMember(token, row.discord_id, `✅ Your friend **${row.name}** is on the whitelist now. The servers pick it up within a few minutes. ${origin}/membership#minecraft`);
+        await settle(`✅ Approved by ${who}.`);
+      } else {
+        const row = await declineMinecraftName(env.DB, key);
+        if (!row) {
+          await settle('ℹ️ Already handled.');
+          return;
+        }
+        if (token) await dmMember(token, row.discord_id, `The board didn't approve **${row.name}** for the whitelist. Ask a board member if you want to know more.`);
+        await settle(`❌ Declined by ${who}.`);
+      }
+    } else if (kind === 'a') {
+      const entry = await setRegisterActive(env.DB, Number(key), verdict === 'ok', who, now);
+      await applyRegisterRoles(await loadRegisterRoleConfig(env, env.DB), entry);
+      await settle(verdict === 'ok' ? `✅ Approved by ${who}; the Actives role is on.` : `❌ Declined by ${who}.`);
+    }
+  } catch (error) {
+    if (error instanceof RuleError) {
+      await settle(`⚠️ ${error.message}`);
       return;
     }
     throw error;

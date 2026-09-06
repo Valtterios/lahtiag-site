@@ -2,22 +2,30 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession } from '../../lib/guard';
 import { RuleError } from '../../lib/db';
-import { setOwnMinecraftName, addMinecraftFriend, removeMinecraftName } from '../../lib/minecraft';
+import { setOwnMinecraftName, addMinecraftFriend, removeMinecraftName, friendRequestLine } from '../../lib/minecraft';
+import { postBoardLine, approveButtons } from '../../lib/board-channel';
 
 // A member's names on the Minecraft whitelist: their own, a friend, or one
 // off the list. The server picks the change up on its next pull.
 
-export const POST: APIRoute = async ({ request, redirect }) => {
+export const POST: APIRoute = async ({ request, redirect, url, locals }) => {
   const session = await currentSession(request, env);
   if (!session) return redirect('/membership?err=signin', 303);
   const form = await request.formData();
   if (!(await checkCsrf(request, form))) return redirect('/membership?err=csrf', 303);
   const action = String(form.get('action') ?? '');
   const name = String(form.get('name') ?? '');
+  const servers = String(form.get('servers') ?? 'all');
   const now = Math.floor(Date.now() / 1000);
   try {
     if (action === 'own') await setOwnMinecraftName(env.DB, session.discordId, name, now);
-    else if (action === 'friend') await addMinecraftFriend(env.DB, session.discordId, name, now);
+    else if (action === 'friend') {
+      const friend = await addMinecraftFriend(env.DB, session.discordId, name, now, undefined, servers);
+      // The board decides; its channel gets the request with Approve / Decline.
+      // A name the board had listed already is on without asking again.
+      if (friend.approved) return redirect('/membership?ok=mc_friend_on#minecraft', 303);
+      locals.cfContext.waitUntil(postBoardLine(env.DB, env, friendRequestLine(session.username, friend.name, servers === 'all' ? '' : servers, url.origin), approveButtons('w', friend.name)));
+    }
     else if (action === 'remove') await removeMinecraftName(env.DB, session.discordId, name);
     else return redirect('/membership?err=mc_bad#minecraft', 303);
   } catch (error) {

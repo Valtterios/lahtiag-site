@@ -198,14 +198,21 @@ puts it on the page and on Discord.
 ## Minecraft server
 
 - **Members whitelist themselves.** On the membership page ("Minecraft
-  server") or with `/whitelist me <name>` in Discord. Each member can
-  bring two friends with `/whitelist friend <name>`, and take names off
-  with `/whitelist remove <name>`. The server picks changes up within
-  about five minutes. Names are checked with Mojang, and the skin's face
-  shows next to the name so people can tell it's their account.
+  server") or with `/whitelist me <name>` in Discord, and the name goes
+  on every LahtiAG server (the SMP and the modpack) within about five
+  minutes. Names are checked with Mojang, and the skin's face shows next
+  to the name so people can tell it's their account.
+- **Friends are applications.** A member can bring two friends
+  (`/whitelist friend <name>`, with a server choice, or the membership
+  page). The request lands in the board channel with **Approve** and
+  **Decline** buttons any board member can press; `/whitelist pending`,
+  `/whitelist approve <name>` and lahtiag.fi/whitelist do the same. The
+  member gets a DM either way.
 - **Board.** `/whitelist add <name>` whitelists anyone, member or not;
-  `/whitelist drop <name>` removes any name. A former member's names go
-  off the server on their own.
+  `/whitelist drop <name>` removes any name; lahtiag.fi/whitelist is the
+  whole table. A former member's names go off the servers on their own.
+- **Actives requests** land in the board channel the same way, with
+  Approve and Decline buttons; approving gives the Actives role at once.
 - **The old list.** The names that were on the server before the site
   took over are on the list as board names. A member who whitelists that
   same name takes it over, and from then on it follows their membership.

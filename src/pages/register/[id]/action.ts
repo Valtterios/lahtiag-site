@@ -16,6 +16,7 @@ import {
 import { parseApplication, LIMITS, MEMBER_TYPES, type MemberType } from '../../../lib/register';
 import { applyRoles, loadRoleConfig, type RoleOutcome } from '../../../lib/roles';
 import { postWebhook } from '../../../lib/discord';
+import { postBoardLine } from '../../../lib/board-channel';
 
 // A new member is welcomed in a public channel when WELCOME_WEBHOOK_URL is
 // set: a mention if their Discord is linked, their handle if they gave one,
@@ -40,7 +41,7 @@ async function welcome(id: number): Promise<void> {
 // there is reported, never blocks the register change. Google step-up
 // (board.ts) and CSRF checked, like every register route.
 
-export const POST: APIRoute = async ({ request, redirect, params }) => {
+export const POST: APIRoute = async ({ request, redirect, params, locals }) => {
   const id = Number(params.id);
   const back = Number.isInteger(id) ? `/register/${id}` : '/register';
   const board = await requireBoard(request, env);
@@ -61,17 +62,22 @@ export const POST: APIRoute = async ({ request, redirect, params }) => {
     return entry ? applyRoles(roleCfg, entry) : undefined;
   };
 
+  // The board channel hears every decision, whoever made it and where.
+  const tellBoard = (line: string) => locals.cfContext.waitUntil(postBoardLine(env.DB, env, line));
+
   try {
     switch (action) {
       case 'approve': {
         await decideApplication(env.DB, id, 'approve', board.email, now);
         const roles = await sync();
         await welcome(id);
+        tellBoard(`✅ **${(await getRegisterEntry(env.DB, id))?.full_name ?? id}** approved as a member by ${board.email}.`);
         return done('/register?ok=approved', roles);
       }
       case 'reject': {
         const before = await getRegisterEntry(env.DB, id);
         await decideApplication(env.DB, id, 'reject', board.email, now);
+        tellBoard(`❌ **${before?.full_name ?? id}**'s application declined by ${board.email}.`);
         const roles = before?.discord_id
           ? await applyRoles(roleCfg, { status: 'former', is_active: false, discord_id: before.discord_id })
           : undefined;
@@ -96,6 +102,7 @@ export const POST: APIRoute = async ({ request, redirect, params }) => {
       case 'active_approve':
       case 'active_revoke': {
         const entry = await setActive(env.DB, id, action === 'active_approve', board.email, now);
+        tellBoard(action === 'active_approve' ? `✅ **${entry.full_name}** is an active now, approved by ${board.email}.` : `↩️ **${entry.full_name}** is no longer an active (by ${board.email}).`);
         return done(`${back}?ok=${action}`, await applyRoles(roleCfg, entry));
       }
       case 'erase': {

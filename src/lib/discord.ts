@@ -47,7 +47,7 @@ export function linkRequestNotice(input: { handle: string; url: string }): strin
 
 export function activeNotice(input: { name: string; telegram: string | null; url: string }): string {
   const tg = input.telegram ? ` (Telegram ${codeSpan(`@${input.telegram}`)})` : ' (no Telegram handle given)';
-  return `🙋 **Actives request**: ${codeSpan(input.name)}${tg} wants to be an active. Approve on the register.\nEntry: ${input.url}`;
+  return `🙋 **Actives request**: ${codeSpan(input.name)}${tg} wants to be an active. Approve below or on the register.\nEntry: ${input.url}`;
 }
 
 // For messages carrying user-supplied text: Discord resolves no mentions

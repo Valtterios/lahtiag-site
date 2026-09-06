@@ -1,0 +1,124 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../layouts/Base.astro';
+import SessionBox from '../components/SessionBox.astro';
+import { currentSession, ensureCsrf } from '../lib/guard';
+import { listPendingFriends, listAllMinecraftNames, serversLabel, narrowed, SERVERS, type MinecraftNameRow } from '../lib/minecraft';
+import { formatHelsinki } from '../lib/time';
+
+// The board's whitelist table: friend requests waiting for a decision at
+// the top, then every name with who it belongs to. Members manage their
+// own names on the membership page; this page only decides.
+
+const session = await currentSession(Astro.request, env);
+const csrf = ensureCsrf(Astro.cookies);
+const isBoard = session?.isAdmin === true;
+const pending: MinecraftNameRow[] = isBoard ? await listPendingFriends(env.DB) : [];
+const names: MinecraftNameRow[] = isBoard ? await listAllMinecraftNames(env.DB) : [];
+
+const FLASH: Record<string, string> = {
+  forbidden: 'That needs the admin role in Discord.',
+  unauthenticated: 'Sign in with Discord first.',
+  discord_down: "Discord didn't answer while re-checking your role. Try again.",
+  csrf: 'The form was stale. Try again.',
+  missing: 'That name is not waiting, or not on the list.',
+  bad_input: "That didn't work.",
+};
+const OK: Record<string, string> = {
+  approved: 'Approved. The servers pick it up within a few minutes, and the member got a DM.',
+  declined: 'Declined, and the member got a DM.',
+  dropped: 'Dropped. The servers remove it within a few minutes.',
+};
+const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
+const kindLabel = (n: MinecraftNameRow) => (n.kind === 'own' ? 'member' : n.kind === 'friend' ? 'friend' : 'board');
+const serversCell = (n: MinecraftNameRow) => (narrowed(n.servers) ? `${serversLabel(n.servers)} only` : 'all');
+const status = (n: MinecraftNameRow) => (n.approved_at === null ? 'waiting' : n.kind === 'board' || n.member_current ? 'on the servers' : 'off (membership ended)');
+---
+<Base title="Minecraft whitelist" description="The LahtiAG Minecraft servers' whitelist, for the board.">
+  <article class="prose">
+    <h1>Minecraft whitelist</h1>
+    <p>
+      Members put their own name on the list on <a href="/membership#minecraft">their membership page</a> or with <code>/whitelist</code> in Discord, and it goes on every LahtiAG server
+      ({SERVERS.map((s) => s.label).join(' and ')}). A friend they bring is an application the board approves here or in the board channel.
+    </p>
+  </article>
+  {session && <SessionBox session={session} csrf={csrf} />}
+  {flash && <p class="flash">{flash}</p>}
+
+  {!isBoard && (
+    <p class="app-empty">The table is for the board. {session ? 'Your own names are on your membership page.' : ''} <a href="/membership#minecraft">Membership page</a></p>
+  )}
+
+  {isBoard && (
+    <>
+      <section class="list">
+        <h2 class="section-label">Waiting for a decision</h2>
+        {pending.length === 0 ? (
+          <p class="queue-meta">Nothing waiting.</p>
+        ) : (
+          <div class="table-scroll">
+            <table class="wl-table">
+              <thead><tr><th></th><th>Name</th><th>Servers</th><th>Brought by</th><th>Asked</th><th></th></tr></thead>
+              <tbody>
+                {pending.map((n) => (
+                  <tr>
+                    <td>{n.uuid && <img class="mc-face" src={`/membership/minecraft/face/${n.uuid}`} width="28" height="28" alt="" loading="lazy" />}</td>
+                    <td class="mc-name">{n.name}</td>
+                    <td>{serversCell(n)}</td>
+                    <td>{n.by_name ?? n.discord_id}{n.member_current ? '' : ' (not a current member)'}</td>
+                    <td>{formatHelsinki(n.added_at)}</td>
+                    <td class="wl-actions">
+                      <form method="post" action="/whitelist/act" class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="approve" />
+                        <input type="hidden" name="name" value={n.name} />
+                        <button class="btn btn-primary btn-sm" type="submit">Approve</button>
+                      </form>
+                      <form method="post" action="/whitelist/act" class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="decline" />
+                        <input type="hidden" name="name" value={n.name} />
+                        <button class="btn btn-ghost btn-sm" type="submit">Decline</button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section class="list">
+        <h2 class="section-label">Everyone on the list</h2>
+        <p class="queue-meta">{names.length} names. A name is on the servers while its member is current; board names always.</p>
+        <div class="table-scroll">
+          <table class="wl-table">
+            <thead><tr><th></th><th>Name</th><th>Kind</th><th>Belongs to</th><th>Servers</th><th>Status</th><th>Added</th><th></th></tr></thead>
+            <tbody>
+              {names.map((n) => (
+                <tr>
+                  <td>{n.uuid && <img class="mc-face" src={`/membership/minecraft/face/${n.uuid}`} width="28" height="28" alt="" loading="lazy" />}</td>
+                  <td class="mc-name">{n.name}</td>
+                  <td>{kindLabel(n)}</td>
+                  <td>{n.by_name ?? n.discord_id}</td>
+                  <td>{serversCell(n)}</td>
+                  <td>{status(n)}</td>
+                  <td>{formatHelsinki(n.added_at)}</td>
+                  <td class="wl-actions">
+                    <form method="post" action="/whitelist/act" class="inline-form">
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="action" value="drop" />
+                      <input type="hidden" name="name" value={n.name} />
+                      <button class="btn btn-ghost btn-sm" type="submit" data-confirm={`Drop ${n.name} from the whitelist?`}>Drop</button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  )}
+</Base>
