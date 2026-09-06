@@ -2913,6 +2913,21 @@ details.admin-panel[open] > summary {
   color: var(--muted);
   margin: 0 0 0.9rem;
 }
+/* On a phone the four buttons sit two by two, same width. */
+@media (max-width: 560px) {
+  .event-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .event-actions .inline-form {
+    display: block;
+  }
+  .event-actions .btn {
+    display: block;
+    width: 100%;
+    text-align: center;
+  }
+}
 .event-actions {
   display: flex;
   gap: 0.5rem;
@@ -3295,6 +3310,13 @@ details.admin-panel[open] > summary {
   width: 28%;
   height: auto;
   opacity: 0.18;
+}
+/* No cover yet: a low band with the mark, not a tall empty box. */
+.event-tile-cover:has(.event-tile-empty) {
+  aspect-ratio: 3 / 1;
+}
+.event-tile-cover:has(.event-tile-empty) img {
+  width: 14%;
 }
 .event-tile-body {
   padding: 0.9rem 1.2rem 1.1rem;
