@@ -3636,8 +3636,8 @@ details.admin-panel[open] > summary {
 
 /* ---------- footer: five short columns, the board link tucked at the bottom ---------- */
 .site-footer .inner {
-  grid-template-columns: 1.5fr repeat(4, minmax(0, 1fr));
-  gap: 1.6rem 2rem;
+  grid-template-columns: 1.4fr repeat(5, minmax(0, 1fr));
+  gap: 1.6rem 1.6rem;
 }
 .site-footer .footer-about {
   padding-right: 1rem;

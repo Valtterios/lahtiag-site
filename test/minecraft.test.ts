@@ -59,7 +59,7 @@ describe('minecraft whitelist', () => {
 
   it('takes a member’s own name once, checks the name, and refuses non-members', async () => {
     expect((await setOwnMinecraftName(db(), 'm1', ' steve ', NOW, mojang)).name).toBe('Steve'); // exact spelling from Mojang
-    expect(await setOwnMinecraftName(db(), 'm1', 'Steve_2', NOW + 1, mojang)).toEqual({ name: 'Steve_2', uuid: uuidOf('Steve_2') });
+    expect(await setOwnMinecraftName(db(), 'm1', 'Steve_2', NOW + 1, mojang)).toEqual({ name: 'Steve_2', uuid: uuidOf('Steve_2'), takenFrom: null });
     expect((await listMinecraftNames(db(), 'm1')).map((n) => [n.name, n.kind, n.uuid])).toEqual([['Steve_2', 'own', uuidOf('Steve_2')]]);
     await expect(setOwnMinecraftName(db(), 'm1', 'Nobody99', NOW, mojang)).rejects.toMatchObject({ code: 'no_account' });
     await expect(setOwnMinecraftName(db(), 'm1', 'no spaces here', NOW, mojang)).rejects.toMatchObject({ code: 'bad_name' });
@@ -105,8 +105,10 @@ describe('minecraft whitelist', () => {
     expect(await whitelistNames(db())).toEqual(['Guest', 'Seeded', 'Seeded2']);
     expect((await whitelistPlayers(db())).map((p) => p.uuid)).toEqual([uuidOf('Guest'), uuidOf('Seeded'), uuidOf('Seeded2')]);
     await expect(setOwnMinecraftName(db(), 'p1', 'Guest', NOW, mojang)).rejects.toMatchObject({ code: 'not_member' });
-    await expect(setOwnMinecraftName(db(), 'm3', 'Seeded2', NOW, mojang)).rejects.toMatchObject({ code: 'name_taken' });
+    // A current member's own name is taken, as own or as a friend; a friend's name would move to a member who claims it as their own.
+    await expect(setOwnMinecraftName(db(), 'm3', 'seeded', NOW, mojang)).rejects.toMatchObject({ code: 'name_taken' });
     await expect(addMinecraftFriend(db(), 'm3', 'seeded', NOW, mojang)).rejects.toMatchObject({ code: 'name_taken' });
+    await expect(addMinecraftFriend(db(), 'm3', 'Seeded2', NOW, mojang)).rejects.toMatchObject({ code: 'name_taken' });
     // The board drops any name; a member cannot take a board name off.
     expect(await removeMinecraftName(db(), 'board', 'Guest')).toBe(false);
     expect((await dropMinecraftName(db(), 'guest'))?.kind).toBe('board');
