@@ -186,7 +186,8 @@ out, buttons excluded. A new cover swaps the picture on the post.
 "Reigning champion" pick: when a final is recorded the bot gives that role
 to the winner or the winning team and takes it off the previous holders.
 
-**Private messages.** The bot messages people directly when they are put
+**Private messages.** The bot messages team founders when someone joins
+their team, and people directly when they are put
 in a team by its captain or the board (also when loose players are
 grouped), and when a waitlist seat frees; when their DMs are closed it
 mentions them in the event's channel instead.

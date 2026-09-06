@@ -209,6 +209,20 @@ export async function notifyTeamPlacement(
   }
 }
 
+// Someone joined a team, on their own or moved by the board: the founder
+// hears, privately.
+export async function notifyCaptainJoin(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, teamId: number, joinerId: string, origin: string): Promise<void> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return;
+  const team = (await listEventTeams(db, eventId)).find((t) => t.id === teamId);
+  const event = await getEvent(db, eventId);
+  if (!team || !event || team.created_by === joinerId || !/^\d{5,25}$/.test(team.created_by)) return;
+  const signups = await listSignups(db, eventId);
+  const joiner = signups.find((s) => s.discord_id === joinerId)?.username ?? 'Someone';
+  const size = signups.filter((s) => s.event_team_id === teamId).length;
+  await dmUser(token, team.created_by, `👋 **${safe(joiner)}** joined your team **${safe(team.name)}** for **${safe(event.title)}** (${size}${event.team_size !== null ? ` / ${event.team_size}` : ''}). ${origin}/events/${eventId}`);
+}
+
 // First win, fifth, tenth: told in the general channel, for members who
 // chose the leaderboard.
 export async function postWinMilestones(

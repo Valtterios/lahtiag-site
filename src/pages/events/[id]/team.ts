@@ -12,6 +12,7 @@ import {
 } from '../../../lib/db';
 import { answersComplete } from '../../../lib/questions';
 import { syncEventRolesInBackground, syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
+import { later, notifyCaptainJoin } from '../../../lib/event-channel';
 import { refreshAnnouncementInBackground } from '../../../lib/announce';
 
 // Tournament team actions: any signed-in member, no admin needed — forming
@@ -51,6 +52,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
       const teamId = Number(form.get('event_team_id'));
       if (!Number.isInteger(teamId)) return redirect(`${back}?err=missing`, 303);
       await joinEventTeam(env.DB, id, teamId, session.discordId, now);
+      later(locals.cfContext, notifyCaptainJoin(env.DB, env, id, teamId, session.discordId, url.origin));
     } else if (action === 'leave') {
       await leaveEventTeam(env.DB, id, session.discordId);
     } else {

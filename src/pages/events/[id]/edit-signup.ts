@@ -4,7 +4,7 @@ import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { adminUpdateSignup, RuleError } from '../../../lib/db';
 import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
 import { refreshAnnouncementInBackground } from '../../../lib/announce';
-import { announcePromotionsInBackground, later, notifyTeamPlacement } from '../../../lib/event-channel';
+import { announcePromotionsInBackground, later, notifyTeamPlacement, notifyCaptainJoin } from '../../../lib/event-channel';
 
 export const POST: APIRoute = async ({ request, params, redirect, locals, url }) => {
   const id = Number(params.id);
@@ -31,7 +31,10 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   // Moving people between teams can empty one; the voice channels follow.
   syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, Math.floor(Date.now() / 1000));
   // Put into a team by the board: they hear about it.
-  if (teamId !== null) later(locals.cfContext, notifyTeamPlacement(env.DB, env, id, [{ discordId: String(form.get('discord_id') ?? ''), teamId }], url.origin));
+  if (teamId !== null) {
+    later(locals.cfContext, notifyTeamPlacement(env.DB, env, id, [{ discordId: String(form.get('discord_id') ?? ''), teamId }], url.origin));
+    later(locals.cfContext, notifyCaptainJoin(env.DB, env, id, teamId, String(form.get('discord_id') ?? ''), url.origin));
+  }
   announcePromotionsInBackground(locals.cfContext, env.DB, env, Math.floor(Date.now() / 1000));
   refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
   return redirect(back, 303);

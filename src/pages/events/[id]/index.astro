@@ -628,6 +628,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                     ? members.map((m) => (
                         <span class="member-chip">
                           {m.username}
+                          {m.discord_id === team.created_by && <span class="member-mark captain-mark" title="Founded the team">captain</span>}
                           {m.is_member === 1 && <span class="member-mark" title="In the member register">member</span>}
                           <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
                             <input type="hidden" name="csrf" value={csrf} />
@@ -640,6 +641,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                       ? members.map((m) => (
                           <span class="member-chip">
                             {m.username}
+                            {m.discord_id === team.created_by && <span class="member-mark captain-mark" title="Founded the team">captain</span>}
                             {m.discord_id !== session!.discordId && (
                               <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form">
                                 <input type="hidden" name="csrf" value={csrf} />
@@ -651,7 +653,12 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                             )}
                           </span>
                         ))
-                      : members.map((m) => m.username).join(', ')}
+                      : members.map((m) => (
+                          <span class="member-chip">
+                            {m.username}
+                            {m.discord_id === team.created_by && <span class="member-mark captain-mark" title="Founded the team">captain</span>}
+                          </span>
+                        ))}
                 </div>
                 {captain && slotsLeft > 0 && freeAgents.length > 0 && (
                   <form method="post" action={`/events/${event.id}/team-captain`} class="participant-row">
