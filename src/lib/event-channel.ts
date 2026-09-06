@@ -8,6 +8,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { getEvent, getBracket, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, memberStats, getSettings, setSetting, getEventPhoto, recordMilestone, WIN_MILESTONES, type BracketMatch, type EventRow } from './db';
 import { profileCardPng } from './profile-card';
+import { cleanText } from './raster';
 import { syncEventRole } from './event-discord';
 import { setGuildMemberRole, postWebhookWithFile, dmUser, postWebhook } from './discord';
 import { DISCORD_GUILD_ID } from './config';
@@ -176,7 +177,7 @@ export async function postChampionCards(db: D1Database, env: { DISCORD_BOT_TOKEN
   await postWinMilestones(db, env as { WELCOME_WEBHOOK_URL?: string }, people, new Map(signups.map((s) => [`u:${s.discord_id}`, s.username])), now);
   const files: MessageFile[] = [];
   for (const id of people) {
-    const name = signups.find((s) => s.discord_id === id)?.username ?? 'Champion';
+    const name = cleanText(signups.find((s) => s.discord_id === id)?.username ?? '') || 'Champion';
     files.push({ name: `champion-${id}.png`, bytes: await profileCardPng(name, await memberStats(db, id, now + 1)), type: 'image/png' });
   }
   const line = people.length === 1 ? `🏅 The champion's card.` : `🏅 The champions' cards.`;

@@ -40,6 +40,16 @@ async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
 // Glyphs decoded once per size and character: one byte per pixel with
 // the level 0-3. Decoding the hex on every draw was the slow part.
 const decoded = new Map<string, Uint8Array>();
+// Characters the fonts lack (other scripts, symbols) are skipped, not
+// drawn as '?': a name in another script comes out shorter, not wrong.
+export function drawable(ch: string): boolean {
+  return ch in FONTS.s.glyphs;
+}
+
+export function cleanText(text: string): string {
+  return [...text].filter(drawable).join('').replace(/\s+/g, ' ').trim();
+}
+
 function levels(size: FontSize, ch: string): { w: number; px: Uint8Array } {
   const font = FONTS[size];
   const glyph = font.glyphs[ch] ?? font.glyphs['?'];
@@ -98,6 +108,7 @@ export class Canvas {
     const solid = this.index(rgb);
     let cx = x;
     for (const ch of text) {
+      if (!(ch in font.glyphs)) continue;
       const { w, px: glyph } = levels(size, ch);
       let i = 0;
       for (let gy = 0; gy < font.h; gy++) {
@@ -118,7 +129,7 @@ export class Canvas {
   static textWidth(text: string, size: FontSize = 's'): number {
     const font = FONTS[size];
     let w = 0;
-    for (const ch of text) w += (font.glyphs[ch] ?? font.glyphs['?']).w;
+    for (const ch of text) w += font.glyphs[ch]?.w ?? 0;
     return w;
   }
 

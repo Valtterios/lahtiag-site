@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Canvas } from '../src/lib/raster';
+import { Canvas, cleanText, drawable } from '../src/lib/raster';
 import { bracketPng, bracketPictureSize, roundTitle } from '../src/lib/bracket-image';
 import type { BracketMatch } from '../src/lib/db';
 
@@ -26,6 +26,10 @@ describe('Canvas', () => {
     expect(Canvas.textWidth('abc')).toBeGreaterThan(20);
     expect(Canvas.textWidth('abc', 'l')).toBeGreaterThan(Canvas.textWidth('abc'));
     expect(Canvas.fit('a very long name indeed', 60)).toMatch(/\.\.$/);
+    expect(drawable('ä')).toBe(true);
+    expect(drawable('吴')).toBe(false);
+    expect(cleanText('r-yaaa 吴海湛 ：）')).toBe('r-yaaa');
+    expect(Canvas.textWidth('吴海湛')).toBe(0);
   });
 
   it('clips drawing to the canvas', () => {

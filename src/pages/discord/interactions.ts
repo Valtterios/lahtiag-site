@@ -40,6 +40,7 @@ import { formatHelsinki, formatHelsinkiDate, helsinkiToUnix } from '../../lib/ti
 import { syncScheduledEvent, setUpEventDiscord } from '../../lib/event-discord';
 import { participantNames, postSignups, postBracketOut, postResult, postRevert, postEventLine, cancelLine, screenLine, dropLiveBracket } from '../../lib/event-channel';
 import { profileCardPng } from '../../lib/profile-card';
+import { cleanText } from '../../lib/raster';
 import { postEventAnnouncement, refreshEventAnnouncement } from '../../lib/announce';
 import { syncEventRolesInBackground } from '../../lib/event-discord';
 import { announcePromotions } from '../../lib/event-channel';
@@ -361,7 +362,9 @@ async function handleProfile(env: WorkerEnv, interaction: Interaction): Promise<
   }
   const resolved = interaction.data?.resolved?.users?.[targetId];
   const who = resolved ?? (targetId === invoker?.id ? invoker : undefined);
-  const name = interaction.member?.nick && targetId === invoker?.id ? interaction.member.nick : who?.global_name ?? who?.username ?? (await memberName(env, targetId)) ?? 'Member';
+  // The first name the card's fonts can draw in full; else what remains of it.
+  const candidates = [targetId === invoker?.id ? interaction.member?.nick : null, who?.global_name, who?.username, await memberName(env, targetId)].filter((n): n is string => Boolean(n));
+  const name = candidates.find((n) => cleanText(n) === n.trim()) ?? candidates.map(cleanText).find((n) => n.length > 0) ?? 'Member';
   const now = Math.floor(Date.now() / 1000);
   const stats = await memberStats(env.DB, targetId, now);
   const png = await profileCardPng(name, stats);
