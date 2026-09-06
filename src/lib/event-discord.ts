@@ -8,7 +8,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { DISCORD_GUILD_ID } from './config';
-import { getEvent, listSignups, getSettings, setSetting, getEventCover, type EventRow } from './db';
+import { getEvent, listSignups, listEventTeams, getSettings, setSetting, getEventCover, type EventRow, type EventTeamRow } from './db';
 import {
   createGuildRole,
   createGuildChannel,
@@ -21,6 +21,7 @@ import {
   deleteChannel,
   renameGuildRole,
   renameChannel,
+  updateChannel,
   fetchBotUserId,
   postChannelMessage,
   setGuildMemberRole,
@@ -28,6 +29,7 @@ import {
   PERM_SEND_MESSAGES,
   PERM_READ_HISTORY,
   PERM_MANAGE_CHANNELS,
+  PERM_CONNECT,
   type ChannelOverwrite,
   type ScheduledEventInput,
   type RoleResult,
@@ -200,22 +202,30 @@ function boardRoleIds(env: DiscordEnv): string[] {
     .filter((id) => id !== '' && id !== '0');
 }
 
-// Hidden from @everyone; the board and the bot see it.
+// Hidden from @everyone; the board and the bot see it (and the board may
+// post and speak everywhere, the rules channel included).
 function privateOverwrites(env: DiscordEnv, botId: string): ChannelOverwrite[] {
   const view = PERM_VIEW_CHANNEL.toString();
+  const board = (PERM_VIEW_CHANNEL | PERM_SEND_MESSAGES | PERM_READ_HISTORY | PERM_CONNECT).toString();
   return [
     { id: DISCORD_GUILD_ID, type: 0, allow: '0', deny: view },
     { id: botId, type: 1, allow: (PERM_VIEW_CHANNEL | PERM_SEND_MESSAGES | PERM_READ_HISTORY | PERM_MANAGE_CHANNELS).toString(), deny: '0' },
-    ...boardRoleIds(env).map((id): ChannelOverwrite => ({ id, type: 0, allow: view, deny: '0' })),
+    ...boardRoleIds(env).map((id): ChannelOverwrite => ({ id, type: 0, allow: board, deny: '0' })),
   ];
+}
+
+// What the event's role may do in one of its channels.
+function roleOverwrite(roleId: string, options: { voice?: boolean; readOnly?: boolean } = {}): ChannelOverwrite {
+  const allow = options.voice ? PERM_VIEW_CHANNEL | PERM_CONNECT : PERM_VIEW_CHANNEL;
+  return { id: roleId, type: 0, allow: allow.toString(), deny: options.readOnly ? PERM_SEND_MESSAGES.toString() : '0' };
 }
 
 export const EVENT_CATEGORY_NAME = 'Events';
 
-// The category every event channel lives in. The bot creates it the first
-// time and remembers it; if someone deletes it in Discord, the next event
-// makes a new one. Null when Discord refused, and the channel then goes
-// to the top of the list instead.
+// The category every one-channel event lives in. The bot creates it the
+// first time and remembers it; if someone deletes it in Discord, the next
+// event makes a new one. Null when Discord refused, and the channel then
+// goes to the top of the list instead.
 export async function ensureEventCategory(db: D1Database, env: DiscordEnv, botId: string, by: string, now: number): Promise<string | null> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return null;
@@ -230,18 +240,102 @@ export async function ensureEventCategory(db: D1Database, env: DiscordEnv, botId
   return created.value.id;
 }
 
+// --- the channels the bot made for an event ------------------------------------
+
+export type ChannelKind = 'discussion' | 'rules' | 'teams' | 'commentators' | 'interviews' | 'team';
+
+export interface EventChannelRow {
+  event_id: number;
+  channel_id: string;
+  kind: ChannelKind;
+  event_team_id: number | null;
+  created_at: number;
+}
+
+// A big event's set, in the order they appear. Rules is read-only for
+// participants; the board posts there.
+export const BIG_EVENT_CHANNELS: { kind: ChannelKind; name: string; voice: boolean; readOnly: boolean }[] = [
+  { kind: 'rules', name: 'rules', voice: false, readOnly: true },
+  { kind: 'teams', name: 'teams', voice: false, readOnly: false },
+  { kind: 'discussion', name: 'discussion', voice: false, readOnly: false },
+  { kind: 'commentators', name: 'Commentators', voice: true, readOnly: false },
+  { kind: 'interviews', name: 'Interviews', voice: true, readOnly: false },
+];
+
+export async function listEventChannels(db: D1Database, eventId: number): Promise<EventChannelRow[]> {
+  const { results } = await db
+    .prepare('SELECT * FROM event_discord_channels WHERE event_id = ?1 ORDER BY created_at, channel_id')
+    .bind(eventId)
+    .all<EventChannelRow>();
+  return results;
+}
+
+export async function recordEventChannel(db: D1Database, eventId: number, channelId: string, kind: ChannelKind, teamId: number | null, now: number): Promise<void> {
+  await db
+    .prepare('INSERT OR IGNORE INTO event_discord_channels (event_id, channel_id, kind, event_team_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5)')
+    .bind(eventId, channelId, kind, teamId, now)
+    .run();
+}
+
+function channelTopic(event: Pick<EventRow, 'title' | 'starts_at' | 'ends_at'>, url: string, kind: ChannelKind): string {
+  const head = `${event.title.trim()} · ${formatHelsinkiRange(event.starts_at, event.ends_at)}`;
+  const what = kind === 'rules' ? 'The rules, from the board' : kind === 'teams' ? 'Team talk and team finding' : '';
+  return `${head}${what ? ` · ${what}` : ''} · ${url}`.slice(0, 1024);
+}
+
+// Make the big set inside the event's category, skipping kinds that
+// already exist (the upgrade keeps its channel as discussion). Each one is
+// recorded as it is made, so a failure halfway leaves nothing unknown for
+// the cleanup. Null when Discord refused; the reason says why.
+async function createChannelSet(
+  db: D1Database,
+  env: DiscordEnv,
+  botId: string,
+  event: Pick<EventRow, 'id' | 'title' | 'starts_at' | 'ends_at'>,
+  roleId: string,
+  categoryId: string,
+  skip: Set<ChannelKind>,
+  url: string,
+  now: number,
+): Promise<{ ok: true; discussionId: string | null } | { ok: false; reason: 'forbidden' | 'error' }> {
+  const token = env.DISCORD_BOT_TOKEN!;
+  const reason = `lahtiag.fi event ${event.id}`;
+  let discussionId: string | null = null;
+  for (const spec of BIG_EVENT_CHANNELS) {
+    if (skip.has(spec.kind)) continue;
+    const made = await createGuildChannel(
+      token,
+      DISCORD_GUILD_ID,
+      {
+        name: spec.name,
+        topic: spec.voice ? undefined : channelTopic(event, url, spec.kind),
+        parentId: categoryId,
+        overwrites: [...privateOverwrites(env, botId), roleOverwrite(roleId, { voice: spec.voice, readOnly: spec.readOnly })],
+        voice: spec.voice,
+      },
+      reason,
+    );
+    if (!made.ok) return { ok: false, reason: made.reason };
+    await recordEventChannel(db, event.id, made.value.id, spec.kind, null, now);
+    if (spec.kind === 'discussion') discussionId = made.value.id;
+  }
+  return { ok: true, discussionId };
+}
+
 export function welcomeMessage(event: Pick<EventRow, 'title' | 'starts_at' | 'ends_at'>, roleId: string, url: string): string {
   return `👋 This channel is for everyone signed up to **${event.title.trim()}** (${formatHelsinkiRange(event.starts_at, event.ends_at)}). The site gives the <@&${roleId}> role to everyone on the roster and takes it away when someone leaves.\n${url}`;
 }
 
+export type EventDiscordSize = 'channel' | 'category';
+
 export type SetupResult =
-  | { ok: true; channelId: string }
+  | { ok: true; channelId: string | null }
   | { ok: false; reason: 'unconfigured' | 'missing' | 'exists' | 'forbidden' | 'error' };
 
-// Create the role and the channel, remember them, and give the role to
-// everyone already on the roster. The channel goes under the bot's Events
-// category, hidden from @everyone and open to the role, the board's roles
-// and the bot itself.
+// Create the role and, by size, either one text channel under the shared
+// Events category or the event's own category with the full set; remember
+// them, welcome in the discussion channel, and give the role to everyone
+// already on the roster. A failure halfway deletes what was made.
 export async function setUpEventDiscord(
   db: D1Database,
   env: DiscordEnv,
@@ -249,12 +343,13 @@ export async function setUpEventDiscord(
   origin: string,
   by: string,
   now: number,
+  size: EventDiscordSize = 'channel',
 ): Promise<SetupResult> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return { ok: false, reason: 'unconfigured' };
   const event = await getEvent(db, eventId);
   if (!event) return { ok: false, reason: 'missing' };
-  if (event.discord_role_id || event.discord_channel_id) return { ok: false, reason: 'exists' };
+  if (event.discord_role_id || event.discord_channel_id || event.discord_category_id) return { ok: false, reason: 'exists' };
   const botId = await fetchBotUserId(token);
   if (!botId) return { ok: false, reason: 'error' };
   const reason = `lahtiag.fi event ${eventId}`;
@@ -262,53 +357,208 @@ export async function setUpEventDiscord(
 
   const role = await createGuildRole(token, DISCORD_GUILD_ID, roleName(event.title), reason);
   if (!role.ok) return { ok: false, reason: role.reason };
+  const roleId = role.value.id;
 
-  const categoryId = await ensureEventCategory(db, env, botId, by, now);
-  const overwrites: ChannelOverwrite[] = [
-    ...privateOverwrites(env, botId),
-    { id: role.value.id, type: 0, allow: PERM_VIEW_CHANNEL.toString(), deny: '0' },
-  ];
-  const channel = await createGuildChannel(
-    token,
-    DISCORD_GUILD_ID,
-    {
-      name: channelSlug(event.title, `event-${eventId}`),
-      topic: `${event.title.trim()} · ${formatHelsinkiRange(event.starts_at, event.ends_at)} · ${url}`.slice(0, 1024),
-      parentId: categoryId,
-      overwrites,
-    },
-    reason,
-  );
-  if (!channel.ok) {
-    await deleteGuildRole(token, DISCORD_GUILD_ID, role.value.id, reason);
-    return { ok: false, reason: channel.reason };
+  let categoryId: string | null = null;
+  let channelId: string | null = null;
+  let failure: 'forbidden' | 'error' | null = null;
+  if (size === 'category') {
+    const category = await createGuildCategory(
+      token,
+      DISCORD_GUILD_ID,
+      roleName(event.title),
+      [...privateOverwrites(env, botId), roleOverwrite(roleId)],
+      reason,
+    );
+    if (category.ok) {
+      categoryId = category.value.id;
+      const made = await createChannelSet(db, env, botId, event, roleId, categoryId, new Set(), url, now);
+      if (made.ok) channelId = made.discussionId;
+      else failure = made.reason;
+    } else failure = category.reason;
+  } else {
+    const shared = await ensureEventCategory(db, env, botId, by, now);
+    const channel = await createGuildChannel(
+      token,
+      DISCORD_GUILD_ID,
+      {
+        name: channelSlug(event.title, `event-${eventId}`),
+        topic: channelTopic(event, url, 'discussion'),
+        parentId: shared,
+        overwrites: [...privateOverwrites(env, botId), roleOverwrite(roleId)],
+      },
+      reason,
+    );
+    if (channel.ok) {
+      channelId = channel.value.id;
+      await recordEventChannel(db, eventId, channelId, 'discussion', null, now);
+    } else failure = channel.reason;
+  }
+  if (failure) {
+    await deleteDiscordObjects(env, { id: eventId, discord_role_id: roleId, discord_channel_id: null, discord_category_id: categoryId }, await listEventChannels(db, eventId));
+    await db.prepare('DELETE FROM event_discord_channels WHERE event_id = ?1').bind(eventId).run();
+    return { ok: false, reason: failure };
   }
 
   await db
-    .prepare('UPDATE events SET discord_role_id = ?2, discord_channel_id = ?3 WHERE id = ?1')
-    .bind(eventId, role.value.id, channel.value.id)
+    .prepare('UPDATE events SET discord_role_id = ?2, discord_channel_id = ?3, discord_category_id = ?4 WHERE id = ?1')
+    .bind(eventId, roleId, channelId, categoryId)
     .run();
-  await postChannelMessage(token, channel.value.id, welcomeMessage(event, role.value.id, url));
+  if (channelId) await postChannelMessage(token, channelId, welcomeMessage(event, roleId, url));
   await syncEventRole(db, env, eventId, now);
-  return { ok: true, channelId: channel.value.id };
+  return { ok: true, channelId };
 }
 
-// Delete the role and the channel in Discord, best effort, and the
-// scheduled event when asked (the site's delete). True when everything
-// asked for is gone (or was already).
-export async function removeEventDiscordObjects(
+export type UpgradeResult = 'ok' | 'unconfigured' | 'missing' | 'exists' | 'forbidden' | 'error';
+
+// A one-channel event that grew: its own category, the channel moved in
+// as discussion, and the rest of the set beside it.
+export async function upgradeEventDiscord(db: D1Database, env: DiscordEnv, eventId: number, origin: string, now: number): Promise<UpgradeResult> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return 'unconfigured';
+  const event = await getEvent(db, eventId);
+  if (!event?.discord_role_id || !event.discord_channel_id) return 'missing';
+  if (event.discord_category_id) return 'exists';
+  const botId = await fetchBotUserId(token);
+  if (!botId) return 'error';
+  const reason = `lahtiag.fi event ${eventId}`;
+  const url = `${origin}/events/${eventId}`;
+  const category = await createGuildCategory(token, DISCORD_GUILD_ID, roleName(event.title), [...privateOverwrites(env, botId), roleOverwrite(event.discord_role_id)], reason);
+  if (!category.ok) return category.reason;
+  await updateChannel(token, event.discord_channel_id, { parent_id: category.value.id, name: 'discussion' });
+  await recordEventChannel(db, eventId, event.discord_channel_id, 'discussion', null, now);
+  await db.prepare('UPDATE events SET discord_category_id = ?2 WHERE id = ?1').bind(eventId, category.value.id).run();
+  const made = await createChannelSet(db, env, botId, event, event.discord_role_id, category.value.id, new Set(['discussion']), url, now);
+  return made.ok ? 'ok' : made.reason;
+}
+
+// Which teams still need a voice channel, and which channels belong to a
+// team that is gone.
+export function planTeamChannels<T extends { id: number }, C extends { event_team_id: number | null }>(teams: T[], channels: C[]): { create: T[]; remove: C[] } {
+  const have = new Set(channels.map((c) => c.event_team_id));
+  const teamIds = new Set(teams.map((t) => t.id));
+  return {
+    create: teams.filter((t) => !have.has(t.id)),
+    remove: channels.filter((c) => c.event_team_id !== null && !teamIds.has(c.event_team_id)),
+  };
+}
+
+export type TeamVoiceResult =
+  | { ok: true; created: number; removed: number; teams: number }
+  | { ok: false; reason: 'unconfigured' | 'needs_category' | 'no_teams' | 'forbidden' | 'error' };
+
+// A voice channel per team, named after it, in the event's own category.
+// Run again after teams change: new teams get theirs, disbanded teams
+// lose theirs. Names are not followed (teams don't rename).
+export async function createTeamVoiceChannels(db: D1Database, env: DiscordEnv, eventId: number, now: number): Promise<TeamVoiceResult> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return { ok: false, reason: 'unconfigured' };
+  const event = await getEvent(db, eventId);
+  if (!event?.discord_role_id || !event.discord_category_id) return { ok: false, reason: 'needs_category' };
+  const teams: EventTeamRow[] = await listEventTeams(db, eventId);
+  const existing = (await listEventChannels(db, eventId)).filter((c) => c.kind === 'team');
+  if (teams.length === 0 && existing.length === 0) return { ok: false, reason: 'no_teams' };
+  const botId = await fetchBotUserId(token);
+  if (!botId) return { ok: false, reason: 'error' };
+  const reason = `lahtiag.fi event ${eventId}`;
+  const plan = planTeamChannels(teams, existing);
+  let removed = 0;
+  for (const row of plan.remove) {
+    if (!(await deleteChannel(token, row.channel_id, reason))) continue;
+    await db.prepare('DELETE FROM event_discord_channels WHERE event_id = ?1 AND channel_id = ?2').bind(eventId, row.channel_id).run();
+    removed++;
+  }
+  let created = 0;
+  for (const team of plan.create) {
+    const made = await createGuildChannel(
+      token,
+      DISCORD_GUILD_ID,
+      {
+        name: team.name.trim().slice(0, 100) || `team-${team.id}`,
+        parentId: event.discord_category_id,
+        overwrites: [...privateOverwrites(env, botId), roleOverwrite(event.discord_role_id, { voice: true })],
+        voice: true,
+      },
+      reason,
+    );
+    if (!made.ok) return created > 0 || removed > 0 ? { ok: true, created, removed, teams: teams.length } : { ok: false, reason: made.reason };
+    await recordEventChannel(db, eventId, made.value.id, 'team', team.id, now);
+    created++;
+  }
+  return { ok: true, created, removed, teams: teams.length };
+}
+
+// Delete in Discord everything the bot made for the event: the recorded
+// channels, the lone channel of an older event, the category, the role,
+// and the scheduled event when asked (the site's delete). Best effort;
+// true when all of it is gone (or was already).
+export async function deleteDiscordObjects(
   env: { DISCORD_BOT_TOKEN?: string },
-  event: Pick<EventRow, 'id' | 'discord_role_id' | 'discord_channel_id'> & { discord_event_id?: string | null },
+  event: Pick<EventRow, 'id' | 'discord_role_id' | 'discord_channel_id' | 'discord_category_id'> & { discord_event_id?: string | null },
+  channels: Pick<EventChannelRow, 'channel_id'>[],
   scheduledToo = false,
 ): Promise<boolean> {
   const token = env.DISCORD_BOT_TOKEN;
-  if (!token) return !event.discord_role_id && !event.discord_channel_id;
+  if (!token) return !event.discord_role_id && !event.discord_channel_id && !event.discord_category_id && channels.length === 0;
   const reason = `lahtiag.fi event ${event.id}`;
   let ok = true;
-  if (event.discord_channel_id && !(await deleteChannel(token, event.discord_channel_id, reason))) ok = false;
+  const ids = new Set(channels.map((c) => c.channel_id));
+  if (event.discord_channel_id) ids.add(event.discord_channel_id);
+  for (const id of ids) if (!(await deleteChannel(token, id, reason))) ok = false;
+  if (event.discord_category_id && !(await deleteChannel(token, event.discord_category_id, reason))) ok = false;
   if (event.discord_role_id && !(await deleteGuildRole(token, DISCORD_GUILD_ID, event.discord_role_id, reason))) ok = false;
   if (scheduledToo && event.discord_event_id && !(await deleteScheduledEvent(token, DISCORD_GUILD_ID, event.discord_event_id, reason))) ok = false;
   return ok;
+}
+
+export type TeardownResult = 'ok' | 'partial' | 'nothing';
+
+// The board's "Delete everything" (or "Remove role and channel" on a
+// one-channel event): Discord first, then the site forgets it all either
+// way, so a half-deleted set never blocks a retry (the leftover is removed
+// by hand, as the flash says).
+export async function tearDownEventDiscord(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number): Promise<TeardownResult> {
+  const event = await getEvent(db, eventId);
+  if (!event || (!event.discord_role_id && !event.discord_channel_id && !event.discord_category_id)) return 'nothing';
+  const clean = await deleteDiscordObjects(env, event, await listEventChannels(db, eventId));
+  await db.batch([
+    db.prepare('DELETE FROM event_role_grants WHERE event_id = ?1').bind(eventId),
+    db.prepare('DELETE FROM event_discord_channels WHERE event_id = ?1').bind(eventId),
+    db.prepare('UPDATE events SET discord_role_id = NULL, discord_channel_id = NULL, discord_category_id = NULL WHERE id = ?1').bind(eventId),
+  ]);
+  return clean ? 'ok' : 'partial';
+}
+
+// Archive a big event: the role goes, so participants lose access and the
+// grants are forgotten; the category and its channels stay for the board.
+export async function archiveEventDiscord(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number): Promise<TeardownResult> {
+  const event = await getEvent(db, eventId);
+  if (!event?.discord_role_id) return 'nothing';
+  const token = env.DISCORD_BOT_TOKEN;
+  const clean = token ? await deleteGuildRole(token, DISCORD_GUILD_ID, event.discord_role_id, `lahtiag.fi event ${eventId} archived`) : false;
+  await db.batch([
+    db.prepare('DELETE FROM event_role_grants WHERE event_id = ?1').bind(eventId),
+    db.prepare('UPDATE events SET discord_role_id = NULL WHERE id = ?1').bind(eventId),
+  ]);
+  return clean ? 'ok' : 'partial';
+}
+
+// A retitled event renames its role and its category, or its lone
+// channel, to match; best effort.
+export async function renameEventDiscord(
+  env: { DISCORD_BOT_TOKEN?: string },
+  event: Pick<EventRow, 'id' | 'title' | 'starts_at' | 'ends_at' | 'discord_role_id' | 'discord_channel_id' | 'discord_category_id'>,
+  origin: string,
+): Promise<void> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return;
+  if (event.discord_role_id) await renameGuildRole(token, DISCORD_GUILD_ID, event.discord_role_id, roleName(event.title));
+  if (event.discord_category_id) {
+    await updateChannel(token, event.discord_category_id, { name: roleName(event.title) });
+  } else if (event.discord_channel_id) {
+    const url = `${origin}/events/${event.id}`;
+    await renameChannel(token, event.discord_channel_id, channelSlug(event.title, `event-${event.id}`), channelTopic(event, url, 'discussion'));
+  }
 }
 
 // --- Discord's scheduled events ------------------------------------------------
@@ -389,40 +639,4 @@ export async function syncScheduledEvent(
   if (!created.ok) return created.reason;
   await db.prepare('UPDATE events SET discord_event_id = ?2 WHERE id = ?1').bind(eventId, created.value.id).run();
   return 'created';
-}
-
-export type TeardownResult = 'ok' | 'partial' | 'nothing';
-
-// The board's "Remove role and channel": Discord first, then the site
-// forgets both either way, so a half-deleted pair never blocks a retry
-// (the leftover is removed by hand, as the flash says).
-export async function tearDownEventDiscord(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number): Promise<TeardownResult> {
-  const event = await getEvent(db, eventId);
-  if (!event || (!event.discord_role_id && !event.discord_channel_id)) return 'nothing';
-  const clean = await removeEventDiscordObjects(env, event);
-  await db.batch([
-    db.prepare('DELETE FROM event_role_grants WHERE event_id = ?1').bind(eventId),
-    db.prepare('UPDATE events SET discord_role_id = NULL, discord_channel_id = NULL WHERE id = ?1').bind(eventId),
-  ]);
-  return clean ? 'ok' : 'partial';
-}
-
-// A retitled event renames its role and channel to match; best effort.
-export async function renameEventDiscord(
-  env: { DISCORD_BOT_TOKEN?: string },
-  event: Pick<EventRow, 'id' | 'title' | 'starts_at' | 'ends_at' | 'discord_role_id' | 'discord_channel_id'>,
-  origin: string,
-): Promise<void> {
-  const token = env.DISCORD_BOT_TOKEN;
-  if (!token) return;
-  if (event.discord_role_id) await renameGuildRole(token, DISCORD_GUILD_ID, event.discord_role_id, roleName(event.title));
-  if (event.discord_channel_id) {
-    const url = `${origin}/events/${event.id}`;
-    await renameChannel(
-      token,
-      event.discord_channel_id,
-      channelSlug(event.title, `event-${event.id}`),
-      `${event.title.trim()} · ${formatHelsinkiRange(event.starts_at, event.ends_at)} · ${url}`.slice(0, 1024),
-    );
-  }
 }

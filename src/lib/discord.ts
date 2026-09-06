@@ -436,6 +436,7 @@ export const PERM_VIEW_CHANNEL = 1n << 10n;
 export const PERM_SEND_MESSAGES = 1n << 11n;
 export const PERM_READ_HISTORY = 1n << 16n;
 export const PERM_MANAGE_CHANNELS = 1n << 4n;
+export const PERM_CONNECT = 1n << 20n;
 
 export interface ChannelOverwrite {
   id: string;
@@ -494,22 +495,28 @@ export async function listGuildCategories(botToken: string, guildId: string): Pr
 export async function createGuildChannel(
   botToken: string,
   guildId: string,
-  input: { name: string; topic: string; parentId: string | null; overwrites: ChannelOverwrite[] },
+  input: { name: string; topic?: string; parentId: string | null; overwrites: ChannelOverwrite[]; voice?: boolean },
   reason: string,
 ): Promise<BotResult<{ id: string }>> {
+  // Voice channels take no topic; sending one is a 400.
   return botCall<{ id: string }>(
     botToken,
     'POST',
     `/guilds/${guildId}/channels`,
     {
       name: input.name,
-      type: 0,
-      topic: input.topic,
+      type: input.voice ? 2 : 0,
+      ...(input.voice ? {} : { topic: input.topic ?? '' }),
       parent_id: input.parentId,
       permission_overwrites: input.overwrites,
     },
     reason,
   );
+}
+
+// Any channel edit: a move into a category, a new name, new overwrites.
+export async function updateChannel(botToken: string, channelId: string, body: Record<string, unknown>): Promise<boolean> {
+  return (await botCall(botToken, 'PATCH', `/channels/${channelId}`, body)).ok;
 }
 
 export async function renameChannel(botToken: string, channelId: string, name: string, topic: string): Promise<void> {

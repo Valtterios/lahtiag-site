@@ -544,6 +544,26 @@ a:hover {
   margin: 0 0 2rem;
 }
 
+/* The Publish card's Discord choice, and the same choice in Board tools. */
+.publish-form {
+  display: grid;
+  gap: 0.5rem;
+}
+.publish-form .btn {
+  justify-self: start;
+}
+.publish-discord {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.publish-discord legend {
+  padding: 0;
+  margin-bottom: 0.2rem;
+}
+
 .signup-bar .btn[disabled] {
   opacity: 0.5;
   cursor: not-allowed;

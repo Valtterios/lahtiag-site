@@ -3,7 +3,7 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { deleteEvent, RuleError } from '../../../lib/db';
 import { deleteWebhookMessage } from '../../../lib/discord';
-import { removeEventDiscordObjects } from '../../../lib/event-discord';
+import { deleteDiscordObjects, listEventChannels } from '../../../lib/event-discord';
 
 // Permanent removal, signups and bracket included — for events that should
 // never have existed. A real event that fell through is cancelled instead,
@@ -19,12 +19,13 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   if (!(await checkCsrf(request, form))) return redirect(`/events/${id}?err=csrf`, 303);
 
   try {
+    const channels = await listEventChannels(env.DB, id);
     const event = await deleteEvent(env.DB, id);
     if (event.discord_message_id && env.DISCORD_WEBHOOK_URL) {
       await deleteWebhookMessage(env.DISCORD_WEBHOOK_URL, event.discord_message_id);
     }
-    // Its Discord role, channel and scheduled event, if it had them, go too.
-    await removeEventDiscordObjects(env, event, true);
+    // Its Discord role, channels, category and scheduled event, if it had them, go too.
+    await deleteDiscordObjects(env, event, channels, true);
   } catch (error) {
     if (error instanceof RuleError) return redirect(`/events/${id}?err=${error.code}`, 303);
     throw error;

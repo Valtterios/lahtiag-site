@@ -7,8 +7,8 @@ import { syncScheduledEvent, setUpEventDiscord } from '../../../lib/event-discor
 
 // Publish a draft: it lists, takes signups and sells from now on, the
 // announcement goes to Discord (its message id is kept for later edits),
-// and the bot puts it on Discord's event list and, unless the box was
-// unticked, makes the event's role and private channel.
+// and the bot puts it on Discord's event list and, by the choice on the
+// card, makes the event's role with one channel or its own category.
 
 export const POST: APIRoute = async ({ request, params, redirect, url }) => {
   const id = Number(params.id);
@@ -35,7 +35,8 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
     }
     const now = Math.floor(Date.now() / 1000);
     await syncScheduledEvent(env.DB, env, id, url.origin, now);
-    if (form.get('discord_channel') === 'on') await setUpEventDiscord(env.DB, env, id, url.origin, admin.session.discordId, now);
+    const setup = String(form.get('discord_setup') ?? (form.get('discord_channel') === 'on' ? 'channel' : 'none'));
+    if (setup === 'channel' || setup === 'category') await setUpEventDiscord(env.DB, env, id, url.origin, admin.session.discordId, now, setup);
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
     throw error;

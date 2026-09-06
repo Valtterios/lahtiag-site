@@ -20,7 +20,7 @@ import {
   listAllAnswers,
   type TicketTypeWithSales,
 } from '../../../lib/db';
-import { channelUrl, scheduledEventUrl, countGrants, participantIds, EVENT_CATEGORY_NAME } from '../../../lib/event-discord';
+import { channelUrl, scheduledEventUrl, countGrants, participantIds, listEventChannels, EVENT_CATEGORY_NAME } from '../../../lib/event-discord';
 import { questionOptions, answersComplete, QUESTION_KINDS } from '../../../lib/questions';
 import { purchaseOffer, pendingPurchaseFor, resumablePurchase } from '../../../lib/purchases';
 import { readBasket, basketCount } from '../../../lib/basket';
@@ -73,6 +73,10 @@ const sales = event && session?.isAdmin && types.length > 0 ? await salesSummary
 const botOn = Boolean(env.DISCORD_BOT_TOKEN);
 const discordParticipants = event ? participantIds(signups).length : 0;
 const discordGrants = event && session?.isAdmin && event.discord_role_id ? await countGrants(env.DB, event.id) : 0;
+const eventChannels = event && session?.isAdmin && (event.discord_category_id || event.discord_channel_id) ? await listEventChannels(env.DB, event.id) : [];
+const teamVoiceCount = eventChannels.filter((c) => c.kind === 'team').length;
+const teamsWithoutVoice = event?.discord_category_id ? eventTeams.filter((t) => !eventChannels.some((c) => c.kind === 'team' && c.event_team_id === t.id)).length : 0;
+const archived = Boolean(event?.discord_category_id && !event?.discord_role_id);
 const hasTicket = myTicket?.status === 'paid';
 const pendingPurchase = event && session ? await pendingPurchaseFor(env.DB, session.discordId, nowSeconds) : null;
 const resume = resumablePurchase(pendingPurchase, nowSeconds);
@@ -111,7 +115,7 @@ const signupsClosed = event?.signups_closed_at != null;
 const open = event ? event.cancelled_at === null && !signupsClosed : false;
 
 // Flashes from board actions open the (otherwise folded) board tools.
-const DISCORD_OPEN = new Set(['discord_created', 'discord_synced', 'discord_removed', 'discord_event_created', 'discord_event_removed', 'discord_event_skipped', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
+const DISCORD_OPEN = new Set(['discord_created', 'discord_synced', 'discord_removed', 'discord_upgraded', 'discord_archived', 'discord_team_voice', 'discord_needs_category', 'discord_no_teams', 'discord_event_created', 'discord_event_removed', 'discord_event_skipped', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
 const ADMIN_OPEN = new Set(['cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
 const okKey = Astro.url.searchParams.get('ok') ?? '';
 const errKey = Astro.url.searchParams.get('err') ?? '';
@@ -147,9 +151,11 @@ const FLASH: Record<string, string> = {
   discord_forbidden: "Discord refused. The bot's role needs Manage Roles, Manage Channels and Manage Events, and must sit above the roles it creates.",
   discord_event_skipped: 'Discord events are made for published, upcoming events only.',
   discord_error: "Discord didn't answer. Try again in a moment.",
-  discord_exists: 'This event already has a role and channel.',
+  discord_exists: 'This event already has that on Discord.',
+  discord_needs_category: "Team voice channels go in the event's own category. Upgrade first.",
+  discord_no_teams: 'No teams yet, so no team voice channels.',
   discord_missing: 'No such event.',
-  discord_partial: 'The site forgot the role and channel, but Discord refused to delete one of them. Remove the leftover by hand in Discord.',
+  discord_partial: 'The site did its part, but Discord refused to delete something. Remove the leftover by hand in Discord.',
 };
 // Short tags on ticket rows for why a type is not open to this person.
 const TYPE_TAGS: Record<string, string> = {
@@ -175,11 +181,16 @@ const OK: Record<string, string> = {
   cover_saved: 'Cover image saved.',
   cover_removed: 'Cover image removed.',
   discord_created: 'Role and channel created. Everyone on the roster has the role; new signups get it as they come.',
-  discord_removed: 'The role and the channel are deleted from Discord.',
+  discord_removed: 'Deleted from Discord: the role and every channel the bot made for this event.',
+  discord_upgraded: 'Own category made. The channel moved in as discussion, with rules, teams, Commentators and Interviews beside it.',
+  discord_archived: 'Archived. The role is gone, so participants no longer see the channels; the board still does.',
   discord_event_created: "The event is on Discord's event list.",
   discord_event_removed: "The Discord event was removed, as this event isn't published or is cancelled.",
 };
 // The sync's tally rides along in the query.
+function teamVoiceMessage(p: URLSearchParams): string {
+  return `Team voice channels: ${p.get('c') ?? 0} made, ${p.get('x') ?? 0} removed, ${p.get('t') ?? 0} teams in all.`;
+}
 function syncedMessage(p: URLSearchParams): string {
   const parts = [`${p.get('a') ?? 0} given`, `${p.get('r') ?? 0} taken away`];
   if (Number(p.get('m'))) parts.push(`${p.get('m')} not in the Discord server yet`);
@@ -187,7 +198,7 @@ function syncedMessage(p: URLSearchParams): string {
   if (Number(p.get('left'))) parts.push(`${p.get('left')} left for the next sync`);
   return `Role synced: ${parts.join(', ')}.`;
 }
-const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro.url.searchParams) : OK[okKey]) ?? null;
+const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro.url.searchParams) : okKey === 'discord_team_voice' ? teamVoiceMessage(Astro.url.searchParams) : OK[okKey]) ?? null;
 ---
 <Base
   title={event ? event.title : 'Event not found'}
@@ -243,7 +254,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 <span>You have a ticket · {myTicket.type_name}{myTicket.checked_in_at ? ' · checked in' : ''} · <a href={`/tickets/${myTicket.code}`}>Show ticket</a></span>
               </li>
             )}
-            {event.discord_channel_id && (mine || hasTicket || session?.isAdmin) && (
+            {event.discord_channel_id && (session?.isAdmin || (event.discord_role_id && (mine || hasTicket))) && (
               <li class="event-fact-mine">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>
                 <span><a href={channelUrl(event.discord_channel_id)} rel="noopener">Participants' channel on Discord</a></span>
@@ -274,7 +285,12 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
           <form method="post" action={`/events/${event.id}/publish`} class="publish-form">
             <input type="hidden" name="csrf" value={csrf} />
             {botOn && !event.discord_role_id && (
-              <label class="check"><input type="checkbox" name="discord_channel" checked /> <span>Also a Discord role and private channel for participants</span></label>
+              <fieldset class="publish-discord">
+                <legend class="queue-meta">On Discord, for participants:</legend>
+                <label class="check"><input type="radio" name="discord_setup" value="channel" checked /> <span>A role and one channel under Events</span></label>
+                <label class="check"><input type="radio" name="discord_setup" value="category" /> <span>A role and an own category: rules, teams, discussion, Commentators and Interviews voice</span></label>
+                <label class="check"><input type="radio" name="discord_setup" value="none" /> <span>Nothing beyond the event list</span></label>
+              </fieldset>
             )}
             <button class="btn btn-cta" type="submit" data-confirm="Publish this event? It goes on Discord right away.">Publish</button>
           </form>
@@ -706,10 +722,29 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               <h3>Role and channel</h3>
               </>
             )}
-            {!botOn ? null : event.discord_role_id || event.discord_channel_id ? (
+            {!botOn ? null : archived ? (
               <>
                 <p class="event-meta">
-                  This event has its own role and a private channel{event.discord_channel_id && <>: <a href={channelUrl(event.discord_channel_id)} rel="noopener">open the channel</a></>}.
+                  Archived: the role is gone, so participants no longer see the channels; the board still does{event.discord_channel_id && <>: <a href={channelUrl(event.discord_channel_id)} rel="noopener">open them</a></>}.
+                  Delete everything removes the category with all {eventChannels.length} channels, messages included.
+                </p>
+                <div class="signup-bar">
+                  <form method="post" action={`/events/${event.id}/discord`}>
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="remove" />
+                    <button class="btn btn-ghost" type="submit" data-confirm="Delete the event's category with every channel in it, messages included?">Delete everything</button>
+                  </form>
+                </div>
+              </>
+            ) : event.discord_role_id || event.discord_channel_id ? (
+              <>
+                <p class="event-meta">
+                  {event.discord_category_id ? (
+                    <>Own category with {eventChannels.length} channels: rules, teams, discussion, Commentators and Interviews{teamVoiceCount > 0 ? `, and ${teamVoiceCount} team voice channels` : ''}.</>
+                  ) : (
+                    <>One channel under the shared {EVENT_CATEGORY_NAME} category.</>
+                  )}
+                  {event.discord_channel_id && <> <a href={channelUrl(event.discord_channel_id)} rel="noopener">Open it</a>.</>}
                   {' '}<strong>{discordGrants}</strong> of <strong>{discordParticipants}</strong> participants with a Discord account hold the role{discordParticipants > discordGrants ? '; the rest are not in the server yet, or wait for a sync' : ''}.
                   The role follows the roster on its own; Sync now repairs any drift.
                 </p>
@@ -719,11 +754,40 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                     <input type="hidden" name="action" value="sync" />
                     <button class="btn btn-ghost" type="submit">Sync now</button>
                   </form>
-                  <form method="post" action={`/events/${event.id}/discord`}>
-                    <input type="hidden" name="csrf" value={csrf} />
-                    <input type="hidden" name="action" value="remove" />
-                    <button class="btn btn-ghost" type="submit" data-confirm="Delete the event's Discord role and channel, messages included?">Remove role and channel</button>
-                  </form>
+                  {!event.discord_category_id && (
+                    <form method="post" action={`/events/${event.id}/discord`}>
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="action" value="upgrade" />
+                      <button class="btn btn-ghost" type="submit" data-confirm="Make an own category? The channel moves in as discussion; rules, teams, Commentators and Interviews are added.">Upgrade to own category</button>
+                    </form>
+                  )}
+                  {event.discord_category_id && isTeamEvent && (
+                    <form method="post" action={`/events/${event.id}/discord`}>
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="action" value="team_voice" />
+                      <button class="btn btn-ghost" type="submit">{teamsWithoutVoice > 0 ? `Team voice channels (${teamsWithoutVoice} to make)` : 'Refresh team voice channels'}</button>
+                    </form>
+                  )}
+                  {event.discord_category_id ? (
+                    <>
+                      <form method="post" action={`/events/${event.id}/discord`}>
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="archive" />
+                        <button class="btn btn-ghost" type="submit" data-confirm="Archive? The role is removed, so participants lose access; the channels stay for the board.">Archive</button>
+                      </form>
+                      <form method="post" action={`/events/${event.id}/discord`}>
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="remove" />
+                        <button class="btn btn-ghost" type="submit" data-confirm="Delete the event's category with every channel in it, messages included?">Delete everything</button>
+                      </form>
+                    </>
+                  ) : (
+                    <form method="post" action={`/events/${event.id}/discord`}>
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="action" value="remove" />
+                      <button class="btn btn-ghost" type="submit" data-confirm="Delete the event's Discord role and channel, messages included?">Remove role and channel</button>
+                    </form>
+                  )}
                 </div>
               </>
             ) : (
@@ -731,12 +795,15 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 <input type="hidden" name="csrf" value={csrf} />
                 <input type="hidden" name="action" value="create" />
                 <p class="event-meta">
-                  A role named after the event and a private text channel only that role and the board can see, under the
-                  bot's <strong>{EVENT_CATEGORY_NAME}</strong> category (made the first time). Everyone on the roster gets the
-                  role now; from then on each signup, team join and paid ticket gets it and each departure loses it. Walk-ins
-                  added by name have no Discord account and are skipped.
+                  A role named after the event, and channels only that role and the board can see. Everyone on the roster gets
+                  the role now; from then on each signup, team join and paid ticket gets it and each departure loses it.
+                  Walk-ins added by name have no Discord account and are skipped.
                 </p>
-                <button class="btn btn-primary" type="submit">Create role and channel</button>
+                <fieldset class="publish-discord">
+                  <label class="check"><input type="radio" name="size" value="channel" checked /> <span>One text channel under the shared {EVENT_CATEGORY_NAME} category</span></label>
+                  <label class="check"><input type="radio" name="size" value="category" /> <span>Own category: rules, teams, discussion, Commentators and Interviews voice; team voice channels on request</span></label>
+                </fieldset>
+                <button class="btn btn-primary" type="submit">Create</button>
               </form>
             )}
           </details>

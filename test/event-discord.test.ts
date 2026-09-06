@@ -17,6 +17,12 @@ import {
   scheduledEventUrl,
   syncScheduledEvent,
   DEFAULT_EVENT_HOURS,
+  planTeamChannels,
+  BIG_EVENT_CHANNELS,
+  listEventChannels,
+  recordEventChannel,
+  archiveEventDiscord,
+  createTeamVoiceChannels,
   type SetRole,
 } from '../src/lib/event-discord';
 import type { RoleResult } from '../src/lib/discord';
@@ -29,7 +35,7 @@ const db = () => env.DB;
 const cfg = { DISCORD_BOT_TOKEN: 'tok' };
 
 async function wipe(): Promise<void> {
-  for (const table of ['event_role_grants', 'signups', 'event_teams', 'events', 'members']) {
+  for (const table of ['event_role_grants', 'event_discord_channels', 'signups', 'event_teams', 'events', 'members']) {
     await db().prepare(`DELETE FROM ${table}`).run();
   }
 }
@@ -235,5 +241,57 @@ describe("Discord's scheduled event", () => {
     await db().prepare('UPDATE events SET published_at = ?2 WHERE id = ?1').bind(id, NOW).run();
     expect(await syncScheduledEvent(db(), cfg, id, 'https://lahtiag.fi', NOW + 86400 * 2)).toBe('skipped');
     expect(await syncScheduledEvent(db(), cfg, 999, 'https://lahtiag.fi', NOW)).toBe('error');
+  });
+});
+
+describe('a big event: its own category', () => {
+  beforeEach(wipe);
+
+  it('has the five channels, rules read-only, in order', () => {
+    expect(BIG_EVENT_CHANNELS.map((c) => c.kind)).toEqual(['rules', 'teams', 'discussion', 'commentators', 'interviews']);
+    expect(BIG_EVENT_CHANNELS.find((c) => c.kind === 'rules')?.readOnly).toBe(true);
+    expect(BIG_EVENT_CHANNELS.filter((c) => c.voice).map((c) => c.kind)).toEqual(['commentators', 'interviews']);
+  });
+
+  it('plans a voice channel per team, and drops the ones whose team is gone', () => {
+    const plan = planTeamChannels([{ id: 1 }, { id: 2 }, { id: 3 }], [{ event_team_id: 2 }, { event_team_id: 9 }, { event_team_id: null }]);
+    expect(plan.create.map((t) => t.id)).toEqual([1, 3]);
+    expect(plan.remove).toEqual([{ event_team_id: 9 }]);
+  });
+
+  it('refuses team voice channels without an own category, and without teams', async () => {
+    const id = await seedEvent();
+    await db().prepare("UPDATE events SET discord_role_id = 'R', discord_channel_id = 'C' WHERE id = ?1").bind(id).run();
+    expect(await createTeamVoiceChannels(db(), { ...cfg, ADMIN_ROLE_ID: '0' }, id, NOW)).toEqual({ ok: false, reason: 'needs_category' });
+    await db().prepare("UPDATE events SET discord_category_id = 'K' WHERE id = ?1").bind(id).run();
+    expect(await createTeamVoiceChannels(db(), { ...cfg, ADMIN_ROLE_ID: '0' }, id, NOW)).toEqual({ ok: false, reason: 'no_teams' });
+  });
+
+  it('archives by dropping the role and the grants but keeping the channels; delete forgets everything', async () => {
+    const id = await seedEvent();
+    await db().prepare("UPDATE events SET discord_role_id = 'R', discord_channel_id = 'C', discord_category_id = 'K' WHERE id = ?1").bind(id).run();
+    await recordEventChannel(db(), id, 'C', 'discussion', null, NOW);
+    await recordEventChannel(db(), id, 'C2', 'rules', null, NOW);
+    await recordEventChannel(db(), id, 'V1', 'team', 7, NOW);
+    await seedMember('111111');
+    await setSignup(db(), id, '111111', 'yes', NOW);
+    await syncEventRole(db(), cfg, id, NOW, 40, stub().setRole);
+    expect(await countGrants(db(), id)).toBe(1);
+
+    expect(await archiveEventDiscord(db(), {}, id)).toBe('partial'); // no token: Discord untouched, the site still forgets the role
+    const after = await getEvent(db(), id);
+    expect(after?.discord_role_id).toBeNull();
+    expect(after?.discord_category_id).toBe('K');
+    expect(await countGrants(db(), id)).toBe(0);
+    expect((await listEventChannels(db(), id)).map((c) => c.channel_id)).toEqual(['C', 'C2', 'V1']);
+    expect(await archiveEventDiscord(db(), {}, id)).toBe('nothing');
+
+    expect(await tearDownEventDiscord(db(), {}, id)).toBe('partial');
+    expect(await listEventChannels(db(), id)).toEqual([]);
+    expect((await getEvent(db(), id))?.discord_category_id).toBeNull();
+
+    await recordEventChannel(db(), id, 'C9', 'discussion', null, NOW);
+    await deleteEvent(db(), id);
+    expect(await listEventChannels(db(), id)).toEqual([]);
   });
 });

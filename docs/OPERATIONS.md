@@ -119,16 +119,30 @@ makes it again; deleting the event deletes it. Events that already started
 are left alone. An event published before the bot did this has a
 **Create Discord event** button in Board tools → Discord.
 
-**A role and a channel.** Every event also gets its own private channel
-by default: the Publish card has "Also a Discord role and private channel
-for participants" ticked (untick it for an event that doesn't need one;
-Board tools → **Discord** → **Create role and channel** adds it later),
-and events created from `/tournament` get one straight away. The bot makes a
-role named after the event and a text channel that only that role (and the
-board) can see, under an **Events** category the bot creates the first
-time and keeps for all event channels (rename or move it freely; if it is
-deleted, the next event makes a new one). It posts a welcome line in the
-channel and gives the role to everyone already on the roster. From then on
+**A role and channels.** The Publish card asks what the event gets on
+Discord; events created from `/tournament` get the first option:
+
+- **A role and one channel under Events** (the default). A text channel
+  named after the event under an **Events** category the bot creates the
+  first time and keeps for all such channels (rename or move it freely;
+  if it is deleted, the next event makes a new one).
+- **A role and an own category** for a big event: a category named after
+  the event holding `rules` (participants read, the board posts), `teams`,
+  `discussion`, and the **Commentators** and **Interviews** voice
+  channels. Once teams exist, **Team voice channels** in Board tools →
+  Discord makes one per team, named after it; run it again after teams
+  change and new teams get theirs, disbanded ones lose theirs.
+- **Nothing** beyond the event list.
+
+A one-channel event that grows has **Upgrade to own category**: the
+channel moves in as discussion and the rest is added. The bot sets each
+channel's permissions once and never touches them again, so lock a
+channel in Discord (say, Commentators for the casters only) and it stays.
+
+Either way the bot makes a role named after the event that only the role
+(and the board) can see the channels with, posts a welcome line in the
+discussion channel, and gives the role to everyone already on the roster.
+From then on
 every signup, team join and paid ticket gets the role, and every
 departure, removal, refund or erasure loses it; the event page shows
 participants a link to the channel. Walk-ins added by name have no Discord
@@ -137,10 +151,14 @@ the server yet (they get the role at the next sync after they join).
 
 The panel shows how many participants hold the role. **Sync now** repairs
 drift (someone who joined the server after signing up, a change Discord
-refused) and does at most 40 changes per click. **Remove role and
-channel** deletes both from Discord, messages included, so archive first
-if you want to keep them. Deleting the event removes them too; cancelling
-leaves them. Editing the title renames both.
+refused) and does at most 40 changes per click. Afterwards, a one-channel
+event has **Remove role and channel**, which deletes both, messages
+included. A big event has two: **Archive** removes the role, so
+participants lose access while the board keeps the channels and their
+history, and **Delete everything** removes the category with every
+channel in it. Deleting the event on the site removes all of it too;
+cancelling leaves it. Editing the title renames the role and the category
+or channel.
 
 The bot needs, on its own role (Server Settings → Roles → the role named
 after the application): **View Channels**, **Manage Roles**, **Manage

@@ -71,6 +71,7 @@ export interface EventRow {
   discord_role_id: string | null; // the event's own role, given to everyone on the roster (src/lib/event-discord.ts)
   discord_channel_id: string | null; // its private channel
   discord_event_id: string | null; // Discord's scheduled event, made on publish
+  discord_category_id: string | null; // a big event's own category; null = one channel under the shared Events category
 }
 
 export interface EventWithCounts extends EventRow {
@@ -378,6 +379,7 @@ export async function deleteEvent(db: D1Database, id: number): Promise<EventRow>
   await db.batch([
     db.prepare('DELETE FROM bracket_matches WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM event_role_grants WHERE event_id = ?1').bind(id),
+    db.prepare('DELETE FROM event_discord_channels WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM signups WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM event_teams WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM events WHERE id = ?1').bind(id),
