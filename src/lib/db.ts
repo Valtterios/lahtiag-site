@@ -81,6 +81,8 @@ export interface EventRow {
   bracket_live_at: number | null; // null = the generated bracket is a draft only the board sees
   signups_open_at: number | null; // null = from publication; else signups and sales wait for this moment
   interest_synced_at: number | null; // last time Discord's Interested clicks were read
+  reminder_sent_at: number | null; // the hourly job's day-before reminder, once
+  open_posted_at: number | null; // the hourly job's "signups are open" post, once
 }
 
 export interface EventWithCounts extends EventRow {

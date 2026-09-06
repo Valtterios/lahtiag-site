@@ -118,6 +118,15 @@ tournament day, prefer the panel.
 
 ## Events on Discord: the event list, a role and a channel
 
+**The hourly job.** A Cron Trigger runs the Worker every hour
+(`src/lib/cron.ts`): the day before an event starts it posts a reminder
+into the event's channel with the role pinged (or into the announcements
+channel, without a ping, when the event has no channel); when a "signups
+open at" moment passes it posts "Signups are open" to the announcements
+channel and the event's channel; it tells people let in from a waitlist;
+and it refreshes the Interested counts from Discord. Each step is
+recorded on the event, so nothing is posted twice.
+
 **Waitlist.** A full event with plain signups, a capacity and no ticket
 types offers "Join the waitlist". Whenever a seat frees (someone leaves
 or steps back to maybe, the board removes someone, the capacity is

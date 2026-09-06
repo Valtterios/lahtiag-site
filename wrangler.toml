@@ -1,12 +1,19 @@
 # The dashboard Worker name must equal this `name` (Workers Builds requires it).
 name = "lahtiag-site"
 
-# With @astrojs/cloudflare 13+ the entrypoint is a package specifier; the
-# adapter resolves it during `astro build`. Do not point this at dist/.
-main = "@astrojs/cloudflare/entrypoints/server"
+# Our own entry wraps the adapter's request handler and adds the hourly
+# Cron Trigger's `scheduled` handler (src/worker.ts). The adapter builds it
+# during `astro build`. Do not point this at dist/.
+main = "./src/worker.ts"
+
 
 compatibility_date = "2026-08-01"
 compatibility_flags = ["nodejs_compat"]
+
+# The hourly job: day-before reminders, "signups are open" posts, waitlist
+# promotions, Discord's Interested counts (src/lib/cron.ts). Production only.
+[triggers]
+crons = ["0 * * * *"]
 
 [assets]
 # The @astrojs/cloudflare adapter rewrites this to "../client" (relative to

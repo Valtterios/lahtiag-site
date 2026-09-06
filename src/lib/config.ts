@@ -6,3 +6,5 @@
 // uses; importing it from here rather than reintroducing it as a `[vars]`
 // entry keeps there being exactly one definition.
 export const DISCORD_GUILD_ID = '1210598510999633971';
+// The public address, for links made outside a request (the hourly job).
+export const SITE_ORIGIN = 'https://lahtiag.fi';

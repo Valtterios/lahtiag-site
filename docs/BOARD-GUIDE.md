@@ -68,6 +68,9 @@ the bottom right lets you view a page as a member or a visitor would.
   signups. Add a ticket type and it sells tickets instead; a paid ticket
   is the signup. Set a price, a member price, members-only, a quantity,
   a sales deadline, and a line describing what the ticket includes.
+- **Reminders.** The day before an event the bot posts a reminder in the
+  event's Discord channel and pings its role; when signups open at a set
+  time it posts that too. Nothing to press.
 - **My events.** Each member's membership page lists what they have a
   stake in: tickets, going, maybe, waitlists and hearts, upcoming only.
 - **Signups open later, and the heart.** "Signups open on/at" in the
