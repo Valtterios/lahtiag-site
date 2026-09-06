@@ -215,7 +215,7 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     if (!isAdmin) {
       return json({ type: 4, data: { content: 'This needs the admin role.', flags: 64 } });
     }
-    return json({ type: 4, data: { flags: 64, ...controlPanel() } });
+    return json({ type: 4, data: { flags: 64, ...controlPanel(url.origin) } });
   }
 
   // Announcement buttons (e:go, e:maybe, e:heart): anyone in the server.
@@ -579,7 +579,7 @@ async function memberName(env: WorkerEnv, discordId: string): Promise<string | n
 
 // Two levels: /tournament opens the category chooser, a category button
 // swaps the same ephemeral message to that category's actions, Back returns.
-function controlPanel(): { content: string; components: unknown[] } {
+function controlPanel(origin: string): { content: string; components: unknown[] } {
   return {
     content: '<:lahtiag:1544775220458430565> **Tournament controls**. Pick a category:',
     components: [
@@ -592,11 +592,20 @@ function controlPanel(): { content: string; components: unknown[] } {
           { type: 2, style: 2, label: 'Announce & screen', custom_id: 't:cat:comms', emoji: { id: '1544775849738502174', name: 'lag_news' } },
         ],
       },
+      {
+        // The board's pages on the site, one click away.
+        type: 1,
+        components: [
+          { type: 2, style: 5, label: 'Whitelist', url: `${origin}/whitelist`, emoji: { name: '⛏️' } },
+          { type: 2, style: 5, label: 'Register', url: `${origin}/register` },
+          { type: 2, style: 5, label: 'News', url: `${origin}/announcements` },
+        ],
+      },
     ],
   };
 }
 
-function categoryPanel(category: string): { content: string; components: unknown[] } {
+function categoryPanel(category: string, origin: string): { content: string; components: unknown[] } {
   const back = { type: 2, style: 2, label: 'Back', custom_id: 't:cat:home', emoji: { name: '◀️' } };
   if (category === 'event') {
     return {
@@ -647,7 +656,7 @@ function categoryPanel(category: string): { content: string; components: unknown
       ],
     };
   }
-  return controlPanel();
+  return controlPanel(origin);
 }
 
 function announceModal() {
@@ -719,7 +728,7 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
       // Category navigation: swap the same ephemeral message between the
       // chooser and a category's actions.
       const category = customId.slice('t:cat:'.length);
-      const panel = category === 'home' ? controlPanel() : categoryPanel(category);
+      const panel = category === 'home' ? controlPanel(origin) : categoryPanel(category, origin);
       await edit(panel.content, panel.components);
     } else if (customId.startsWith('t:pick:')) {
       // Step 2: choose which event the action applies to.

@@ -214,7 +214,8 @@ puts it on the page and on Discord.
   member gets a DM either way.
 - **Board.** `/whitelist add <name>` whitelists anyone, member or not;
   `/whitelist drop <name>` removes any name; lahtiag.fi/whitelist is the
-  whole table. A former member's names go off the servers on their own.
+  whole table, linked from Board tools on the events page and from the
+  `/tournament` panel. A former member's names go off the servers on their own.
 - **Actives requests** land in the board channel the same way, with
   Approve and Decline buttons; approving gives the Actives role at once.
 - **A friend who joins.** When a friend becomes a member and whitelists
