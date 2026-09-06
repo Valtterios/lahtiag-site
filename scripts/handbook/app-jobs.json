@@ -1,0 +1,10 @@
+[
+ {"src":"docs/images/door/app-1-appstore.jpg","scale":1,"clip":[0,0,480,370],"width":480,"format":"jpg","out":"docs/images/door/app-1-appstore.jpg"},
+ {"src":"docs/images/door/app-2-home.jpg","scale":1,"clip":[0,0,480,370],"hl":[{"box":[416,18,464,66]}],"width":480,"format":"jpg","out":"docs/images/door/app-2-home.jpg"},
+ {"src":"docs/images/door/app-3-menu.jpg","scale":1,"clip":[0,0,480,560],"hl":[{"box":[20,130,460,200]}],"width":480,"format":"jpg","out":"docs/images/door/app-3-menu.jpg"},
+ {"src":"docs/images/door/app-5-method.jpg","scale":1,"clip":[0,30,480,590],"hl":[{"box":[18,203,462,302]}],"width":480,"format":"jpg","out":"docs/images/door/app-5-method.jpg"},
+ {"src":"docs/images/door/app-6-enable.jpg","scale":1,"clip":[0,500,480,984],"hl":[{"box":[36,880,444,944]}],"width":480,"format":"jpg","out":"docs/images/door/app-6-enable.jpg"},
+ {"src":"docs/images/door/app-7-linking.jpg","scale":1,"clip":[0,0,480,484],"width":480,"format":"jpg","out":"docs/images/door/app-7-linking.jpg"},
+ {"src":"docs/images/door/app-4-amount.jpg","scale":1,"clip":[0,30,480,620],"hl":[{"box":[36,566,444,614]}],"width":480,"format":"jpg","out":"docs/images/door/app-4-amount.jpg"},
+ {"src":"docs/images/door/app-5-method.jpg","scale":1,"clip":[0,30,480,620],"hl":[{"box":[18,203,462,302]}],"width":480,"format":"jpg","out":"docs/images/door/app-5-tap.jpg"}
+]

@@ -97,6 +97,11 @@ returns to the categories):
 8. **📣 Announce** publishes to the site's News page and the Discord channel
    at once. **❌ Cancel event** (Event) if the day falls through.
 
+| | |
+|---|---|
+| ![bracket-draft](images/site/bracket-draft.png) | ![bracket-live](images/site/bracket-live.png) |
+| The bracket page while the draw is a draft: rearrange round one, 1 Save seeding, then 2 Go live. | After the final: the champion banner; W records a winner, ↺ reverts a result. |
+
 Editing event details (times, capacity, organizers, stream link,
 description) and permanently deleting an event are done on the website —
 event page → Admin. Delete (in the Danger zone) erases signups, teams, and
@@ -105,6 +110,10 @@ A cancelled event has a **Reinstate this event** button: it takes the
 "Cancelled" line off Discord and posts that it's back on. Destructive
 buttons on the site (cancel, delete, reject, erase, remove access, merge,
 regenerate bracket) ask "are you sure" first.
+
+![Board tools on an event page](images/site/event-board-tools.png)
+
+*Board tools on an event page: 1 the status pills, 2 the door page, 3 the folded sections (Edit, Discord, Tickets, Questions, Manage participants, Photos, Danger zone).*
 
 The Admin panel's **Manage participants** section edits the roster directly,
 skipping the normal signup rules (closed signups, capacity): change anyone's
@@ -172,6 +181,10 @@ Add cover / Replace cover / Remove cover for the board. The picture shows
 under the title on the site and goes to Discord attached to the post; a
 cover changed after publishing replaces the picture on the Discord
 message too.
+
+![The post form](images/site/news-board-tools.png)
+
+*The post form under Board tools on the news page: 1 the cover, 2 the ping, 3 the schedule.*
 
 **Stats and the profile card.** The membership page shows each member's
 events attended, tournaments played and won, with a card picture drawn
@@ -329,6 +342,10 @@ on the site at **/register**, replacing the Google Form + Sheet. The way in
 is the footer link **Member register (board)** on every page; anyone else
 who clicks it only sees "Board members only".
 
+![The register](images/site/register-toolbar.png)
+
+*The register: 1 Add entry, 2 Venue lookup, 3 Access, 4 Export CSV, and the counts.*
+
 **Who can open it.** Not the Discord role: the register needs a sign-in
 with a lahtiag.fi Google Workspace account that is on the access list. The
 sign-in lasts eight hours (a separate cookie from the Discord one; "End
@@ -366,6 +383,11 @@ Workspace accounts on the list; the register is only as safe as they are.
   to stay). Nothing is emailed either way: tell them on Discord or by mail
   if you like. Someone who applied while signed in sees their status on
   /join.
+
+![Applications waiting](images/site/register-queue.png)
+
+*Applications at the top of the register: 1 Approve or Reject, 2 Merge into this entry on a hinted duplicate.*
+
 - **Membership type** follows the rules (4 §): *full* (current LUT/LAB
   students, set automatically from what they picked), *external* (everyone
   else who applies; the old sheet called this "outside"), *supporting* and
@@ -379,6 +401,12 @@ Workspace accounts on the list; the register is only as safe as they are.
   the record; **Erase** deletes it for good, which is the answer to a GDPR
   erasure request. Event signups are separate data: "Remove a member
   everywhere" on /events handles those.
+
+| | |
+|---|---|
+| ![register-entry](images/site/register-entry.png) | ![register-member-entry](images/site/register-member-entry.png) |
+| An application's page: 1 Approve membership, 2 Reject and delete. | A member's page: Mark as former member keeps the record. |
+
 - **Add entry** (toolbar) is for people who don't come through the form:
   honorary members invited by the general meeting, supporting members,
   applications on paper. The entry records who added it.
@@ -403,6 +431,11 @@ Workspace accounts on the list; the register is only as safe as they are.
   current members by class, by school, and joined per year.
 - **Access** (toolbar) is the list of Google accounts that can open the
   register; see "Who can open it" above.
+
+![Who can open the register](images/site/register-access.png)
+
+*The Access page: the fixed accounts from the configuration and the ones granted on the page.*
+
 - **Discord link requests**: a member from the old form who signs in with
   Discord can ask, on /join, to have that account linked to their entry by
   giving the email they registered with. The request shows at the top of
@@ -431,6 +464,11 @@ Workspace accounts on the list; the register is only as safe as they are.
 - **At the door**: /register/lookup is the phone view. Type a name, see
   MEMBER / PENDING / FORMER in big letters. On event pages, admins also see
   a small *member* mark next to signups from linked Discord accounts.
+
+| | |
+|---|---|
+| ![Member check](images/site/lookup.png) | The member check on a phone: a name in, the status out, nothing else. |
+
 - **Export**: the Export CSV button on /register downloads the list (or the
   filtered status) for the annual report or a backup. Treat the file as
   personal data: keep it in the association's Drive, not on a laptop
@@ -475,6 +513,11 @@ version:
   linked members), members-only, quantity, sales close (default: when the
   event starts), on sale or not. A type with sold tickets can't be deleted,
   only retired.
+
+![Ticket types](images/site/event-tickets-panel.png)
+
+*Tickets under Board tools: the sales line, 2 Door page, 1 Export CSV, and a row per type.*
+
 - **Membership gating** on any event, ticketed or not: **Members only**
   needs a linked, current membership to sign up or buy; **Seats reserved
   for members** keeps that many of the capacity for members (guests stop
@@ -626,7 +669,7 @@ payments).
 
 | | |
 |---|---|
-| ![Amount](images/door/app-4-amount.jpg) | ![Method](images/door/app-5-method.jpg) |
+| ![Amount](images/door/app-4-amount.jpg) | ![Method](images/door/app-5-tap.jpg) |
 | 1. **+** → **Charge card or send invoice**. Type the amount from the door page's "Card at the door" line, and the buyer's name as the **Description**. | 2. **Tap to Pay**, **Next**. The buyer holds their card or phone to the top edge of the iPhone until it confirms. |
 
 The name matters: it travels with the payment and is filled in for you on
@@ -642,13 +685,13 @@ hours, and disappears everywhere once attached.
 
 | | |
 |---|---|
-| ![Door page](images/door/site-1-door.png) | ![Attach](images/door/site-2-attach.png) |
-| The door page: scan, sales QR, "Card at the door" with the amounts, the waiting payment, the list. | The payment: name pre-filled from the app's description, ticket type pre-picked when the amount matches a price. Press **Attach**. |
+| ![door-scan](images/site/door-scan.png) | ![door-tap](images/site/door-tap.png) |
+| The door page: the mark of the day, scan or type a code; the sales QRs follow below. | "Card at the door" and the waiting payment: name pre-filled from the app's description, ticket type pre-picked when the amount matches a price. Press **Attach**. |
 
 | | |
 |---|---|
-| ![After](images/door/site-3-after.png) | |
-| The person now holds a paid ticket marked *door*, already checked in. Undo is there if it was the wrong one. | |
+| ![door-list](images/site/door-list.png) | ![door-sell](images/site/door-sell.png) |
+| The list: a person attached this way holds a paid ticket marked *door*, already checked in (green). Undo is there if it was the wrong one. | The sales QR per ticket type, for buyers with their own phone. |
 
 ### Buyers with their own phone
 
@@ -684,6 +727,14 @@ member whose status in the register turns to former loses their names on
 the next pull, board names stay. A name can be on the list once, in any
 letter case.
 
+![The Minecraft tab](images/site/membership-minecraft.png)
+
+*The membership page's Minecraft tab: names with the skin's face, 1 Change, 2 Ask the board for a friend.*
+
+![The whitelist reply in Discord](images/discord/whitelist-me.png)
+
+*The bot's answer to `/whitelist me`, with the skin, visible to that person only.*
+
 A friend is an application: it sits in the table at lahtiag.fi/whitelist
 and in the board channel as a line with Approve and Decline buttons (the
 bot posts it, since a webhook cannot carry buttons; without the bot the
@@ -692,6 +743,10 @@ with `/whitelist approve <name>` or `/whitelist decline <name>`, or on
 the table; the member gets a DM. The name reaches the servers only once
 approved. Actives requests from the membership page arrive the same way,
 and approving one gives the Actives role right there.
+
+![The whitelist table](images/site/whitelist-table.png)
+
+*lahtiag.fi/whitelist: the pending friends with Approve and Decline, and the whole list.*
 
 Every name is checked with Mojang when it is saved: a name with no
 account is refused, the exact spelling and the account's UUID are stored,
@@ -766,6 +821,37 @@ This file is the technical handbook. The board reads it rendered at
 [board guide](BOARD-GUIDE.md) is at lahtiag.fi/handbook. Pictures go in `docs/images/…`; the site
 serves a copy from `public/handbook/images`, so after adding or changing
 one, run `cp -r docs/images public/handbook/` before pushing.
+
+### Regenerating the pictures
+
+The screenshots in `docs/images/site` come from a local copy of the site
+filled with made-up people, never from the live database. From the
+repository root:
+
+1. Put throwaway values in `.dev.vars`: `SESSION_SECRET=local-dev-only-session-secret-not-used-anywhere-else`
+   (the one `scripts/handbook/mint.mjs` seals cookies with), any
+   `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, `STRIPE_SECRET_KEY=sk_test_x`,
+   `STRIPE_WEBHOOK_SECRET=whsec_x`, and
+   `REGISTER_ADMINS=puheenjohtaja@lahtiag.fi,rahastonhoitaja@lahtiag.fi` so
+   no real address ends up in a picture.
+2. `npx wrangler d1 migrations apply lahtiag --local`, then
+   `python3 scripts/handbook/seed.py` (needs Pillow) fills the local
+   database with the sample events, members, tickets, news and shop.
+3. `npm run build && npx wrangler dev --port 8788` in another terminal; it
+   serves the built site, so rebuild after changing a page.
+4. `npm i --no-save playwright-core`, `node scripts/handbook/mint.mjs`
+   (the cookies), `python3 scripts/handbook/plan.py` (the shot list),
+   `node scripts/handbook/shoot.mjs scripts/handbook/shots.json scripts/handbook/shots`
+   (a comma-separated list of names as a fourth argument retakes only
+   those), then `python3 scripts/handbook/post.py scripts/handbook/jobs.json`
+   crops, highlights and shrinks them into `docs/images/site`.
+5. `cp -r docs/images public/handbook/` and push.
+
+`plan.py` is the list of pictures: the page, who is signed in, what to
+crop to and what to highlight (a numbered badge per highlight, in the
+order given). The Stripe app pictures are phone screenshots cropped by
+`scripts/handbook/app-jobs.json`; `sheet.py` makes contact sheets for a
+quick look at the result.
 
 ## Editing the site's pages
 

@@ -14,3 +14,9 @@ npm-debug.log*
 .agents/
 .claude/skills/
 skills-lock.json
+
+# handbook screenshot tooling: throwaway cookies and raw captures
+scripts/handbook/cookies.json
+scripts/handbook/shots/
+scripts/handbook/shots.json
+scripts/handbook/jobs.json

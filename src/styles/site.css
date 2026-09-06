@@ -3955,6 +3955,13 @@ details.admin-panel[open] > summary {
   max-width: 100%;
   border: 1px solid var(--line);
 }
+/* A picture on its own line, outside the screenshot tables. */
+.handbook p > img {
+  display: block;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  margin: 0.4rem 0 1rem;
+}
 .handbook pre {
   background: var(--surface);
   border: 1px solid var(--line);
