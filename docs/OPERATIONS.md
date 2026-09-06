@@ -163,7 +163,11 @@ quiet. Events without a channel get none of this. The bot also keeps a
 every result and revert, with the winners ticked and the champion on top,
 so latecomers see the standings without scrolling. A big event has it in
 its `bracket` channel, where nobody else can write; a one-channel event
-has it pinned in its channel.
+has it pinned in its channel. The bracket also comes as a **picture**,
+drawn by the site itself in a pixel style: attached to the "bracket is
+out" line, swapped on the pinned message after every result, and on the
+champion's line. The same picture is the link preview of the bracket
+page and can be shown on a screen from `/events/<id>/bracket.png`.
 
 The panel shows how many participants hold the role. **Sync now** repairs
 drift (someone who joined the server after signing up, a change Discord

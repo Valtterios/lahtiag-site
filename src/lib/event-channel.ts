@@ -7,7 +7,18 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { getEvent, getBracket, listSignups, listEventTeams, type BracketMatch, type EventRow } from './db';
-import { postChannelMessage, createChannelMessage, editChannelMessage, deleteChannelMessage, pinChannelMessage, NO_MENTIONS } from './discord';
+import {
+  postChannelMessage,
+  createChannelMessage,
+  createChannelMessageWithFile,
+  editChannelMessage,
+  editChannelMessageWithFile,
+  deleteChannelMessage,
+  pinChannelMessage,
+  NO_MENTIONS,
+  type MessageFile,
+} from './discord';
+import { bracketPng } from './bracket-image';
 import { formatHelsinki, formatHelsinkiRange } from './time';
 
 // Participant keys ('u:<discord id>' / 't:<team id>') to display names.
@@ -134,6 +145,12 @@ export function liveBracketText(matches: BracketMatch[], names: Map<string, stri
   return [...head, ...body, url].join('\n\n');
 }
 
+// The bracket as a picture, ready to attach.
+export async function bracketPicture(event: Pick<EventRow, 'title'>, matches: BracketMatch[], names: Map<string, string>, now: number): Promise<MessageFile> {
+  const bytes = await bracketPng({ matches, names, title: event.title, subtitle: `updated ${formatHelsinki(now)}` });
+  return { name: 'bracket.png', bytes, type: 'image/png' };
+}
+
 // Where the live bracket lives: a big event's bot-only bracket channel,
 // else the event's one channel.
 async function bracketChannel(db: D1Database, event: Pick<EventRow, 'id' | 'discord_channel_id'>): Promise<string | null> {
@@ -158,12 +175,14 @@ export async function refreshLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKE
     await dropLiveBracket(db, env, eventId);
     return;
   }
-  const text = liveBracketText(matches, await participantNames(db, eventId), `${origin}/events/${eventId}/bracket`, now);
+  const names = await participantNames(db, eventId);
+  const text = liveBracketText(matches, names, `${origin}/events/${eventId}/bracket`, now);
+  const picture = await bracketPicture(event, matches, names, now);
   if (event.discord_bracket_message_id) {
-    const edited = await editChannelMessage(token, channelId, event.discord_bracket_message_id, text);
+    const edited = await editChannelMessageWithFile(token, channelId, event.discord_bracket_message_id, text, picture);
     if (edited.ok || edited.status !== 404) return;
   }
-  const created = await createChannelMessage(token, channelId, text);
+  const created = await createChannelMessageWithFile(token, channelId, text, picture);
   if (!created.ok) return;
   await db.prepare('UPDATE events SET discord_bracket_message_id = ?2 WHERE id = ?1').bind(eventId, created.value.id).run();
   await pinChannelMessage(token, channelId, created.value.id);
@@ -191,33 +210,42 @@ export async function postEventLine(
   eventId: number,
   content: string,
   ping = false,
+  file?: MessageFile,
 ): Promise<boolean> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return false;
   const event = await getEvent(db, eventId);
   if (!event?.discord_channel_id) return false;
   const role = ping && event.discord_role_id ? event.discord_role_id : null;
-  return postChannelMessage(
-    token,
-    event.discord_channel_id,
-    role ? `<@&${role}> ${content}` : content,
-    role ? { parse: [], roles: [role] } : NO_MENTIONS,
-  );
+  const text = role ? `<@&${role}> ${content}` : content;
+  const mentions = role ? { parse: [], roles: [role] } : NO_MENTIONS;
+  if (file) return (await createChannelMessageWithFile(token, event.discord_channel_id, text, file, mentions)).ok;
+  return postChannelMessage(token, event.discord_channel_id, text, mentions);
 }
 
 // The lines that need the bracket read back after a change.
 export async function postBracketOut(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, regenerated: boolean): Promise<void> {
   const matches = await getBracket(db, eventId);
   if (matches.length === 0) return;
-  await postEventLine(db, env, eventId, bracketLine(matches, await participantNames(db, eventId), `${origin}/events/${eventId}/bracket`, regenerated), true);
-  await refreshLiveBracket(db, env, eventId, origin, Math.floor(Date.now() / 1000));
+  const event = await getEvent(db, eventId);
+  if (!event) return;
+  const names = await participantNames(db, eventId);
+  const now = Math.floor(Date.now() / 1000);
+  await postEventLine(db, env, eventId, bracketLine(matches, names, `${origin}/events/${eventId}/bracket`, regenerated), true, await bracketPicture(event, matches, names, now));
+  await refreshLiveBracket(db, env, eventId, origin, now);
 }
 
 export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, round: number, slot: number): Promise<void> {
-  const story = describeResult(await getBracket(db, eventId), round, slot, await participantNames(db, eventId));
+  const matches = await getBracket(db, eventId);
+  const names = await participantNames(db, eventId);
+  const story = describeResult(matches, round, slot, names);
   if (!story) return;
-  await postEventLine(db, env, eventId, resultLine(story, `${origin}/events/${eventId}/bracket`), story.round === story.totalRounds);
-  await refreshLiveBracket(db, env, eventId, origin, Math.floor(Date.now() / 1000));
+  const now = Math.floor(Date.now() / 1000);
+  const decided = story.round === story.totalRounds;
+  const event = decided ? await getEvent(db, eventId) : null;
+  // The champion's line carries the finished picture.
+  await postEventLine(db, env, eventId, resultLine(story, `${origin}/events/${eventId}/bracket`), decided, event ? await bracketPicture(event, matches, names, now) : undefined);
+  await refreshLiveBracket(db, env, eventId, origin, now);
 }
 
 export async function postRevert(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, round: number, slot: number): Promise<void> {

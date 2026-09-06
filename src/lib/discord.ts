@@ -639,3 +639,53 @@ export async function pinChannelMessage(botToken: string, channelId: string, mes
 }
 
 export const PERM_MANAGE_MESSAGES = 1n << 13n;
+
+// --- bot: messages with a picture --------------------------------------------------
+// Multipart uploads: the JSON payload plus one file. On an edit the
+// listed attachments replace the old ones, so the picture is swapped.
+
+export interface MessageFile {
+  name: string;
+  bytes: Uint8Array;
+  type: string;
+}
+
+async function botUpload(
+  botToken: string,
+  method: 'POST' | 'PATCH',
+  path: string,
+  payload: Record<string, unknown>,
+  file: MessageFile,
+): Promise<BotResult<{ id: string }> & { status?: number }> {
+  try {
+    const form = new FormData();
+    form.append('payload_json', JSON.stringify({ ...payload, attachments: [{ id: 0, filename: file.name }] }));
+    form.append('files[0]', new Blob([file.bytes as BlobPart], { type: file.type }), file.name);
+    const response = await fetch(`${API}${path}`, { method, headers: { authorization: `Bot ${botToken}` }, body: form });
+    if (response.status === 403) return { ok: false, reason: 'forbidden', status: 403 };
+    if (!response.ok) return { ok: false, reason: 'error', status: response.status };
+    return { ok: true, value: (await response.json()) as { id: string } };
+  } catch {
+    return { ok: false, reason: 'error' };
+  }
+}
+
+export async function createChannelMessageWithFile(
+  botToken: string,
+  channelId: string,
+  content: string,
+  file: MessageFile,
+  allowedMentions: { parse: string[]; roles?: string[] } = NO_MENTIONS,
+): Promise<BotResult<{ id: string }>> {
+  return botUpload(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions }, file);
+}
+
+export async function editChannelMessageWithFile(
+  botToken: string,
+  channelId: string,
+  messageId: string,
+  content: string,
+  file: MessageFile,
+): Promise<BotResult<{ id: string }> & { status?: number }> {
+  return botUpload(botToken, 'PATCH', `/channels/${channelId}/messages/${messageId}`, { content, allowed_mentions: NO_MENTIONS }, file);
+}

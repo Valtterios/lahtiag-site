@@ -75,6 +75,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? null;
 <Base
   title={event ? `${event.title}: bracket` : 'Event not found'}
   description={event ? `Tournament bracket for ${event.title}` : undefined}
+  image={event && matches.length > 0 ? `${Astro.url.origin}/events/${event.id}/bracket.png?t=${Math.floor(Date.now() / 600)}` : undefined}
 >
   {!event ? (
     <article class="prose">
