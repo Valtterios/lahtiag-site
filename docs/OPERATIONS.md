@@ -9,6 +9,7 @@ revision: September 2026.
 - [What this is](#what-this-is)
 - [Who can do what](#who-can-do-what)
 - [Hosting a tournament, start to finish](#hosting-a-tournament-start-to-finish)
+- [A Discord role and channel per event](#a-discord-role-and-channel-per-event)
 - [The member register](#the-member-register)
 - [The privacy policy](#the-privacy-policy)
 - [Selling tickets](#selling-tickets)
@@ -105,6 +106,33 @@ can be edited, removed (× on their chip), and purged.
 Winner clicks on the *website* re-verify your role against Discord each
 time; the Discord panel doesn't need to and is immune to rate limits — on
 tournament day, prefer the panel.
+
+## A Discord role and channel per event
+
+Any event can have its own private channel on the server: event page →
+Board tools → **Discord role and channel** → pick a category → **Create
+role and channel**. The bot makes a role named after the event and a text
+channel that only that role (and the board) can see, posts a welcome line
+in it, and gives the role to everyone already on the roster. From then on
+every signup, team join and paid ticket gets the role, and every
+departure, removal, refund or erasure loses it; the event page shows
+participants a link to the channel. Walk-ins added by name have no Discord
+account and are skipped, and so is anyone who signed up but hasn't joined
+the server yet (they get the role at the next sync after they join).
+
+The panel shows how many participants hold the role. **Sync now** repairs
+drift (someone who joined the server after signing up, a change Discord
+refused) and does at most 40 changes per click. **Remove role and
+channel** deletes both from Discord, messages included, so archive first
+if you want to keep them. Deleting the event removes them too; cancelling
+leaves them. Editing the title renames both.
+
+If Discord refuses ("the bot's role needs Manage Roles and Manage
+Channels"): Server Settings → Roles → the bot's role → turn on **Manage
+Channels** (Manage Roles is already there from the register setup). New
+roles land at the bottom of the list, below the bot's, so the order takes
+care of itself. The category picked is remembered as the default for the
+next event.
 
 ## The member register
 

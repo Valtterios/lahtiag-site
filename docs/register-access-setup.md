@@ -132,8 +132,11 @@ whole system, used for roles and nothing else.
    is no bot user yet, add one. **Reset Token**, copy the token (shown
    once). Under Privileged Gateway Intents turn on **Server Members
    Intent** (the sync reads the member list).
-2. Invite the bot: **OAuth2** → URL Generator → scope `bot`, permission
-   **Manage Roles** only → open the URL, pick the LahtiAG server.
+2. Invite the bot: **OAuth2** → URL Generator → scope `bot`, permissions
+   **Manage Roles** and **Manage Channels** (the latter for the per-event
+   channels; if the bot is already in the server, add it to the bot's role
+   under Server Settings → Roles instead) → open the URL, pick the LahtiAG
+   server.
 3. In the server: Server Settings → **Roles**. Create `Member` and
    `Actives` if they don't exist. Drag the bot's own role (named after the
    application) **above** both of them; Discord refuses otherwise.

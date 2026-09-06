@@ -1,7 +1,8 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { updateEvent, RuleError } from '../../../lib/db';
+import { updateEvent, getEvent, RuleError } from '../../../lib/db';
+import { renameEventDiscord } from '../../../lib/event-discord';
 import { helsinkiToUnix } from '../../../lib/time';
 import { editWebhookMessage, eventAnnouncement } from '../../../lib/discord';
 
@@ -31,6 +32,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
   const memberSlots = memberSlotsRaw ? Number(memberSlotsRaw) : null;
 
   try {
+    const before = await getEvent(env.DB, id);
     const event = await updateEvent(env.DB, id, {
       title: String(form.get('title') ?? ''),
       description: description || null,
@@ -57,6 +59,10 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
           url: `${url.origin}/events/${id}`,
         }),
       );
+    }
+    // A retitled event renames its Discord role and channel to match.
+    if (before && before.title !== event.title && (event.discord_role_id || event.discord_channel_id)) {
+      await renameEventDiscord(env, event, url.origin);
     }
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);

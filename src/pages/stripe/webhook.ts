@@ -1,8 +1,9 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
-import { listTicketsBySession, listTicketsByPaymentIntent, getTicketByPaymentIntent, markTicketPaid, voidTicket, refundTicket, recordDoorPayment } from '../../lib/db';
+import { listTicketsBySession, listTicketsByPaymentIntent, listTicketsByPurchase, getTicketByPaymentIntent, markTicketPaid, voidTicket, refundTicket, recordDoorPayment } from '../../lib/db';
 import { getPurchaseBySession, getPurchaseByPaymentIntent, getPurchase, markPurchasePaid, voidPurchase, refundPurchase } from '../../lib/purchases';
 import { verifyWebhookSignature, metadataInt, type StripeEvent } from '../../lib/stripe';
+import { syncEventRolesInBackground } from '../../lib/event-discord';
 
 // Stripe tells us what happened with the money. Everything here is
 // idempotent, because Stripe retries until it sees a 2xx.
@@ -21,7 +22,7 @@ import { verifyWebhookSignature, metadataInt, type StripeEvent } from '../../lib
 // Tickets sold before purchases existed have a session id but no
 // purchase; they are handled one by one.
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, locals }) => {
   if (!env.STRIPE_WEBHOOK_SECRET) return new Response('not configured', { status: 503 });
   const payload = await request.text();
   const ok = await verifyWebhookSignature(env.STRIPE_WEBHOOK_SECRET, payload, request.headers.get('stripe-signature'));
@@ -44,6 +45,11 @@ export const POST: APIRoute = async ({ request }) => {
     const id = String(object.metadata?.purchase_id ?? object.client_reference_id ?? '');
     return /^[A-Z0-9]{10}$/.test(id) ? await getPurchase(env.DB, id) : null;
   };
+  // Events whose roster changed here, for their Discord roles.
+  const touched = new Set<number>();
+  const touchPurchase = async (purchaseId: string) => {
+    for (const ticket of await listTicketsByPurchase(env.DB, purchaseId)) if (ticket.discord_id) touched.add(ticket.event_id);
+  };
   const legacyTickets = async (): Promise<{ id: number }[]> => {
     const bySession = await listTicketsBySession(env.DB, object.id);
     if (bySession.length > 0) return bySession;
@@ -60,8 +66,12 @@ export const POST: APIRoute = async ({ request }) => {
       const purchase = await sessionPurchase();
       if (purchase) {
         await markPurchasePaid(env.DB, purchase.id, object.payment_intent ?? null, now);
+        await touchPurchase(purchase.id);
       } else {
-        for (const ticket of await legacyTickets()) await markTicketPaid(env.DB, ticket.id, object.payment_intent ?? null, null, now);
+        for (const ticket of await legacyTickets()) {
+          const paid = await markTicketPaid(env.DB, ticket.id, object.payment_intent ?? null, null, now);
+          if (paid?.discord_id) touched.add(paid.event_id);
+        }
       }
       break;
     }
@@ -78,13 +88,17 @@ export const POST: APIRoute = async ({ request }) => {
       if (!object.refunded) break;
       const purchase = object.payment_intent ? await getPurchaseByPaymentIntent(env.DB, object.payment_intent) : null;
       if (purchase) {
+        await touchPurchase(purchase.id);
         await refundPurchase(env.DB, purchase.id);
         break;
       }
       const tickets: { id: number }[] = object.payment_intent ? await listTicketsByPaymentIntent(env.DB, object.payment_intent) : [];
       const byMeta = metadataInt(object.metadata, 'ticket_id');
       if (tickets.length === 0 && byMeta) tickets.push({ id: byMeta });
-      for (const ticket of tickets) await refundTicket(env.DB, ticket.id);
+      for (const ticket of tickets) {
+        const refunded = await refundTicket(env.DB, ticket.id);
+        if (refunded?.discord_id) touched.add(refunded.event_id);
+      }
       break;
     }
     case 'payment_intent.succeeded': {
@@ -99,5 +113,6 @@ export const POST: APIRoute = async ({ request }) => {
     default:
       break;
   }
+  syncEventRolesInBackground(locals.cfContext, env.DB, env, touched, now);
   return new Response('ok', { status: 200 });
 };

@@ -68,6 +68,8 @@ export interface EventRow {
   cancelled_at: number | null;
   signups_closed_at: number | null;
   discord_message_id: string | null;
+  discord_role_id: string | null; // the event's own role, given to everyone on the roster (src/lib/event-discord.ts)
+  discord_channel_id: string | null; // its private channel
 }
 
 export interface EventWithCounts extends EventRow {
@@ -374,6 +376,7 @@ export async function deleteEvent(db: D1Database, id: number): Promise<EventRow>
   await db.prepare('DELETE FROM ticket_types WHERE event_id = ?1').bind(id).run();
   await db.batch([
     db.prepare('DELETE FROM bracket_matches WHERE event_id = ?1').bind(id),
+    db.prepare('DELETE FROM event_role_grants WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM signups WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM event_teams WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM events WHERE id = ?1').bind(id),
@@ -1934,7 +1937,7 @@ export async function removeRegisterAdmin(db: D1Database, email: string): Promis
 // Board-editable configuration (migration 0010). Keys live here so a typo
 // cannot invent one.
 
-export type SettingKey = 'member_role_id' | 'actives_role_id';
+export type SettingKey = 'member_role_id' | 'actives_role_id' | 'event_category_id';
 
 export async function getSettings(db: D1Database): Promise<Partial<Record<SettingKey, string>>> {
   const { results } = await db.prepare('SELECT key, value FROM settings').all<{ key: SettingKey; value: string }>();

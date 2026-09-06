@@ -3,8 +3,9 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession } from '../../../lib/guard';
 import { removeSignup, setSignup, upsertMember, listEventQuestions, saveAnswers, RuleError } from '../../../lib/db';
 import { parseAnswers } from '../../../lib/questions';
+import { syncEventRolesInBackground } from '../../../lib/event-discord';
 
-export const POST: APIRoute = async ({ request, params, redirect }) => {
+export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   const id = Number(params.id);
   const back = `/events/${id}`;
 
@@ -42,5 +43,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
     throw error;
   }
+  // The event's Discord role follows the roster.
+  syncEventRolesInBackground(locals.cfContext, env.DB, env, [id], now);
   return redirect(back, 303);
 };

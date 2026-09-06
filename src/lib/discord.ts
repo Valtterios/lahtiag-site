@@ -398,3 +398,135 @@ export async function listGuildRoles(botToken: string, guildId: string): Promise
   }
 }
 
+
+// --- bot: event roles and channels ------------------------------------------
+// One role and one private channel per event that asks for them
+// (src/lib/event-discord.ts). Needs Manage Roles and Manage Channels on the
+// bot's role; a 403 is reported apart so the page can say which is missing.
+
+export type BotResult<T> = { ok: true; value: T } | { ok: false; reason: 'forbidden' | 'error' };
+
+async function botCall<T>(
+  botToken: string,
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  path: string,
+  body?: unknown,
+  reason?: string,
+): Promise<BotResult<T> & { status?: number }> {
+  try {
+    const headers: Record<string, string> = { authorization: `Bot ${botToken}` };
+    if (body !== undefined) headers['content-type'] = 'application/json';
+    if (reason) headers['x-audit-log-reason'] = reason;
+    const response = await fetch(`${API}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (response.status === 403) return { ok: false, reason: 'forbidden', status: 403 };
+    if (!response.ok) return { ok: false, reason: 'error', status: response.status };
+    if (response.status === 204) return { ok: true, value: undefined as T };
+    return { ok: true, value: (await response.json()) as T };
+  } catch {
+    return { ok: false, reason: 'error' };
+  }
+}
+
+// Permission bits, as the strings Discord's API takes.
+export const PERM_VIEW_CHANNEL = 1n << 10n;
+export const PERM_SEND_MESSAGES = 1n << 11n;
+export const PERM_READ_HISTORY = 1n << 16n;
+export const PERM_MANAGE_CHANNELS = 1n << 4n;
+
+export interface ChannelOverwrite {
+  id: string;
+  type: 0 | 1; // 0 = role, 1 = member
+  allow: string;
+  deny: string;
+}
+
+// The bot's own user id, for giving itself a way into the private channel.
+export async function fetchBotUserId(botToken: string): Promise<string | null> {
+  const result = await botCall<{ id: string }>(botToken, 'GET', '/users/@me');
+  return result.ok ? result.value.id : null;
+}
+
+export async function createGuildRole(
+  botToken: string,
+  guildId: string,
+  name: string,
+  reason: string,
+): Promise<BotResult<{ id: string }>> {
+  return botCall<{ id: string }>(
+    botToken,
+    'POST',
+    `/guilds/${guildId}/roles`,
+    { name, permissions: '0', mentionable: true, hoist: false },
+    reason,
+  );
+}
+
+export async function renameGuildRole(botToken: string, guildId: string, roleId: string, name: string): Promise<void> {
+  await botCall(botToken, 'PATCH', `/guilds/${guildId}/roles/${roleId}`, { name });
+}
+
+// Deleting something already gone counts as done.
+export async function deleteGuildRole(botToken: string, guildId: string, roleId: string, reason: string): Promise<boolean> {
+  const result = await botCall(botToken, 'DELETE', `/guilds/${guildId}/roles/${roleId}`, undefined, reason);
+  return result.ok || result.status === 404;
+}
+
+export interface GuildCategory {
+  id: string;
+  name: string;
+  position: number;
+}
+
+// The server's channel categories, for choosing where an event channel goes.
+export async function listGuildCategories(botToken: string, guildId: string): Promise<GuildCategory[] | null> {
+  const result = await botCall<{ id: string; name: string; type: number; position: number }[]>(botToken, 'GET', `/guilds/${guildId}/channels`);
+  if (!result.ok) return null;
+  return result.value
+    .filter((c) => c.type === 4)
+    .map((c) => ({ id: c.id, name: c.name, position: c.position }))
+    .sort((a, b) => a.position - b.position);
+}
+
+export async function createGuildChannel(
+  botToken: string,
+  guildId: string,
+  input: { name: string; topic: string; parentId: string | null; overwrites: ChannelOverwrite[] },
+  reason: string,
+): Promise<BotResult<{ id: string }>> {
+  return botCall<{ id: string }>(
+    botToken,
+    'POST',
+    `/guilds/${guildId}/channels`,
+    {
+      name: input.name,
+      type: 0,
+      topic: input.topic,
+      parent_id: input.parentId,
+      permission_overwrites: input.overwrites,
+    },
+    reason,
+  );
+}
+
+export async function renameChannel(botToken: string, channelId: string, name: string, topic: string): Promise<void> {
+  await botCall(botToken, 'PATCH', `/channels/${channelId}`, { name, topic });
+}
+
+export async function deleteChannel(botToken: string, channelId: string, reason: string): Promise<boolean> {
+  const result = await botCall(botToken, 'DELETE', `/channels/${channelId}`, undefined, reason);
+  return result.ok || result.status === 404;
+}
+
+export async function postChannelMessage(
+  botToken: string,
+  channelId: string,
+  content: string,
+  allowedMentions: { parse: string[]; roles?: string[] } = NO_MENTIONS,
+): Promise<boolean> {
+  const result = await botCall(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions });
+  return result.ok;
+}

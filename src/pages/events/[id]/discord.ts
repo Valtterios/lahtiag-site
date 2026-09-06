@@ -1,0 +1,38 @@
+import { env } from 'cloudflare:workers';
+import type { APIRoute } from 'astro';
+import { checkCsrf, requireAdmin } from '../../../lib/guard';
+import { setUpEventDiscord, syncEventRole, tearDownEventDiscord } from '../../../lib/event-discord';
+
+// Board: give the event its own Discord role and private channel, sync
+// the role against the roster, or delete both again.
+
+export const POST: APIRoute = async ({ request, params, redirect, url }) => {
+  const id = Number(params.id);
+  const back = `/events/${id}`;
+  const admin = await requireAdmin(request, env);
+  if (!admin.ok) return redirect(`${back}?err=${admin.reason}`, 303);
+  const form = await request.formData();
+  if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf`, 303);
+  const now = Math.floor(Date.now() / 1000);
+  const action = String(form.get('action') ?? '');
+
+  if (action === 'create') {
+    const categoryRaw = String(form.get('category_id') ?? '').trim();
+    const category = /^\d{5,25}$/.test(categoryRaw) ? categoryRaw : null;
+    const result = await setUpEventDiscord(env.DB, env, id, category, url.origin, admin.session.discordId, now);
+    if (!result.ok) return redirect(`${back}?err=discord_${result.reason}`, 303);
+    return redirect(`${back}?ok=discord_created#discord`, 303);
+  }
+  if (action === 'sync') {
+    const summary = await syncEventRole(env.DB, env, id, now);
+    if (!summary) return redirect(`${back}?err=discord_unconfigured`, 303);
+    const q = new URLSearchParams({ ok: 'discord_synced', a: String(summary.added), r: String(summary.removed), m: String(summary.notInServer), f: String(summary.forbidden + summary.failed), left: String(summary.remaining) });
+    return redirect(`${back}?${q}#discord`, 303);
+  }
+  if (action === 'remove') {
+    const result = await tearDownEventDiscord(env.DB, env, id);
+    if (result === 'partial') return redirect(`${back}?err=discord_partial`, 303);
+    return redirect(`${back}?ok=discord_removed#discord`, 303);
+  }
+  return redirect(`${back}?err=csrf`, 303);
+};

@@ -18,8 +18,12 @@ import {
   listEventQuestions,
   getAnswers,
   listAllAnswers,
+  getSettings,
   type TicketTypeWithSales,
 } from '../../../lib/db';
+import { channelUrl, countGrants, participantIds } from '../../../lib/event-discord';
+import { listGuildCategories } from '../../../lib/discord';
+import { DISCORD_GUILD_ID } from '../../../lib/config';
 import { questionOptions, answersComplete, QUESTION_KINDS } from '../../../lib/questions';
 import { purchaseOffer, pendingPurchaseFor, resumablePurchase } from '../../../lib/purchases';
 import { readBasket, basketCount } from '../../../lib/basket';
@@ -68,6 +72,16 @@ if (event && ticketed) {
 const myTicket = event && session ? await getTicketForHolder(env.DB, event.id, session.discordId) : null;
 const access = event && session ? await signupAccess(env.DB, event, session.discordId, true) : null;
 const sales = event && session?.isAdmin && types.length > 0 ? await salesSummary(env.DB, event.id) : null;
+// The event's own Discord role and channel (board tools): who holds the
+// role, and the server's categories for placing a new channel.
+const botOn = Boolean(env.DISCORD_BOT_TOKEN);
+const discordParticipants = event ? participantIds(signups).length : 0;
+const discordGrants = event && session?.isAdmin && event.discord_role_id ? await countGrants(env.DB, event.id) : 0;
+const categories =
+  event && session?.isAdmin && botOn && !event.discord_role_id && event.cancelled_at === null
+    ? await listGuildCategories(env.DISCORD_BOT_TOKEN!, DISCORD_GUILD_ID)
+    : null;
+const lastCategory = categories && categories.length > 0 ? ((await getSettings(env.DB)).event_category_id ?? '') : '';
 const hasTicket = myTicket?.status === 'paid';
 const pendingPurchase = event && session ? await pendingPurchaseFor(env.DB, session.discordId, nowSeconds) : null;
 const resume = resumablePurchase(pendingPurchase, nowSeconds);
@@ -106,7 +120,10 @@ const signupsClosed = event?.signups_closed_at != null;
 const open = event ? event.cancelled_at === null && !signupsClosed : false;
 
 // Flashes from board actions open the (otherwise folded) board tools.
-const ADMIN_OPEN = new Set(['cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down']);
+const DISCORD_OPEN = new Set(['discord_created', 'discord_synced', 'discord_removed', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
+const ADMIN_OPEN = new Set(['cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
+const okKey = Astro.url.searchParams.get('ok') ?? '';
+const errKey = Astro.url.searchParams.get('err') ?? '';
 const FLASH: Record<string, string> = {
   full: 'This event is full.',
   team_full: 'That team is already full.',
@@ -135,6 +152,12 @@ const FLASH: Record<string, string> = {
   cover_bad: 'The cover must be a JPEG, PNG or WebP under 1.5 MB.',
   ticket_holder: 'That person holds a paid ticket, so they are going. Refund it in Stripe to remove them.',
   too_few: 'A bracket needs at least two teams or players. Players without a team are grouped into teams when you generate.',
+  discord_unconfigured: 'The Discord bot is not set up (no bot token). The technical handbook, "Discord roles", has the steps.',
+  discord_forbidden: "Discord refused. The bot's role needs Manage Roles and Manage Channels, and must sit above the roles it creates.",
+  discord_error: "Discord didn't answer. Try again in a moment.",
+  discord_exists: 'This event already has a role and channel.',
+  discord_missing: 'No such event.',
+  discord_partial: 'The site forgot the role and channel, but Discord refused to delete one of them. Remove the leftover by hand in Discord.',
 };
 // Short tags on ticket rows for why a type is not open to this person.
 const TYPE_TAGS: Record<string, string> = {
@@ -159,8 +182,18 @@ const OK: Record<string, string> = {
   answers_saved: 'Your details are saved.',
   cover_saved: 'Cover image saved.',
   cover_removed: 'Cover image removed.',
+  discord_created: 'Role and channel created. Everyone on the roster has the role; new signups get it as they come.',
+  discord_removed: 'The role and the channel are deleted from Discord.',
 };
-const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
+// The sync's tally rides along in the query.
+function syncedMessage(p: URLSearchParams): string {
+  const parts = [`${p.get('a') ?? 0} given`, `${p.get('r') ?? 0} taken away`];
+  if (Number(p.get('m'))) parts.push(`${p.get('m')} not in the Discord server yet`);
+  if (Number(p.get('f'))) parts.push(`${p.get('f')} refused by Discord`);
+  if (Number(p.get('left'))) parts.push(`${p.get('left')} left for the next sync`);
+  return `Role synced: ${parts.join(', ')}.`;
+}
+const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro.url.searchParams) : OK[okKey]) ?? null;
 ---
 <Base
   title={event ? event.title : 'Event not found'}
@@ -213,6 +246,12 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               <li class="event-fact-mine">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3a3 3 0 0 1 0-6V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z" /><path d="M13 5v2" /><path d="M13 17v2" /><path d="M13 11v2" /></svg>
                 <span>You have a ticket · {myTicket.type_name}{myTicket.checked_in_at ? ' · checked in' : ''} · <a href={`/tickets/${myTicket.code}`}>Show ticket</a></span>
+              </li>
+            )}
+            {event.discord_channel_id && (mine || hasTicket || session?.isAdmin) && (
+              <li class="event-fact-mine">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" /></svg>
+                <span><a href={channelUrl(event.discord_channel_id)} rel="noopener">Participants' channel on Discord</a></span>
               </li>
             )}
           </ul>
@@ -640,6 +679,53 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
             {coverAt !== null && <button class="btn btn-ghost" name="action" value="remove" type="submit" formnovalidate data-confirm="Remove the cover image?">Remove</button>}
             <span class="queue-meta">JPEG, PNG or WebP, up to 1.5 MB; about 1200 × 630 looks best.</span>
           </form>
+          </details>
+          )}
+          {event.cancelled_at === null && (
+          <details class="admin-edit" id="discord" open={DISCORD_OPEN.has(okKey) || DISCORD_OPEN.has(errKey)}>
+            <summary>Discord role and channel</summary>
+            {!botOn ? (
+              <p class="event-meta">Needs the Discord bot token; the technical handbook, "Discord roles", has the steps.</p>
+            ) : event.discord_role_id || event.discord_channel_id ? (
+              <>
+                <p class="event-meta">
+                  This event has its own role and a private channel{event.discord_channel_id && <>: <a href={channelUrl(event.discord_channel_id)} rel="noopener">open the channel</a></>}.
+                  {' '}<strong>{discordGrants}</strong> of <strong>{discordParticipants}</strong> participants with a Discord account hold the role{discordParticipants > discordGrants ? '; the rest are not in the server yet, or wait for a sync' : ''}.
+                  The role follows the roster on its own; Sync now repairs any drift.
+                </p>
+                <div class="signup-bar">
+                  <form method="post" action={`/events/${event.id}/discord`}>
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="sync" />
+                    <button class="btn btn-ghost" type="submit">Sync now</button>
+                  </form>
+                  <form method="post" action={`/events/${event.id}/discord`}>
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="remove" />
+                    <button class="btn btn-ghost" type="submit" data-confirm="Delete the event's Discord role and channel, messages included?">Remove role and channel</button>
+                  </form>
+                </div>
+              </>
+            ) : (
+              <form method="post" action={`/events/${event.id}/discord`} class="app-form">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="action" value="create" />
+                <p class="event-meta">
+                  A role named after the event and a private text channel only that role and the board can see. Everyone on the
+                  roster gets the role now; from then on each signup, team join and paid ticket gets it and each departure loses
+                  it. Walk-ins added by name have no Discord account and are skipped.
+                </p>
+                <label>
+                  Category for the channel
+                  <select name="category_id">
+                    <option value="">No category (top of the channel list)</option>
+                    {(categories ?? []).map((c) => <option value={c.id} selected={c.id === lastCategory}>{c.name}</option>)}
+                  </select>
+                </label>
+                {categories === null && <p class="event-meta">Discord didn't list the server's categories: the bot may not be in the server, or the token is wrong.</p>}
+                <button class="btn btn-primary" type="submit">Create role and channel</button>
+              </form>
+            )}
           </details>
           )}
           <details class="admin-edit" id="tickets" open={['type_saved', 'type_deleted'].includes(Astro.url.searchParams.get('ok') ?? '')}>

@@ -11,11 +11,13 @@ import {
   getTicketForHolder,
   getRegisterByDiscord,
   upsertMember,
+  repairTicketSignups,
   RuleError,
   type EventRow,
   type TicketTypeWithSales,
 } from '../lib/db';
 import { readBasket, writeBasket, basketCount, withLine, type BasketLine } from '../lib/basket';
+import { syncEventRolesInBackground } from '../lib/event-discord';
 import {
   getProduct,
   getPurchase,
@@ -274,6 +276,14 @@ if (isPost && csrfOk && !adjust && lines.length > 0 && !problem) {
         }
       }
       if (status === 'paid') {
+        // Free tickets on an account are signups at once; the events'
+        // Discord roles follow.
+        if (session) {
+          const ticketEvents = new Set<number>();
+          for (const line of lines) if (line.quoted.kind === 'ticket' && line.quoted.ownTicket) ticketEvents.add(line.quoted.event.id);
+          for (const eventId of ticketEvents) await repairTicketSignups(env.DB, eventId, now);
+          syncEventRolesInBackground(Astro.locals.cfContext, env.DB, env, ticketEvents, now);
+        }
         writeBasket(Astro.cookies, []);
         return Astro.redirect(`/purchase/${created.purchase.id}?ok=issued`, 303);
       }

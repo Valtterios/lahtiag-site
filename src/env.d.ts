@@ -25,9 +25,9 @@ type WorkerEnv = {
   // Fixed allowlist of Workspace accounts for the register; more are
   // added on the register page itself.
   REGISTER_ADMINS: string;
-  // Discord roles that mirror the register (src/lib/roles.ts). The bot
-  // token is the only bot credential in the system and is used for
-  // nothing but roles.
+  // Discord roles that mirror the register (src/lib/roles.ts) and the
+  // per-event roles and channels (src/lib/event-discord.ts). The bot token
+  // is the only bot credential in the system.
   DISCORD_BOT_TOKEN?: string;
   MEMBER_ROLE_ID: string;
   ACTIVES_ROLE_ID: string;
