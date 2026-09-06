@@ -72,9 +72,10 @@ participants.
 
 The association's Discord bot also counts, per member and calendar month,
 how many messages you send and how long you spend in voice channels on
-the LahtiAG server, for the activity rewards of the academic year. Only
-the counts are kept; the bot never stores what was said. Your own counts
-show on your membership page.
+the LahtiAG server, in the channels every member can see, for the
+activity rewards of the academic year. Only the counts are kept; the bot
+never stores what was said. Your own counts, and the list of counted
+channels, show on your membership page.
 
 Event announcements are also posted to the association's Discord server;
 what happens to data inside Discord is governed by

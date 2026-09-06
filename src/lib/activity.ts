@@ -5,6 +5,7 @@
 // a member's season up. Counts only, never a word of content. The season
 // is the academic year, from 1 September (Helsinki time).
 import type { D1Database } from '@cloudflare/workers-types';
+import { setSetting } from './db';
 
 export interface ActivityDelta {
   discord_id: string;
@@ -13,13 +14,22 @@ export interface ActivityDelta {
   voice_minutes: number;
 }
 
+// A channel the listener counts in: every member can see it.
+export interface ActivityChannel {
+  id: string;
+  name: string;
+  kind: 'text' | 'voice';
+}
+
 export interface ActivityBatch {
   instance: string;
   seq: number;
   deltas: ActivityDelta[];
+  channels?: ActivityChannel[];
 }
 
 export const MAX_DELTAS = 5000;
+export const MAX_CHANNELS = 500;
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const SNOWFLAKE = /^\d{17,20}$/;
 const INSTANCE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -50,7 +60,42 @@ export function parseActivityBatch(input: unknown): ActivityBatch | null {
     if (messages === 0 && voice === 0) continue;
     deltas.push({ discord_id: r.discord_id, month: r.month, messages, voice_minutes: voice });
   }
-  return { instance: o.instance, seq: o.seq, deltas };
+  const batch: ActivityBatch = { instance: o.instance, seq: o.seq, deltas };
+  if (o.channels !== undefined) {
+    if (!Array.isArray(o.channels) || o.channels.length > MAX_CHANNELS) return null;
+    const channels: ActivityChannel[] = [];
+    for (const item of o.channels) {
+      if (!item || typeof item !== 'object') return null;
+      const c = item as Record<string, unknown>;
+      if (typeof c.id !== 'string' || !SNOWFLAKE.test(c.id)) return null;
+      if (typeof c.name !== 'string' || c.name.length === 0 || c.name.length > 100) return null;
+      if (c.kind !== 'text' && c.kind !== 'voice') return null;
+      channels.push({ id: c.id, name: c.name, kind: c.kind });
+    }
+    batch.channels = channels;
+  }
+  return batch;
+}
+
+// The counted channels, as the listener last reported them, kept in the
+// settings table so the membership page can say where the counting happens.
+export async function rememberActivityChannels(db: D1Database, channels: ActivityChannel[], now: number): Promise<boolean> {
+  const value = JSON.stringify(channels);
+  const current = await db.prepare("SELECT value FROM settings WHERE key = 'activity_channels'").first<{ value: string }>();
+  if (current?.value === value) return false;
+  await setSetting(db, 'activity_channels', value, 'listener', now);
+  return true;
+}
+
+export async function activityChannels(db: D1Database): Promise<ActivityChannel[]> {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'activity_channels'").first<{ value: string }>();
+  if (!row) return [];
+  try {
+    const parsed = JSON.parse(row.value) as unknown;
+    return Array.isArray(parsed) ? (parsed as ActivityChannel[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 // Adds the batch to the counts, once: the (instance, seq) pair is recorded

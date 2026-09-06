@@ -384,6 +384,10 @@ puts it on the page and on Discord.
   Its "only you can see this" errors and confirmations clear themselves
   after about half a minute; panels, lists and anything with a link you
   still need stay until you dismiss them.
+- **Activity counts.** For the coming season pass the bot counts, per
+  member and month, messages sent and minutes in voice, only in channels
+  every member can see. Nothing about content is kept. The membership
+  page shows a member their counts and the list of counted channels.
 - **Your stats.** The membership page shows your events, tournaments and
   wins, with a card; `/profile` in Discord posts the card for everyone.
 

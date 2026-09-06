@@ -68,3 +68,25 @@ describe('Discord activity batches', () => {
     expect(voiceLabel(135)).toBe('2 h 15 min');
   });
 });
+
+describe('the counted channels', () => {
+  it('travel with a batch and are remembered', async () => {
+    const { parseActivityBatch, rememberActivityChannels, activityChannels } = await import('../src/lib/activity');
+    expect(parseActivityBatch({ instance: 'a', seq: 1, deltas: [], channels: [{ id: '100000000000000001', name: 'general', kind: 'chat' }] })).toBeNull();
+    expect(parseActivityBatch({ instance: 'a', seq: 1, deltas: [], channels: [{ id: 'x', name: 'general', kind: 'text' }] })).toBeNull();
+    const batch = parseActivityBatch({
+      instance: 'a',
+      seq: 1,
+      deltas: [],
+      channels: [
+        { id: '100000000000000001', name: 'general', kind: 'text' },
+        { id: '100000000000000002', name: 'Gaming', kind: 'voice' },
+      ],
+    });
+    expect(batch?.channels).toHaveLength(2);
+    expect(await activityChannels(env.DB)).toEqual([]);
+    expect(await rememberActivityChannels(env.DB, batch!.channels!, 1)).toBe(true);
+    expect(await rememberActivityChannels(env.DB, batch!.channels!, 2)).toBe(false); // unchanged, nothing written
+    expect(await activityChannels(env.DB)).toEqual(batch!.channels);
+  });
+});

@@ -847,10 +847,22 @@ a month (`src/lib/activity.ts`; tables `discord_activity` and
 `discord_activity_batches`). The listener's own state, the cursors and the
 unsent counts, lives in `/opt/lahtiag-listener/state/state.json`.
 
+**Which channels count.** Only the channels every member can see: those
+the @everyone role can view, or that the Member role (`MEMBER_ROLE_ID` in
+`.env`, the same id as on the register's Discord roles section) is allowed
+to view, the open threads inside them, and the chats of such voice
+channels; voice minutes likewise only in voice channels every member can
+see. So the board channel, the actives channel, an event's channels and
+team voice channels never count. `COUNT_CHANNELS=all` in `.env` turns the
+filter off. The listener logs "counting in …" whenever the set changes,
+sends the list with every batch, and the membership page shows it under
+the season line.
+
 **Setting it up** (done 2026-09-06): the files from
 `scripts/discord-listener` in `/opt/lahtiag-listener`, and `.env` there
 (mode 600) with `DISCORD_GUILD_ID`, `ACTIVITY_URL`, `ACTIVITY_TOKEN`
-(generated on the server; the same value is the site's secret) and the bot
+(generated on the server; the same value is the site's secret),
+`MEMBER_ROLE_ID`, and the bot
 token, which `lahtiag-listener-setcreds` asks for on the terminal and then
 starts the container. The bot needs View Channel and Read Message History
 in the channels that should count (its invite has both); no privileged

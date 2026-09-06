@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { bearerToken, tokenMatches } from '../../../lib/minecraft';
-import { parseActivityBatch, applyActivityBatch } from '../../../lib/activity';
+import { parseActivityBatch, applyActivityBatch, rememberActivityChannels } from '../../../lib/activity';
 
 // The Discord activity listener on auraserver (scripts/discord-listener)
 // posts its counts here, a batch at a time, with the DISCORD_ACTIVITY_TOKEN
@@ -25,7 +25,9 @@ export const POST: APIRoute = async ({ request }) => {
   }
   const batch = parseActivityBatch(body);
   if (!batch) return json({ error: 'Not a batch: instance, seq and deltas of {discord_id, month, messages, voice_minutes}.' }, 400);
-  const result = await applyActivityBatch(env.DB, batch, Math.floor(Date.now() / 1000));
+  const now = Math.floor(Date.now() / 1000);
+  const result = await applyActivityBatch(env.DB, batch, now);
+  if (batch.channels) await rememberActivityChannels(env.DB, batch.channels, now);
   return json({ ok: true, ...result });
 };
 

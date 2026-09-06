@@ -9,6 +9,10 @@
 //     so a restart or an outage loses nothing and the season is backfilled;
 //   - voice is live from the gateway (VOICE_STATE_UPDATE), credited a
 //     minute at a time, because voice has no history to walk.
+// Only channels every member can see count (the @everyone role can view
+// them, or the Member role is allowed to): not the board channel, not the
+// actives channel, not an event's channels. The list of counted channels
+// travels with every batch so the site can show it.
 // Plain Node 22+ (built-in WebSocket and fetch), no dependencies. Runs on
 // auraserver in Docker; see compose.yaml and setcreds next to this file,
 // and docs/OPERATIONS.md, "The Discord activity listener".
@@ -21,6 +25,8 @@ const TOKEN = need('DISCORD_BOT_TOKEN');
 const GUILD = need('DISCORD_GUILD_ID');
 const ACTIVITY_URL = need('ACTIVITY_URL');
 const ACTIVITY_TOKEN = need('ACTIVITY_TOKEN');
+const MEMBER_ROLE = process.env.MEMBER_ROLE_ID || null; // a channel the Member role may view counts too
+const COUNT_CHANNELS = process.env.COUNT_CHANNELS ?? 'public'; // 'public' (every member can see) or 'all'
 const STATE_DIR = process.env.STATE_DIR ?? '/state';
 const SEASON_START = process.env.SEASON_START; // ISO date; default: 1 September of the current season
 const SCAN_EVERY = Number(process.env.SCAN_EVERY ?? 300) * 1000;
@@ -29,6 +35,7 @@ const API = 'https://discord.com/api/v10';
 const UA = 'lahtiag-listener/1 (https://lahtiag.fi)';
 const INTENTS = (1 << 0) | (1 << 7) | (1 << 9); // GUILDS, GUILD_VOICE_STATES, GUILD_MESSAGES: none privileged
 const COUNTED_TYPES = new Set([0, 19]); // ordinary messages and replies; not slash commands, joins, pins
+const VIEW_CHANNEL = 1n << 10n;
 
 function need(name) {
   const value = process.env[name];
@@ -109,20 +116,61 @@ async function rest(path) {
   throw new Error(`Discord kept failing on ${path}`);
 }
 
-// Every place on the server where people write: text and announcement
-// channels, voice channels' text chats, and the threads that are open.
+// --- which channels count ---------------------------------------------------------
+let everyoneBase = VIEW_CHANNEL; // the @everyone role's own permissions, refreshed with the channel list
+let counted = { text: new Map(), voice: new Map() }; // id -> name, the channels every member can see
+
+function visibleToMembers(channel) {
+  if (COUNT_CHANNELS === 'all') return true;
+  const overwrite = (id) => (channel.permission_overwrites ?? []).find((o) => o.id === id);
+  const has = (o, field) => Boolean(o && (BigInt(o[field]) & VIEW_CHANNEL));
+  const member = MEMBER_ROLE ? overwrite(MEMBER_ROLE) : null;
+  const everyone = overwrite(GUILD);
+  if (has(member, 'allow')) return true;
+  if (has(member, 'deny')) return false;
+  if (has(everyone, 'allow')) return true;
+  if (has(everyone, 'deny')) return false;
+  return Boolean(everyoneBase & VIEW_CHANNEL);
+}
+
+// Sorts a channel list (from the gateway or the REST API) into the text
+// and voice channels that count, and says so when the set changes.
+function applyChannels(channels, roles) {
+  const everyone = (roles ?? []).find((r) => r.id === GUILD);
+  if (everyone) everyoneBase = BigInt(everyone.permissions);
+  const text = new Map();
+  const voice = new Map();
+  for (const c of channels) {
+    if (!visibleToMembers(c)) continue;
+    if (c.type === 0 || c.type === 5) text.set(c.id, c.name);
+    if (c.type === 2 || c.type === 13) voice.set(c.id, c.name);
+  }
+  const key = (m) => [...m.keys()].sort().join(',');
+  if (key(text) !== key(counted.text) || key(voice) !== key(counted.voice)) {
+    log('counting in', [...text.values()].map((n) => `#${n}`).join(' ') || '(no text channels)', '| voice:', [...voice.values()].join(', ') || 'none');
+  }
+  counted = { text, voice };
+}
+
+// Every place that counts where people write: the text channels, the
+// voice channels' own chats, and the open threads inside those.
 async function writableChannels() {
-  const response = await rest(`/guilds/${GUILD}/channels`);
-  if (!response.ok) {
-    log('channel list', response.status);
+  const roles = await rest(`/guilds/${GUILD}/roles`);
+  const channels = await rest(`/guilds/${GUILD}/channels`);
+  if (!channels.ok) {
+    log('channel list', channels.status);
     return [];
   }
-  const channels = await response.json();
-  const out = channels.filter((c) => [0, 2, 5, 13].includes(c.type)).map((c) => ({ id: c.id, name: c.name }));
+  applyChannels(await channels.json(), roles.ok ? await roles.json() : null);
+  const out = [...counted.text, ...counted.voice].map(([id, name]) => ({ id, name }));
   const threads = await rest(`/guilds/${GUILD}/threads/active`);
   if (threads.ok) {
     const data = await threads.json();
-    for (const t of data.threads ?? []) out.push({ id: t.id, name: `thread ${t.name}` });
+    for (const t of data.threads ?? []) {
+      if (t.type === 12) continue; // private threads stay private
+      const parent = counted.text.get(t.parent_id) ?? counted.voice.get(t.parent_id);
+      if (parent) out.push({ id: t.id, name: `${parent} › ${t.name}` });
+    }
   }
   return out;
 }
@@ -260,9 +308,10 @@ function dispatch(type, d) {
     case 'GUILD_CREATE': {
       if (d.id !== GUILD) break;
       afkChannel = d.afk_channel_id ?? null;
+      applyChannels(d.channels ?? [], d.roles ?? null);
       const present = new Set();
       for (const v of d.voice_states ?? []) {
-        if (!v.channel_id || v.channel_id === afkChannel) continue;
+        if (!countsForVoice(v.channel_id)) continue;
         present.add(v.user_id);
         if (!voice.has(v.user_id)) voice.set(v.user_id, { credited: now });
       }
@@ -281,7 +330,7 @@ function dispatch(type, d) {
         bots.add(id);
         break;
       }
-      const inVoice = Boolean(d.channel_id) && d.channel_id !== afkChannel;
+      const inVoice = countsForVoice(d.channel_id);
       if (inVoice && !voice.has(id)) voice.set(id, { credited: now });
       else if (!inVoice && voice.has(id)) {
         creditVoice(id, now);
@@ -290,6 +339,10 @@ function dispatch(type, d) {
       break;
     }
   }
+}
+function countsForVoice(channelId) {
+  if (!channelId || channelId === afkChannel) return false;
+  return COUNT_CHANNELS === 'all' || counted.voice.has(channelId);
 }
 function creditVoice(id, now) {
   const session = voice.get(id);
@@ -322,7 +375,15 @@ async function push() {
     const response = await fetch(ACTIVITY_URL, {
       method: 'POST',
       headers: { authorization: `Bearer ${ACTIVITY_TOKEN}`, 'content-type': 'application/json', 'user-agent': UA },
-      body: JSON.stringify({ instance: state.instance, seq, deltas: rows.map(({ key, ...delta }) => delta) }),
+      body: JSON.stringify({
+        instance: state.instance,
+        seq,
+        deltas: rows.map(({ key, ...delta }) => delta),
+        channels: [
+          ...[...counted.text].map(([id, name]) => ({ id, name, kind: 'text' })),
+          ...[...counted.voice].map(([id, name]) => ({ id, name, kind: 'voice' })),
+        ],
+      }),
     });
     if (!response.ok) {
       log('push refused', response.status, (await response.text()).slice(0, 160));
