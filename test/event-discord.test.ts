@@ -247,9 +247,10 @@ describe("Discord's scheduled event", () => {
 describe('a big event: its own category', () => {
   beforeEach(wipe);
 
-  it('has the five channels, rules read-only, in order', () => {
-    expect(BIG_EVENT_CHANNELS.map((c) => c.kind)).toEqual(['rules', 'teams', 'discussion', 'commentators', 'interviews']);
+  it('has the six channels, rules and bracket read-only, in order', () => {
+    expect(BIG_EVENT_CHANNELS.map((c) => c.kind)).toEqual(['rules', 'bracket', 'teams', 'discussion', 'commentators', 'interviews']);
     expect(BIG_EVENT_CHANNELS.find((c) => c.kind === 'rules')?.readOnly).toBe(true);
+    expect(BIG_EVENT_CHANNELS.find((c) => c.kind === 'bracket')).toMatchObject({ readOnly: true, botOnly: true });
     expect(BIG_EVENT_CHANNELS.filter((c) => c.voice).map((c) => c.kind)).toEqual(['commentators', 'interviews']);
   });
 

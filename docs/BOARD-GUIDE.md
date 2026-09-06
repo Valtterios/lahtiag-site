@@ -79,7 +79,7 @@ the bottom right lets you view a page as a member or a visitor would.
 - **On Discord.** Publishing puts the event on Discord's event list
   (cover, blurb, place, link) and asks what else it gets: a role with
   one channel under Events (the usual), or for a big event its own
-  category with rules, teams, discussion and the Commentators and
+  category with rules, a bot-only bracket channel, teams, discussion and the Commentators and
   Interviews voice channels, plus a voice channel per team that follows
   the teams as they form.
   The role follows the roster on its own: sign up and you have it, leave

@@ -127,7 +127,8 @@ Discord; events created from `/tournament` get the first option:
   first time and keeps for all such channels (rename or move it freely;
   if it is deleted, the next event makes a new one).
 - **A role and an own category** for a big event: a category named after
-  the event holding `rules` (participants read, the board posts), `teams`,
+  the event holding `rules` (participants read, the board posts),
+  `bracket` (the bot alone writes there: the pinned live bracket), `teams`,
   `discussion`, and the **Commentators** and **Interviews** voice
   channels, and a voice channel per team, named after it. Those follow
   the teams on their own: a new team gets one, a disbanded team loses
@@ -158,9 +159,11 @@ each recorded result with the winner's next opponent, a reverted result,
 the champion (with a ping), the venue-screen message (with a ping), a
 cancellation or a reinstatement, and a new time or place. Other edits stay
 quiet. Events without a channel get none of this. The bot also keeps a
-**pinned live bracket** in the channel: posted when the bracket is drawn,
-edited after every result and revert, with the winners ticked and the
-champion on top, so latecomers see the standings without scrolling.
+**pinned live bracket**: posted when the bracket is drawn, edited after
+every result and revert, with the winners ticked and the champion on top,
+so latecomers see the standings without scrolling. A big event has it in
+its `bracket` channel, where nobody else can write; a one-channel event
+has it pinned in its channel.
 
 The panel shows how many participants hold the role. **Sync now** repairs
 drift (someone who joined the server after signing up, a change Discord

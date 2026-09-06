@@ -134,13 +134,25 @@ export function liveBracketText(matches: BracketMatch[], names: Map<string, stri
   return [...head, ...body, url].join('\n\n');
 }
 
+// Where the live bracket lives: a big event's bot-only bracket channel,
+// else the event's one channel.
+async function bracketChannel(db: D1Database, event: Pick<EventRow, 'id' | 'discord_channel_id'>): Promise<string | null> {
+  const own = await db
+    .prepare("SELECT channel_id FROM event_discord_channels WHERE event_id = ?1 AND kind = 'bracket'")
+    .bind(event.id)
+    .first<{ channel_id: string }>();
+  return own?.channel_id ?? event.discord_channel_id;
+}
+
 // Create or update the pinned message; a message deleted on Discord's
 // side is made again. Nothing to show when there is no bracket.
 export async function refreshLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, now: number): Promise<void> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return;
   const event = await getEvent(db, eventId);
-  if (!event?.discord_channel_id) return;
+  if (!event) return;
+  const channelId = await bracketChannel(db, event);
+  if (!channelId) return;
   const matches = await getBracket(db, eventId);
   if (matches.length === 0) {
     await dropLiveBracket(db, env, eventId);
@@ -148,20 +160,26 @@ export async function refreshLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKE
   }
   const text = liveBracketText(matches, await participantNames(db, eventId), `${origin}/events/${eventId}/bracket`, now);
   if (event.discord_bracket_message_id) {
-    const edited = await editChannelMessage(token, event.discord_channel_id, event.discord_bracket_message_id, text);
+    const edited = await editChannelMessage(token, channelId, event.discord_bracket_message_id, text);
     if (edited.ok || edited.status !== 404) return;
   }
-  const created = await createChannelMessage(token, event.discord_channel_id, text);
+  const created = await createChannelMessage(token, channelId, text);
   if (!created.ok) return;
   await db.prepare('UPDATE events SET discord_bracket_message_id = ?2 WHERE id = ?1').bind(eventId, created.value.id).run();
-  await pinChannelMessage(token, event.discord_channel_id, created.value.id);
+  await pinChannelMessage(token, channelId, created.value.id);
 }
 
-// The bracket was deleted: so is its message.
+// The bracket was deleted, or the message moves: so goes the message.
+// It is looked for in the bracket channel first, then the one channel.
 export async function dropLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number): Promise<void> {
   const event = await getEvent(db, eventId);
   if (!event?.discord_bracket_message_id) return;
-  if (env.DISCORD_BOT_TOKEN && event.discord_channel_id) await deleteChannelMessage(env.DISCORD_BOT_TOKEN, event.discord_channel_id, event.discord_bracket_message_id);
+  if (env.DISCORD_BOT_TOKEN) {
+    const own = await bracketChannel(db, event);
+    for (const channelId of new Set([own, event.discord_channel_id])) {
+      if (channelId && (await deleteChannelMessage(env.DISCORD_BOT_TOKEN, channelId, event.discord_bracket_message_id))) break;
+    }
+  }
   await db.prepare('UPDATE events SET discord_bracket_message_id = NULL WHERE id = ?1').bind(eventId).run();
 }
 

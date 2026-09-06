@@ -182,7 +182,7 @@ const OK: Record<string, string> = {
   cover_removed: 'Cover image removed.',
   discord_created: 'Role and channel created. Everyone on the roster has the role; new signups get it as they come.',
   discord_removed: 'Deleted from Discord: the role and every channel the bot made for this event.',
-  discord_upgraded: 'Own category made. The channel moved in as discussion, with rules, teams, Commentators and Interviews beside it.',
+  discord_upgraded: 'Own category made. The channel moved in as discussion, with rules, bracket, teams, Commentators and Interviews beside it.',
   discord_archived: 'Archived. The role is gone, so participants no longer see the channels; the board still does.',
   discord_event_created: "The event is on Discord's event list.",
   discord_event_removed: "The Discord event was removed, as this event isn't published or is cancelled.",
@@ -288,7 +288,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               <fieldset class="publish-discord">
                 <legend class="queue-meta">On Discord, for participants:</legend>
                 <label class="check"><input type="radio" name="discord_setup" value="channel" checked /> <span>A role and one channel under Events</span></label>
-                <label class="check"><input type="radio" name="discord_setup" value="category" /> <span>A role and an own category: rules, teams, discussion, Commentators and Interviews voice, a voice channel per team</span></label>
+                <label class="check"><input type="radio" name="discord_setup" value="category" /> <span>A role and an own category: rules, bracket, teams, discussion, Commentators and Interviews voice, a voice channel per team</span></label>
                 <label class="check"><input type="radio" name="discord_setup" value="none" /> <span>Nothing beyond the event list</span></label>
               </fieldset>
             )}
@@ -740,7 +740,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               <>
                 <p class="event-meta">
                   {event.discord_category_id ? (
-                    <>Own category with {eventChannels.length} channels: rules, teams, discussion, Commentators and Interviews{teamVoiceCount > 0 ? `, and ${teamVoiceCount} team voice channels` : ''}.{isTeamEvent && ' A voice channel per team follows the teams as they form and disband.'}</>
+                    <>Own category with {eventChannels.length} channels: rules, bracket, teams, discussion, Commentators and Interviews{teamVoiceCount > 0 ? `, and ${teamVoiceCount} team voice channels` : ''}.{isTeamEvent && ' A voice channel per team follows the teams as they form and disband.'}</>
                   ) : (
                     <>One channel under the shared {EVENT_CATEGORY_NAME} category.</>
                   )}
@@ -758,7 +758,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                     <form method="post" action={`/events/${event.id}/discord`}>
                       <input type="hidden" name="csrf" value={csrf} />
                       <input type="hidden" name="action" value="upgrade" />
-                      <button class="btn btn-ghost" type="submit" data-confirm="Make an own category? The channel moves in as discussion; rules, teams, Commentators and Interviews are added.">Upgrade to own category</button>
+                      <button class="btn btn-ghost" type="submit" data-confirm="Make an own category? The channel moves in as discussion; rules, bracket, teams, Commentators and Interviews are added.">Upgrade to own category</button>
                     </form>
                   )}
                   {event.discord_category_id && isTeamEvent && (
@@ -801,7 +801,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 </p>
                 <fieldset class="publish-discord">
                   <label class="check"><input type="radio" name="size" value="channel" checked /> <span>One text channel under the shared {EVENT_CATEGORY_NAME} category</span></label>
-                  <label class="check"><input type="radio" name="size" value="category" /> <span>Own category: rules, teams, discussion, Commentators and Interviews voice, and a voice channel per team</span></label>
+                  <label class="check"><input type="radio" name="size" value="category" /> <span>Own category: rules, bracket, teams, discussion, Commentators and Interviews voice, and a voice channel per team</span></label>
                 </fieldset>
                 <button class="btn btn-primary" type="submit">Create</button>
               </form>

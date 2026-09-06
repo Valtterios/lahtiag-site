@@ -35,6 +35,7 @@ import {
   type RoleResult,
 } from './discord';
 import { formatHelsinkiRange } from './time';
+import { dropLiveBracket, refreshLiveBracket } from './event-channel';
 
 export interface DiscordEnv {
   DISCORD_BOT_TOKEN?: string;
@@ -242,7 +243,7 @@ export async function ensureEventCategory(db: D1Database, env: DiscordEnv, botId
 
 // --- the channels the bot made for an event ------------------------------------
 
-export type ChannelKind = 'discussion' | 'rules' | 'teams' | 'commentators' | 'interviews' | 'team';
+export type ChannelKind = 'discussion' | 'rules' | 'bracket' | 'teams' | 'commentators' | 'interviews' | 'team';
 
 export interface EventChannelRow {
   event_id: number;
@@ -253,9 +254,11 @@ export interface EventChannelRow {
 }
 
 // A big event's set, in the order they appear. Rules is read-only for
-// participants; the board posts there.
-export const BIG_EVENT_CHANNELS: { kind: ChannelKind; name: string; voice: boolean; readOnly: boolean }[] = [
+// participants (the board posts there); bracket is the bot's alone, for
+// the pinned live bracket, so nobody else can write in it.
+export const BIG_EVENT_CHANNELS: { kind: ChannelKind; name: string; voice: boolean; readOnly: boolean; botOnly?: boolean }[] = [
   { kind: 'rules', name: 'rules', voice: false, readOnly: true },
+  { kind: 'bracket', name: 'bracket', voice: false, readOnly: true, botOnly: true },
   { kind: 'teams', name: 'teams', voice: false, readOnly: false },
   { kind: 'discussion', name: 'discussion', voice: false, readOnly: false },
   { kind: 'commentators', name: 'Commentators', voice: true, readOnly: false },
@@ -279,7 +282,8 @@ export async function recordEventChannel(db: D1Database, eventId: number, channe
 
 function channelTopic(event: Pick<EventRow, 'title' | 'starts_at' | 'ends_at'>, url: string, kind: ChannelKind): string {
   const head = `${event.title.trim()} · ${formatHelsinkiRange(event.starts_at, event.ends_at)}`;
-  const what = kind === 'rules' ? 'The rules, from the board' : kind === 'teams' ? 'Team talk and team finding' : '';
+  const what =
+    kind === 'rules' ? 'The rules, from the board' : kind === 'bracket' ? 'The live bracket, kept by the bot' : kind === 'teams' ? 'Team talk and team finding' : '';
   return `${head}${what ? ` · ${what}` : ''} · ${url}`.slice(0, 1024);
 }
 
@@ -310,7 +314,13 @@ async function createChannelSet(
         name: spec.name,
         topic: spec.voice ? undefined : channelTopic(event, url, spec.kind),
         parentId: categoryId,
-        overwrites: [...privateOverwrites(env, botId), roleOverwrite(roleId, { voice: spec.voice, readOnly: spec.readOnly })],
+        overwrites: [
+          // A bot-only channel takes Send Messages away from the board too.
+          ...privateOverwrites(env, botId).map((o) =>
+            spec.botOnly && o.type === 0 && o.id !== DISCORD_GUILD_ID ? { ...o, allow: (PERM_VIEW_CHANNEL | PERM_READ_HISTORY).toString() } : o,
+          ),
+          roleOverwrite(roleId, { voice: spec.voice, readOnly: spec.readOnly }),
+        ],
         voice: spec.voice,
       },
       reason,
@@ -430,7 +440,12 @@ export async function upgradeEventDiscord(db: D1Database, env: DiscordEnv, event
   await recordEventChannel(db, eventId, event.discord_channel_id, 'discussion', null, now);
   await db.prepare('UPDATE events SET discord_category_id = ?2 WHERE id = ?1').bind(eventId, category.value.id).run();
   const made = await createChannelSet(db, env, botId, event, event.discord_role_id, category.value.id, new Set(['discussion']), url, now);
-  if (made.ok) await createTeamVoiceChannels(db, env, eventId, now);
+  if (made.ok) {
+    await createTeamVoiceChannels(db, env, eventId, now);
+    // A live bracket pinned in discussion moves to the new bracket channel.
+    await dropLiveBracket(db, env, eventId);
+    await refreshLiveBracket(db, env, eventId, origin, now);
+  }
   return made.ok ? 'ok' : made.reason;
 }
 
