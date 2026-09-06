@@ -184,8 +184,9 @@ puts it on the page and on Discord.
 - **A picture.** The post form takes a cover picture, and each post has
   Add cover / Remove cover. It shows under the title and goes to Discord
   with the post.
-- **Edit.** "Edit this post" under each post rewrites the title and the
-  body; a published post's Discord message changes with it.
+- **Edit.** "Edit this post" under each post has everything the new-post
+  form has: title, body, cover picture, and on a draft the ping and the
+  publish time. A published post's Discord message changes with it.
 - **Ping.** A post can ping nobody, @everyone, or one server role (say
   Minecraft) when it goes to Discord. Pick it when writing the post, or
   on a draft's edit form; it fires once, when the post publishes.

@@ -32,6 +32,8 @@ describe('news covers', () => {
     expect((await getAnnouncement(db(), id))?.ping).toBe('everyone');
     expect((await updateAnnouncement(db(), id, { title: 'Ping', body_md: 'x', ping: '42' }))?.ping).toBe('42');
     expect((await updateAnnouncement(db(), id, { title: 'Ping', body_md: 'y' }))?.ping).toBe('42'); // untouched when not sent
+    expect((await updateAnnouncement(db(), id, { title: 'Ping', body_md: 'y', publish_at: NOW + 3600 }))?.publish_at).toBe(NOW + 3600);
+    expect((await updateAnnouncement(db(), id, { title: 'Ping', body_md: 'y', publish_at: null }))?.publish_at).toBeNull();
   });
 
   it('stores, versions, attaches and removes a cover', async () => {

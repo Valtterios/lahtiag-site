@@ -6,7 +6,7 @@ import SessionBox from '../../components/SessionBox.astro';
 import { currentSession, ensureCsrf, viewAs } from '../../lib/guard';
 import ViewAs from '../../components/ViewAs.astro';
 import { listAnnouncements } from '../../lib/db';
-import { formatHelsinki } from '../../lib/time';
+import { formatHelsinki, unixToHelsinkiInputs } from '../../lib/time';
 import { listGuildRoles } from '../../lib/discord';
 import { DISCORD_GUILD_ID } from '../../lib/config';
 import { pingLabel } from '../../lib/news';
@@ -55,6 +55,7 @@ const OK: Record<string, string> = {
   cover_removed: 'Cover removed.',
   edited: 'Post updated.',
 };
+const scheduleInputs = (at: number | null) => (at ? unixToHelsinkiInputs(at) : { date: '', time: '' });
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
 ---
 <Base title="News" description="LahtiAG announcements, the same news that lands on Discord.">
@@ -97,11 +98,6 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               <input type="hidden" name="id" value={item.id} />
               <button class="btn btn-ghost btn-sm" type="submit" data-confirm="Delete this post?">Delete</button>
             </form>
-            <form method="post" action={`/announcements/${item.id}/cover`} enctype="multipart/form-data" class="inline-form cover-form">
-              <input type="hidden" name="csrf" value={csrf} />
-              <input name="cover" type="file" accept="image/jpeg,image/png,image/webp" required aria-label="Cover picture" />
-              <button class="btn btn-ghost btn-sm" type="submit">{item.cover_at ? 'Replace cover' : 'Add cover'}</button>
-            </form>
             {item.cover_at && (
               <form method="post" action={`/announcements/${item.id}/cover`} class="inline-form">
                 <input type="hidden" name="csrf" value={csrf} />
@@ -114,22 +110,28 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
         {session?.isAdmin && (
           <details class="news-edit">
             <summary>Edit this post</summary>
-            <form method="post" action="/announcements/edit" class="app-form">
+            <form method="post" action="/announcements/edit" class="app-form" enctype="multipart/form-data">
               <input type="hidden" name="csrf" value={csrf} />
               <input type="hidden" name="id" value={item.id} />
               <label>Title <input name="title" required maxlength="120" value={item.title} /></label>
               <label>Body (Markdown) <textarea name="body" rows="8" required maxlength="4000">{item.body_md}</textarea></label>
+              <label>{item.cover_at ? 'Replace the cover picture' : 'Cover picture'} (optional; JPEG, PNG or WebP up to 1.5 MB) <input name="cover" type="file" accept="image/jpeg,image/png,image/webp" /></label>
               {item.draft === 1 && (
-                <label>Ping on Discord
-                  <select name="ping">
-                    <option value="" selected={!item.ping}>Nobody</option>
-                    <option value="everyone" selected={item.ping === 'everyone'}>@everyone</option>
-                    {pingRoles.map((r) => <option value={r.id} selected={item.ping === r.id}>@{r.name}</option>)}
-                  </select>
-                </label>
+                <>
+                  <label>Ping on Discord
+                    <select name="ping">
+                      <option value="" selected={!item.ping}>Nobody</option>
+                      <option value="everyone" selected={item.ping === 'everyone'}>@everyone</option>
+                      {pingRoles.map((r) => <option value={r.id} selected={item.ping === r.id}>@{r.name}</option>)}
+                    </select>
+                  </label>
+                  <label>Publish on <input name="publish_date" type="date" value={scheduleInputs(item.publish_at).date} /></label>
+                  <label>Publish at (Helsinki) <input name="publish_time" type="time" value={scheduleInputs(item.publish_at).time} placeholder="empty = 09:00" /></label>
+                  <p class="queue-meta">Without a date it stays a draft until you press Publish. With one it publishes itself within 15 minutes of that time.</p>
+                </>
               )}
               <button class="btn btn-primary btn-sm" type="submit">Save changes</button>
-              {item.draft === 0 && <p class="queue-meta">The post on Discord is updated too.</p>}
+              {item.draft === 0 && <p class="queue-meta">The post on Discord is updated too, picture included.</p>}
             </form>
           </details>
         )}

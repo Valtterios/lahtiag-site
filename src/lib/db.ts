@@ -1289,8 +1289,13 @@ export async function getAnnouncement(db: D1Database, id: number): Promise<Annou
 
 // The board rewrites a post, draft or published; the caller mirrors a
 // published one onto its Discord message.
-// The ping only changes on a draft: a published post has pinged already.
-export async function updateAnnouncement(db: D1Database, id: number, input: { title: string; body_md: string; ping?: string | null }): Promise<AnnouncementRow | null> {
+// The ping and the publish time only change on a draft: a published
+// post has pinged and gone out already.
+export async function updateAnnouncement(
+  db: D1Database,
+  id: number,
+  input: { title: string; body_md: string; ping?: string | null; publish_at?: number | null },
+): Promise<AnnouncementRow | null> {
   const title = input.title.trim();
   if (!title || !input.body_md.trim()) throw new RuleError('bad_input', 'An announcement needs a title and a body.');
   capLength(title, 120, 'A title');
@@ -1298,8 +1303,9 @@ export async function updateAnnouncement(db: D1Database, id: number, input: { ti
   const row = await getAnnouncement(db, id);
   if (!row) return null;
   const ping = row.draft === 1 && input.ping !== undefined ? input.ping : row.ping;
-  await db.prepare('UPDATE announcements SET title = ?2, body_md = ?3, ping = ?4 WHERE id = ?1').bind(id, title, input.body_md, ping).run();
-  return { ...row, title, body_md: input.body_md, ping };
+  const publishAt = row.draft === 1 && input.publish_at !== undefined ? input.publish_at : row.publish_at;
+  await db.prepare('UPDATE announcements SET title = ?2, body_md = ?3, ping = ?4, publish_at = ?5 WHERE id = ?1').bind(id, title, input.body_md, ping, publishAt).run();
+  return { ...row, title, body_md: input.body_md, ping, publish_at: publishAt };
 }
 
 export async function createAnnouncement(
