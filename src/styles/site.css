@@ -547,6 +547,17 @@ a:hover {
   margin: 0 0 2rem;
 }
 
+/* Board tools: a status strip, then only the day's actions. */
+.admin-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 0.9rem;
+}
+.admin-secondary {
+  margin: 1rem 0 0;
+}
+
 /* The member's stats card on the membership page. */
 .profile-card {
   display: block;

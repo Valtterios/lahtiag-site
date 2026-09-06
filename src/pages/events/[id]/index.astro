@@ -684,8 +684,16 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
       <div class="event-admin">
       {session?.isAdmin && (
         <details class="admin-panel" open={ADMIN_OPEN.has(Astro.url.searchParams.get('ok') ?? '') || ADMIN_OPEN.has(Astro.url.searchParams.get('err') ?? '')}>
-          <summary>Board tools · sales, roster, questions, settings</summary>
-          <h2>Admin</h2>
+          <summary>Board tools</summary>
+          <p class="admin-status">
+            <span class={`status-badge${draft ? ' status-muted' : ' status-member'}`}>{draft ? 'Draft' : 'Published'}</span>
+            {event.cancelled_at !== null && <span class="status-badge status-danger">Cancelled</span>}
+            <span class="status-badge">{signupsClosed ? 'Signups closed' : opensLater ? `Signups open ${formatHelsinki(event.signups_open_at!)}` : 'Signups open'}</span>
+            <span class="status-badge">{isTeamEvent ? `${eventTeams.length} teams, ${going.length} players` : `${going.length}${event.capacity !== null ? ` / ${event.capacity}` : ''} going`}{waitlist.length > 0 ? `, ${waitlist.length} waiting` : ''}</span>
+            {sales && <span class="status-badge">{sales.tickets} tickets sold</span>}
+            {hasBracket && <span class={`status-badge${event.bracket_live_at === null ? ' status-muted' : ''}`}>{event.bracket_live_at === null ? 'Bracket: draft' : 'Bracket: live'}</span>}
+            {event.interest_count > 0 && <span class="status-badge status-muted">♡ {event.interest_count}</span>}
+          </p>
           {event.cancelled_at !== null && (
             <form method="post" action={`/events/${event.id}/cancel`} class="signup-bar">
               <input type="hidden" name="csrf" value={csrf} />
@@ -694,7 +702,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             </form>
           )}
           {event.cancelled_at === null && (
-          <div class="signup-bar">
+          <div class="signup-bar admin-actions">
             <form method="post" action={`/events/${event.id}/close`}>
               <input type="hidden" name="csrf" value={csrf} />
               <input type="hidden" name="action" value={signupsClosed ? 'reopen' : 'close'} />
@@ -709,17 +717,10 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 {hasBracket ? 'Regenerate bracket' : 'Generate bracket'}
               </button>
             </form>
-            {hasBracket && event.bracket_live_at === null && (
-              <a class="btn btn-cta" href={`/events/${event.id}/bracket`}>Draft bracket: seed and go live</a>
+            {hasBracket && (
+              <a class={`btn ${event.bracket_live_at === null ? 'btn-cta' : 'btn-ghost'}`} href={`/events/${event.id}/bracket`}>{event.bracket_live_at === null ? 'Seed and go live' : 'Bracket page'}</a>
             )}
-            <form method="post" action={`/events/${event.id}/cancel`}>
-              <input type="hidden" name="csrf" value={csrf} />
-              <button class="btn btn-ghost" type="submit" data-confirm="Cancel this event? It stays listed as cancelled and can be reinstated.">Cancel this event</button>
-            </form>
-            <form method="post" action={`/events/${event.id}/duplicate`}>
-              <input type="hidden" name="csrf" value={csrf} />
-              <button class="btn btn-ghost" type="submit" data-confirm="Make a copy of this event as a new draft?">Duplicate as a draft</button>
-            </form>
+            {sales && <a class="btn btn-ghost" href={`/events/${event.id}/door`}>Door page</a>}
           </div>
           )}
           {event.cancelled_at === null && (
@@ -769,11 +770,21 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             {coverAt !== null && <button class="btn btn-ghost" name="action" value="remove" type="submit" formnovalidate data-confirm="Remove the cover image?">Remove</button>}
             <span class="queue-meta">JPEG, PNG or WebP, up to 1.5 MB; about 1200 × 630 looks best.</span>
           </form>
+          <div class="signup-bar admin-secondary">
+            <form method="post" action={`/events/${event.id}/duplicate`}>
+              <input type="hidden" name="csrf" value={csrf} />
+              <button class="btn btn-ghost btn-sm" type="submit" data-confirm="Make a copy of this event as a new draft?">Duplicate as a draft</button>
+            </form>
+            <form method="post" action={`/events/${event.id}/cancel`}>
+              <input type="hidden" name="csrf" value={csrf} />
+              <button class="btn btn-ghost btn-sm" type="submit" data-confirm="Cancel this event? It stays listed as cancelled and can be reinstated.">Cancel this event</button>
+            </form>
+          </div>
           </details>
           )}
           {event.cancelled_at === null && (
           <details class="admin-edit" id="discord" open={DISCORD_OPEN.has(okKey) || DISCORD_OPEN.has(errKey)}>
-            <summary>Discord</summary>
+            <summary>Discord · {event.discord_event_id ? 'on the event list' : 'not on the event list'}{event.discord_role_id ? ' · role and channel' : archived ? ' · archived' : ''}</summary>
             {!botOn ? (
               <p class="event-meta">Needs the Discord bot token; the technical handbook, "Discord roles", has the steps.</p>
             ) : (
@@ -885,7 +896,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
           </details>
           )}
           <details class="admin-edit" id="tickets" open={['type_saved', 'type_deleted'].includes(Astro.url.searchParams.get('ok') ?? '')}>
-            <summary>Tickets</summary>
+            <summary>Tickets · {types.length === 0 ? 'none, plain signups' : `${types.length} ${types.length === 1 ? 'type' : 'types'}`}{sales ? ` · ${sales.tickets} sold` : ''}</summary>
             <p class="event-meta">
               Add a ticket type and the event sells tickets instead of taking plain signups (team
               events keep signups). A price of 0 is a free ticket. Member price applies to linked
@@ -933,7 +944,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             </form>
           </details>
           <details class="admin-edit" id="questions" open={Astro.url.searchParams.get('ok') === 'question_saved'}>
-            <summary>Questions</summary>
+            <summary>Questions · {questions.length === 0 ? 'none' : questions.length}</summary>
             <p class="event-meta">
               Asked when someone signs up or buys a ticket. Answers show on the roster below, on the
               door page, and in the exports. Up to eight; a choice question lists its options one per line.
@@ -973,7 +984,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             {questions.length > 0 && <p><a class="btn btn-ghost btn-sm" href={`/events/${event.id}/roster.csv`}>Export roster with answers</a></p>}
           </details>
           <details class="admin-edit">
-            <summary>Manage participants</summary>
+            <summary>Manage participants · {going.length} going{maybe.length > 0 ? `, ${maybe.length} maybe` : ''}{waitlist.length > 0 ? `, ${waitlist.length} waiting` : ''}</summary>
             <p class="event-meta">
               Changes here skip the signup rules: closed signups and capacity
               don't apply. Picking a team sets the answer to Going. Adding by

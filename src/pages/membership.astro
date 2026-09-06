@@ -133,17 +133,6 @@ const MESSAGES: Record<FieldError, string> = {
     </p>
   )}
 
-  {session && stats && (
-    <section class="list" id="my-stats">
-      <h2 class="section-label">Your stats</h2>
-      <p class="queue-meta">
-        <strong>{stats.attended}</strong> events, <strong>{stats.tournaments}</strong> tournaments, <strong>{stats.wins}</strong> wins
-        {stats.last_win ? <> · last win: {stats.last_win.title}</> : null}. Type <code>/profile</code> in Discord to post your card for everyone.
-      </p>
-      <img class="profile-card" src="/membership/card.png" alt="Your stats card" width="900" height="420" />
-    </section>
-  )}
-
   {session && (
     <section class="list" id="my-events">
       <h2 class="section-label">My events</h2>
@@ -302,4 +291,15 @@ const MESSAGES: Record<FieldError, string> = {
       </section>
     </>
   )}
+  {session && stats && (
+    <section class="list" id="my-stats">
+      <h2 class="section-label">Your stats</h2>
+      <p class="queue-meta">
+        <strong>{stats.attended}</strong> events, <strong>{stats.tournaments}</strong> tournaments, <strong>{stats.wins}</strong> wins
+        {stats.last_win ? <> · last win: {stats.last_win.title}</> : null}. Type <code>/profile</code> in Discord to post your card for everyone.
+      </p>
+      <img class="profile-card" src="/membership/card.png" alt="Your stats card" width="900" height="420" />
+    </section>
+  )}
+
 </Base>
