@@ -989,7 +989,10 @@ a:hover {
 .year-bar {
   display: block;
   width: 1.4rem;
-  background: var(--blue);
+  height: 4.5rem;
+}
+.year-bar rect {
+  fill: var(--blue);
 }
 .year-label {
   font-size: 0.68rem;
