@@ -150,6 +150,12 @@ out on its own within 15 minutes of that moment, to the site and to
 Discord, for a general meeting notice written ahead. Publish sends it
 right away instead.
 
+**Who a news post pings.** The post form has a Ping choice: nobody,
+@everyone, or one of the server's roles (the bot lists them; without the
+bot only @everyone is offered). The mention goes in front of the Discord
+message when the post publishes, by hand or on its schedule, and never
+again.
+
 **A picture on a news post.** The new-post form takes an optional cover
 (JPEG, PNG or WebP up to 1.5 MB), and every post on the news page has
 Add cover / Replace cover / Remove cover for the board. The picture shows

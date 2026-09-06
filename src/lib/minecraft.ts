@@ -18,8 +18,8 @@ export const FRIENDS_PER_MEMBER = 2;
 // The servers a name can be for. Each runs its own copy of the sync with
 // SERVER=<slug> in its config and pulls /api/minecraft/whitelist?server=<slug>.
 export const SERVERS = [
-  { slug: 'smp', label: 'SMP' },
-  { slug: 'gtnh', label: 'GT:NH modpack' },
+  { slug: 'smp', label: 'SMP', address: 'mc.lahtiag.fi' },
+  { slug: 'gtnh', label: 'GT:NH modpack', address: 'gtnh.lahtiag.fi' },
 ] as const;
 export type ServerSlug = (typeof SERVERS)[number]['slug'];
 export const ALL_SERVERS: ServerSlug[] = SERVERS.map((s) => s.slug);

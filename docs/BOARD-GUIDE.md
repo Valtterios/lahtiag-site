@@ -186,6 +186,9 @@ puts it on the page and on Discord.
   with the post.
 - **Edit.** "Edit this post" under each post rewrites the title and the
   body; a published post's Discord message changes with it.
+- **Ping.** A post can ping nobody, @everyone, or one server role (say
+  Minecraft) when it goes to Discord. Pick it when writing the post, or
+  on a draft's edit form; it fires once, when the post publishes.
 - **The bot in Discord.** Announcements carry I'm going, Maybe and
   Interested buttons; a click signs up under the same rules as the site.
   People get a private message when put in a team or let in from a

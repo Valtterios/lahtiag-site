@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { upsertMember, createAnnouncement, listAnnouncements, deleteAnnouncement, getAnnouncement, updateAnnouncement, getAnnouncementCover, setAnnouncementCover, deleteAnnouncementCover, COVER_MAX_BYTES } from '../src/lib/db';
-import { newsCoverFile, newsText } from '../src/lib/news';
+import { newsCoverFile, newsText, newsPayload, parsePing, pingLabel } from '../src/lib/news';
 
 // A news post's cover: saved, listed as a version, attached for Discord,
 // gone with the post.
@@ -14,6 +14,24 @@ describe('news covers', () => {
   beforeEach(async () => {
     for (const table of ['announcement_covers', 'announcements', 'members']) await db().prepare(`DELETE FROM ${table}`).run();
     await upsertMember(db(), { discord_id: 'board', username: 'Board', avatar_hash: null }, NOW);
+  });
+
+  it('pings nobody, everyone, or one role', async () => {
+    expect(parsePing('')).toBeNull();
+    expect(parsePing('none')).toBeNull();
+    expect(parsePing('everyone')).toBe('everyone');
+    expect(parsePing('123456789012345678')).toBe('123456789012345678');
+    expect(() => parsePing('@here')).toThrow();
+    expect(newsPayload({ title: 'T', body_md: 'B', ping: null })).toEqual({ content: '📣 **T**\nB', mentions: { parse: [] } });
+    expect(newsPayload({ title: 'T', body_md: 'B', ping: 'everyone' })).toEqual({ content: '@everyone 📣 **T**\nB', mentions: { parse: ['everyone'] } });
+    expect(newsPayload({ title: 'T', body_md: 'B', ping: '42' })).toEqual({ content: '<@&42> 📣 **T**\nB', mentions: { parse: [], roles: ['42'] } });
+    expect(pingLabel('42', new Map([['42', 'Minecraft']]))).toBe('@Minecraft');
+    expect(pingLabel('everyone', new Map())).toBe('@everyone');
+    expect(pingLabel(null, new Map())).toBeNull();
+    const id = await createAnnouncement(db(), { title: 'Ping', body_md: 'x', author_id: 'board', source: 'web', draft: true, ping: 'everyone' }, NOW);
+    expect((await getAnnouncement(db(), id))?.ping).toBe('everyone');
+    expect((await updateAnnouncement(db(), id, { title: 'Ping', body_md: 'x', ping: '42' }))?.ping).toBe('42');
+    expect((await updateAnnouncement(db(), id, { title: 'Ping', body_md: 'y' }))?.ping).toBe('42'); // untouched when not sent
   });
 
   it('stores, versions, attaches and removes a cover', async () => {

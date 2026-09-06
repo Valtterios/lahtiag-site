@@ -144,7 +144,6 @@ const MESSAGES: Record<FieldError, string> = {
   {session && (
     <p class="account-bar">
       <span>Signed in as <strong>{session.username}</strong> on Discord.</span>
-      <a href="#my-events">My events</a>
       <a href="/tickets">My tickets</a>
       <a href="/purchases">My purchases</a>
       <form method="post" action="/logout" class="inline-form">
@@ -152,27 +151,6 @@ const MESSAGES: Record<FieldError, string> = {
         <button class="btn btn-ghost btn-sm" type="submit">Sign out</button>
       </form>
     </p>
-  )}
-
-  {session && (
-    <section class="list" id="my-events">
-      <h2 class="section-label">My events</h2>
-      {myEvents.length === 0 ? (
-        <p class="app-empty">Nothing coming up yet. Sign up, join a waitlist, or press Interested on an <a href="/events">event</a> and it shows here.</p>
-      ) : (
-        <ul class="ticket-list">
-          {myEvents.map((e) => (
-            <li class="ticket-card">
-              <div>
-                <p class="ticket-event"><a href={`/events/${e.id}`}>{e.title}</a></p>
-                <p class="queue-meta">{formatHelsinkiRange(e.starts_at, e.ends_at)}{e.location ? ` · ${e.location}` : ''}</p>
-              </div>
-              <span class={`status-badge${e.relation === 'ticket' || e.relation === 'going' ? ' status-member' : e.relation === 'interested' ? ' status-muted' : ''}`}>{RELATION[e.relation]}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   )}
 
   {!session && (
@@ -215,171 +193,248 @@ const MESSAGES: Record<FieldError, string> = {
   {session && entry && (
     <>
       {note && <p class="flash">{note}</p>}
-      <section class="member-card">
-        <p class="flash">
-          {entry.status === 'member' && (
-            <>{MEMBER_TYPE_LABELS[entry.member_type]} of LahtiAG since {formatHelsinkiDate(entry.decided_at ?? entry.applied_at)}.</>
+
+      {stats && (
+        <section class="stats-hero" id="my-stats">
+          <img class="profile-card" src="/membership/card.png" alt="Your stats card" width="900" height="420" />
+          <p class="queue-meta">
+            <strong>{stats.attended}</strong> events, <strong>{stats.tournaments}</strong> tournaments, <strong>{stats.wins}</strong> wins
+            {stats.last_win ? <> · last win: {stats.last_win.title}</> : null}. <code>/profile</code> in Discord posts the card for everyone.
+          </p>
+          <form method="post" action="/membership/leaderboard" class="app-form-row leaderboard-optin">
+            <input type="hidden" name="csrf" value={csrf} />
+            <label class="check"><input type="checkbox" name="hide" checked={!onLeaderboard} /> <span>Hide me from the public leaderboard on the <a href="/history">history page</a> (everyone is on it unless hidden)</span></label>
+            <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+          </form>
+        </section>
+      )}
+
+      <nav class="tabs" data-tabs aria-label="Membership sections">
+        <a class="tab" href="#membership" role="tab" aria-selected="true">Membership</a>
+        <a class="tab" href="#my-events" role="tab" aria-selected="false">My events{myEvents.length > 0 && <span class="tab-count">{myEvents.length}</span>}</a>
+        <a class="tab" href="#minecraft" role="tab" aria-selected="false">Minecraft{mcNames.some((n) => n.approved_at === null) && <span class="tab-count">!</span>}</a>
+      </nav>
+      <noscript><style>{'.tab-panel[hidden]{display:block} .tabs{display:none}'}</style></noscript>
+
+      <section class="tab-panel" id="membership" data-tab-panel>
+        <section class="member-card">
+          <p class="flash">
+            {entry.status === 'member' && (
+              <>{MEMBER_TYPE_LABELS[entry.member_type]} of LahtiAG since {formatHelsinkiDate(entry.decided_at ?? entry.applied_at)}.</>
+            )}
+            {entry.status === 'pending' && (
+              <>Your application from {formatHelsinkiDate(entry.applied_at)} is waiting for the board's decision.</>
+            )}
+            {entry.status === 'former' && <>You're listed as a former member. Email the board if you'd like to rejoin.</>}
+          </p>
+          <p>
+            Registered as <strong>{entry.full_name}</strong>, linked to your Discord account
+            <strong> {session.username}</strong>.
+          </p>
+          <p class="queue-meta">
+            To resign, email <a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a>.
+          </p>
+        </section>
+
+        <section class="self-panel">
+          <h2 class="section-label">Actives</h2>
+          <p class="queue-intro">
+            Actives hear about event ideas, planning and meetings first, in the actives channel on
+            Discord. It commits you to nothing. The board approves actives; once approved you get the
+            Actives role. Untick to leave.
+          </p>
+          {entry.is_active && <p class="match-tag">You're an active.</p>}
+          {!entry.is_active && entry.wants_active && <p class="warn-tag warn-soft">Asked. Waiting for the board to approve.</p>}
+          <form method="post" action="/membership" class="self-row">
+            <input type="hidden" name="csrf" value={csrf} />
+            <input type="hidden" name="intent" value="self" />
+            <label class="check">
+              <input type="checkbox" name="wants_active" checked={entry.wants_active} />
+              <span><strong>I want to be an active</strong></span>
+            </label>
+            <label class="self-field">
+              Telegram
+              <input name="telegram" maxlength={LIMITS.telegram} placeholder="@handle" value={entry.telegram ?? ''} />
+            </label>
+            <button class="btn btn-primary" type="submit">Save</button>
+          </form>
+        </section>
+
+        <section class="self-panel">
+          <h2 class="section-label">Your details</h2>
+          <p class="queue-intro">
+            Keep these current, especially your home municipality: the association must keep it on
+            record. Your membership class and status are the board's to change.
+          </p>
+          {problem === 'csrf' && <p class="flash">The form was stale. Please send it again.</p>}
+          {problem === 'duplicate' && <p class="flash">Another member already uses that email address.</p>}
+          {errors.length > 0 && (
+            <ul class="flash flash-list">
+              {errors.filter((e) => MESSAGES[e]).map((e) => <li>{MESSAGES[e]}</li>)}
+            </ul>
           )}
-          {entry.status === 'pending' && (
-            <>Your application from {formatHelsinkiDate(entry.applied_at)} is waiting for the board's decision.</>
-          )}
-          {entry.status === 'former' && <>You're listed as a former member. Email the board if you'd like to rejoin.</>}
-        </p>
-        <p>
-          Registered as <strong>{entry.full_name}</strong>, linked to your Discord account
-          <strong> {session.username}</strong>.
-        </p>
-        <p class="queue-meta">
-          To resign, email <a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a>.
-        </p>
+          <form method="post" action="/membership" class="app-form join-form" novalidate>
+            <input type="hidden" name="csrf" value={csrf} />
+            <input type="hidden" name="intent" value="details" />
+            <div class="form-grid">
+              <label class={bad('full_name')}>Full name *<input name="full_name" required maxlength={LIMITS.full_name} value={field('full_name', entry.full_name)} /></label>
+              <label class={bad('domicile')}>Home municipality (kotikunta) *<input name="domicile" required maxlength={LIMITS.domicile} value={field('domicile', entry.domicile)} /></label>
+              <label class={bad('email')}>Email *<input name="email" type="email" required maxlength={LIMITS.email} value={field('email', entry.email)} /></label>
+              <label class={bad('student_status')}>
+                I study at *
+                <select name="student_status" required>
+                  {STUDENT_STATUSES.map((s) => (
+                    <option value={s} selected={field('student_status', entry.student_status) === s}>{STUDENT_STATUS_LABELS[s]}</option>
+                  ))}
+                </select>
+              </label>
+              <label class={bad('union_member')}>
+                Student union *
+                <select name="union_member" required>
+                  {UNIONS.map((u) => (
+                    <option value={u} selected={field('union_member', entry.union_member) === u}>{UNION_LABELS[u]}</option>
+                  ))}
+                </select>
+              </label>
+              <label>Discord<input value={entry.discord_name ?? session.username} readonly /></label>
+            </div>
+            <fieldset class="checkbox-grid">
+              <legend>I'm interested in</legend>
+              {GAMES.map((game) => (
+                <label class="check"><input type="checkbox" name="games" value={game} checked={knownGames.includes(game)} /> {game}</label>
+              ))}
+              <label class={`check-other ${bad('games') ?? ''}`}>Other<input name="games_other" maxlength={LIMITS.games_other} value={otherGames} /></label>
+            </fieldset>
+            <label class={bad('message')}>
+              Message to the board
+              <textarea name="message" rows="2" maxlength={LIMITS.message}>{field('message', entry.message)}</textarea>
+            </label>
+            <button class="btn btn-primary" type="submit">Save details</button>
+          </form>
+        </section>
       </section>
 
-      <section class="self-panel">
-        <h2 class="section-label">Actives</h2>
-        <p class="queue-intro">
-          Actives hear about event ideas, planning and meetings first, in the actives channel on
-          Discord. It commits you to nothing. The board approves actives; once approved you get the
-          Actives role. Untick to leave.
-        </p>
-        {entry.is_active && <p class="match-tag">You're an active.</p>}
-        {!entry.is_active && entry.wants_active && <p class="warn-tag warn-soft">Asked. Waiting for the board to approve.</p>}
-        <form method="post" action="/membership" class="self-row">
-          <input type="hidden" name="csrf" value={csrf} />
-          <input type="hidden" name="intent" value="self" />
-          <label class="check">
-            <input type="checkbox" name="wants_active" checked={entry.wants_active} />
-            <span><strong>I want to be an active</strong></span>
-          </label>
-          <label class="self-field">
-            Telegram
-            <input name="telegram" maxlength={LIMITS.telegram} placeholder="@handle" value={entry.telegram ?? ''} />
-          </label>
-          <button class="btn btn-primary" type="submit">Save</button>
-        </form>
-      </section>
-
-      <section class="self-panel">
-        <h2 class="section-label">Your details</h2>
-        <p class="queue-intro">
-          Keep these current, especially your home municipality: the association must keep it on
-          record. Your membership class and status are the board's to change.
-        </p>
-        {problem === 'csrf' && <p class="flash">The form was stale. Please send it again.</p>}
-        {problem === 'duplicate' && <p class="flash">Another member already uses that email address.</p>}
-        {errors.length > 0 && (
-          <ul class="flash flash-list">
-            {errors.filter((e) => MESSAGES[e]).map((e) => <li>{MESSAGES[e]}</li>)}
+      <section class="tab-panel" id="my-events" data-tab-panel hidden>
+        <h2 class="section-label">My events</h2>
+        {myEvents.length === 0 ? (
+          <p class="app-empty">Nothing coming up yet. Sign up, join a waitlist, or press Interested on an <a href="/events">event</a> and it shows here.</p>
+        ) : (
+          <ul class="ticket-list">
+            {myEvents.map((e) => (
+              <li class="ticket-card">
+                <div>
+                  <p class="ticket-event"><a href={`/events/${e.id}`}>{e.title}</a></p>
+                  <p class="queue-meta">{formatHelsinkiRange(e.starts_at, e.ends_at)}{e.location ? ` · ${e.location}` : ''}</p>
+                </div>
+                <span class={`status-badge${e.relation === 'ticket' || e.relation === 'going' ? ' status-member' : e.relation === 'interested' ? ' status-muted' : ''}`}>{RELATION[e.relation]}</span>
+              </li>
+            ))}
           </ul>
         )}
-        <form method="post" action="/membership" class="app-form join-form" novalidate>
-          <input type="hidden" name="csrf" value={csrf} />
-          <input type="hidden" name="intent" value="details" />
-          <div class="form-grid">
-            <label class={bad('full_name')}>Full name *<input name="full_name" required maxlength={LIMITS.full_name} value={field('full_name', entry.full_name)} /></label>
-            <label class={bad('domicile')}>Home municipality (kotikunta) *<input name="domicile" required maxlength={LIMITS.domicile} value={field('domicile', entry.domicile)} /></label>
-            <label class={bad('email')}>Email *<input name="email" type="email" required maxlength={LIMITS.email} value={field('email', entry.email)} /></label>
-            <label class={bad('student_status')}>
-              I study at *
-              <select name="student_status" required>
-                {STUDENT_STATUSES.map((s) => (
-                  <option value={s} selected={field('student_status', entry.student_status) === s}>{STUDENT_STATUS_LABELS[s]}</option>
-                ))}
-              </select>
-            </label>
-            <label class={bad('union_member')}>
-              Student union *
-              <select name="union_member" required>
-                {UNIONS.map((u) => (
-                  <option value={u} selected={field('union_member', entry.union_member) === u}>{UNION_LABELS[u]}</option>
-                ))}
-              </select>
-            </label>
-            <label>Discord<input value={entry.discord_name ?? session.username} readonly /></label>
+        <p class="queue-meta">Tickets are under <a href="/tickets">My tickets</a>; past events and results on the <a href="/history">history page</a>.</p>
+      </section>
+
+      <section class="tab-panel" id="minecraft" data-tab-panel hidden>
+        <h2 class="section-label">Minecraft servers</h2>
+        <div class="mc-card">
+          <div class="mc-head">
+            <div>
+              <h3>Whitelist</h3>
+              <p>
+                Your Java edition name goes on every LahtiAG server within five minutes. Up to {FRIENDS_PER_MEMBER} friends can come along on your
+                membership once the board says yes. Every name is checked with Mojang and shown with its skin, so you can see it's the right account.
+              </p>
+            </div>
+            <ul class="mc-servers">
+              {SERVERS.map((s) => (
+                <li><span class="mc-server-name">{s.label}</span><code>{s.address}</code></li>
+              ))}
+            </ul>
           </div>
-          <fieldset class="checkbox-grid">
-            <legend>I'm interested in</legend>
-            {GAMES.map((game) => (
-              <label class="check"><input type="checkbox" name="games" value={game} checked={knownGames.includes(game)} /> {game}</label>
-            ))}
-            <label class={`check-other ${bad('games') ?? ''}`}>Other<input name="games_other" maxlength={LIMITS.games_other} value={otherGames} /></label>
-          </fieldset>
-          <label class={bad('message')}>
-            Message to the board
-            <textarea name="message" rows="2" maxlength={LIMITS.message}>{field('message', entry.message)}</textarea>
-          </label>
-          <button class="btn btn-primary" type="submit">Save details</button>
-        </form>
+
+          {entry.status !== 'member' ? (
+            <p class="queue-meta">The whitelist opens once your membership is approved.</p>
+          ) : (
+            <>
+              {mcNames.length > 0 ? (
+                <ul class="mc-rows">
+                  {mcNames.map((n) => (
+                    <li class="mc-row">
+                      {n.uuid ? <img class="mc-face" src={`/membership/minecraft/face/${n.uuid}`} width="32" height="32" alt="" loading="lazy" /> : <span class="mc-face mc-face-empty" />}
+                      <span class="mc-name">{n.name}</span>
+                      <span class="mc-meta">{n.kind === 'own' ? 'you' : 'your friend'}{narrowed(n.servers) && ` · ${serversLabel(n.servers)} only`}</span>
+                      <span class={`status-badge ${n.approved_at === null ? 'status-muted' : 'status-member'}`}>{n.approved_at === null ? 'Waiting for the board' : 'On the servers'}</span>
+                      <form method="post" action="/membership/minecraft" class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="remove" />
+                        <input type="hidden" name="name" value={n.name} />
+                        <button class="btn btn-ghost btn-sm" type="submit">Remove</button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p class="app-empty">No names yet. Add yours below and you're in within five minutes.</p>
+              )}
+
+              <div class="mc-forms">
+                <form method="post" action="/membership/minecraft" class="mc-form">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="action" value="own" />
+                  <h4>{mcOwn ? 'Your name' : 'Whitelist yourself'}</h4>
+                  <label>Minecraft name <input name="name" required maxlength="16" pattern="[A-Za-z0-9_]{3,16}" value={mcOwn?.name ?? ''} placeholder="Steve" /></label>
+                  <button class="btn btn-primary btn-sm" type="submit">{mcOwn ? 'Change' : 'Whitelist me'}</button>
+                </form>
+                {mcFriends.length < FRIENDS_PER_MEMBER && (
+                  <form method="post" action="/membership/minecraft" class="mc-form">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="friend" />
+                    <h4>Bring a friend</h4>
+                    <label>Their Minecraft name <input name="name" required maxlength="16" pattern="[A-Za-z0-9_]{3,16}" placeholder="Alex" /></label>
+                    <label>For
+                      <select name="servers">
+                        <option value="all">every server</option>
+                        {SERVERS.map((s) => <option value={s.slug}>{s.label} only</option>)}
+                      </select>
+                    </label>
+                    <button class="btn btn-ghost btn-sm" type="submit">Ask the board</button>
+                  </form>
+                )}
+              </div>
+              <p class="queue-meta">
+                In Discord, <code>/whitelist</code> does all of this too.{session.isAdmin && <> Board: <a href="/whitelist">the whitelist table</a>.</>}
+              </p>
+            </>
+          )}
+        </div>
       </section>
     </>
   )}
-  {session && stats && (
-    <section class="list" id="my-stats">
-      <h2 class="section-label">Your stats</h2>
-      <p class="queue-meta">
-        <strong>{stats.attended}</strong> events, <strong>{stats.tournaments}</strong> tournaments, <strong>{stats.wins}</strong> wins
-        {stats.last_win ? <> · last win: {stats.last_win.title}</> : null}. Type <code>/profile</code> in Discord to post your card for everyone.
-      </p>
-      <img class="profile-card" src="/membership/card.png" alt="Your stats card" width="900" height="420" />
-      <form method="post" action="/membership/leaderboard" class="app-form-row leaderboard-optin">
-        <input type="hidden" name="csrf" value={csrf} />
-        <label class="check"><input type="checkbox" name="hide" checked={!onLeaderboard} /> <span>Hide me from the public leaderboard on the history page (it lists Discord names with events attended and wins; everyone is on it unless hidden)</span></label>
-        <button class="btn btn-ghost btn-sm" type="submit">Save</button>
-      </form>
-    </section>
-  )}
-  {session && entry && (
-    <section class="list" id="minecraft">
-      <h2 class="section-label">Minecraft server</h2>
-      {entry.status === 'member' ? (
-        <>
-          <p class="queue-meta">
-            Your Java edition name goes on every LahtiAG server's whitelist within a few minutes. Up to {FRIENDS_PER_MEMBER} friends can come along on your membership: name them, pick the server, and the board approves.
-            Every name is checked with Mojang and shown with its skin, so you can see it's the right account. In Discord, <code>/whitelist</code> does the same.{session.isAdmin && <> Board: <a href="/whitelist">the whitelist table</a>.</>}
-          </p>
-          {mcNames.length > 0 && (
-            <ul class="mc-names">
-              {mcNames.map((n) => (
-                <li>
-                  {n.uuid && <img class="mc-face" src={`/membership/minecraft/face/${n.uuid}`} width="28" height="28" alt="" loading="lazy" />}
-                  <span class="mc-name">{n.name}</span>
-                  <span class="event-meta">{n.kind === 'own' ? 'you' : n.kind === 'friend' ? 'your friend' : 'added by the board'}{narrowed(n.servers) && ` · ${serversLabel(n.servers)} only`}{n.approved_at === null && ' · waiting for the board'}</span>
-                  {n.kind !== 'board' && (
-                    <form method="post" action="/membership/minecraft" class="inline-form">
-                      <input type="hidden" name="csrf" value={csrf} />
-                      <input type="hidden" name="action" value="remove" />
-                      <input type="hidden" name="name" value={n.name} />
-                      <button class="btn btn-ghost btn-sm" type="submit">Remove</button>
-                    </form>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          <form method="post" action="/membership/minecraft" class="app-form-row">
-            <input type="hidden" name="csrf" value={csrf} />
-            <input type="hidden" name="action" value="own" />
-            <label>Your Minecraft name <input name="name" required maxlength="16" pattern="[A-Za-z0-9_]{3,16}" value={mcOwn?.name ?? ''} placeholder="Steve" /></label>
-            <button class="btn btn-primary btn-sm" type="submit">{mcOwn ? 'Change' : 'Whitelist me'}</button>
-          </form>
-          {mcFriends.length < FRIENDS_PER_MEMBER && (
-            <form method="post" action="/membership/minecraft" class="app-form-row">
-              <input type="hidden" name="csrf" value={csrf} />
-              <input type="hidden" name="action" value="friend" />
-              <label>Bring a friend <input name="name" required maxlength="16" pattern="[A-Za-z0-9_]{3,16}" placeholder="Their Minecraft name" /></label>
-              <label>For
-                <select name="servers">
-                  <option value="all">every server</option>
-                  {SERVERS.map((s) => <option value={s.slug}>{s.label} only</option>)}
-                </select>
-              </label>
-              <button class="btn btn-ghost btn-sm" type="submit">Ask the board</button>
-            </form>
-          )}
-        </>
-      ) : (
-        <p class="queue-meta">The Minecraft whitelist opens once your membership is approved.</p>
-      )}
-    </section>
-  )}
-
 </Base>
+
+<script>
+  // Tabs on the membership page: one panel at a time, the choice kept in
+  // the hash so links and redirects (#minecraft, #my-events) land on the
+  // right one. Without JavaScript every panel simply shows.
+  const bar = document.querySelector('[data-tabs]');
+  if (bar) {
+    const tabs = Array.from(bar.querySelectorAll<HTMLAnchorElement>('a[href^="#"]'));
+    const panels = Array.from(document.querySelectorAll<HTMLElement>('[data-tab-panel]'));
+    const ALIASES: Record<string, string> = { 'my-stats': 'membership' };
+    const show = (wanted: string, remember: boolean) => {
+      const id = panels.some((p) => p.id === wanted) ? wanted : 'membership';
+      for (const p of panels) p.hidden = p.id !== id;
+      for (const t of tabs) t.setAttribute('aria-selected', String(t.getAttribute('href') === `#${id}`));
+      if (remember) history.replaceState(null, '', `#${id}`);
+    };
+    for (const t of tabs) {
+      t.addEventListener('click', (e) => {
+        e.preventDefault();
+        show((t.getAttribute('href') ?? '').slice(1), true);
+      });
+    }
+    const initial = location.hash.slice(1);
+    show(ALIASES[initial] ?? initial, false);
+    window.addEventListener('hashchange', () => show(location.hash.slice(1), false));
+  }
+</script>

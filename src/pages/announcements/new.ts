@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { helsinkiToUnix } from '../../lib/time';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
 import { createAnnouncement, setAnnouncementCover, RuleError } from '../../lib/db';
+import { parsePing } from '../../lib/news';
 
 // A new post starts as a draft; Publish on the news page sends it to Discord.
 
@@ -24,7 +25,8 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   const now = Math.floor(Date.now() / 1000);
   let id: number;
   try {
-    id = await createAnnouncement(env.DB, { title, body_md: body, author_id: admin.session.discordId, source: 'web', draft: true, publish_at: publishAt }, now);
+    const ping = parsePing(String(form.get('ping') ?? ''));
+    id = await createAnnouncement(env.DB, { title, body_md: body, author_id: admin.session.discordId, source: 'web', draft: true, publish_at: publishAt, ping }, now);
   } catch (error) {
     if (error instanceof RuleError) return redirect('/announcements?err=bad_input', 303);
     throw error;

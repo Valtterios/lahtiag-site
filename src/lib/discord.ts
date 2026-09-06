@@ -188,7 +188,7 @@ export function hasAdminRole(roles: string[], adminRoleIds: string): boolean {
 export async function postWebhook(
   webhookUrl: string,
   content: string,
-  allowedMentions?: { parse: string[]; users?: string[] },
+  allowedMentions?: { parse: string[]; users?: string[]; roles?: string[] },
   flags?: number, // SUPPRESS_EMBEDS keeps the link's preview card off
 ): Promise<string | null> {
   try {

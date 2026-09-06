@@ -7,11 +7,20 @@ import { currentSession, ensureCsrf, viewAs } from '../../lib/guard';
 import ViewAs from '../../components/ViewAs.astro';
 import { listAnnouncements } from '../../lib/db';
 import { formatHelsinki } from '../../lib/time';
+import { listGuildRoles } from '../../lib/discord';
+import { DISCORD_GUILD_ID } from '../../lib/config';
+import { pingLabel } from '../../lib/news';
 
 const view = viewAs(await currentSession(Astro.request, env), Astro.url);
 const session = view.session;
 const csrf = ensureCsrf(Astro.cookies);
 const announcements = await listAnnouncements(env.DB, 20, session?.isAdmin === true);
+
+// The board picks who a post pings: nobody, everyone, or one of the
+// server's roles (the bot lists them; without the bot, everyone only).
+const guildRoles = session?.isAdmin && env.DISCORD_BOT_TOKEN ? ((await listGuildRoles(env.DISCORD_BOT_TOKEN, DISCORD_GUILD_ID)) ?? []) : [];
+const pingRoles = guildRoles.filter((r) => r.name !== '@everyone' && !r.managed).sort((a, b) => a.name.localeCompare(b.name));
+const roleNames = new Map(guildRoles.map((r) => [r.id, r.name]));
 
 // Announcement bodies are Markdown written by admins (web form or the
 // admin-gated /announce slash command). Raw HTML inside the Markdown is
@@ -64,6 +73,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
       <article class={`news-card prose${item.draft ? ' news-draft' : ''}`}>
         <p class="event-when">
           {item.draft === 1 && <span class="status-badge status-muted">Draft</span>}
+          {item.draft === 1 && item.ping && <span class="status-badge status-muted">pings {pingLabel(item.ping, roleNames)}</span>}
           {item.draft === 1 ? (item.publish_at ? ` scheduled for ${formatHelsinki(item.publish_at)}` : ' not published') : formatHelsinki(item.published_at)}
           {item.author_name && `, ${item.author_name}`}
           {item.source === 'discord' && ', via Discord'}
@@ -109,6 +119,15 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               <input type="hidden" name="id" value={item.id} />
               <label>Title <input name="title" required maxlength="120" value={item.title} /></label>
               <label>Body (Markdown) <textarea name="body" rows="8" required maxlength="4000">{item.body_md}</textarea></label>
+              {item.draft === 1 && (
+                <label>Ping on Discord
+                  <select name="ping">
+                    <option value="" selected={!item.ping}>Nobody</option>
+                    <option value="everyone" selected={item.ping === 'everyone'}>@everyone</option>
+                    {pingRoles.map((r) => <option value={r.id} selected={item.ping === r.id}>@{r.name}</option>)}
+                  </select>
+                </label>
+              )}
               <button class="btn btn-primary btn-sm" type="submit">Save changes</button>
               {item.draft === 0 && <p class="queue-meta">The post on Discord is updated too.</p>}
             </form>
@@ -128,6 +147,13 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
         <label>Title <input name="title" required maxlength="120" /></label>
         <label>Body (Markdown) <textarea name="body" rows="6" required maxlength="4000"></textarea></label>
         <label>Cover picture (optional; JPEG, PNG or WebP up to 1.5 MB, goes to Discord with the post) <input name="cover" type="file" accept="image/jpeg,image/png,image/webp" /></label>
+        <label>Ping on Discord
+          <select name="ping">
+            <option value="">Nobody</option>
+            <option value="everyone">@everyone</option>
+            {pingRoles.map((r) => <option value={r.id}>@{r.name}</option>)}
+          </select>
+        </label>
         <label>Publish on <input name="publish_date" type="date" /></label>
         <label>Publish at (Helsinki) <input name="publish_time" type="time" placeholder="empty = 09:00" /></label>
         <button class="btn btn-primary" type="submit">Save</button>

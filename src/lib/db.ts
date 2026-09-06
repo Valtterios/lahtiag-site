@@ -131,6 +131,7 @@ export interface AnnouncementRow {
   author_name: string | null;
   draft: number; // 1 until the board publishes it (and it goes to Discord)
   publish_at: number | null; // a draft with a time: the 15-minute job publishes it then
+  ping: string | null; // who the Discord post pings: null, 'everyone', or a role id
   cover_at?: number | null; // the cover's upload time (the image URL's version), from listAnnouncements
   cover_w?: number | null; // its pixel size, so the page reserves the right box
   cover_h?: number | null;
@@ -1288,20 +1289,22 @@ export async function getAnnouncement(db: D1Database, id: number): Promise<Annou
 
 // The board rewrites a post, draft or published; the caller mirrors a
 // published one onto its Discord message.
-export async function updateAnnouncement(db: D1Database, id: number, input: { title: string; body_md: string }): Promise<AnnouncementRow | null> {
+// The ping only changes on a draft: a published post has pinged already.
+export async function updateAnnouncement(db: D1Database, id: number, input: { title: string; body_md: string; ping?: string | null }): Promise<AnnouncementRow | null> {
   const title = input.title.trim();
   if (!title || !input.body_md.trim()) throw new RuleError('bad_input', 'An announcement needs a title and a body.');
   capLength(title, 120, 'A title');
   capLength(input.body_md, 4000, 'An announcement body');
   const row = await getAnnouncement(db, id);
   if (!row) return null;
-  await db.prepare('UPDATE announcements SET title = ?2, body_md = ?3 WHERE id = ?1').bind(id, title, input.body_md).run();
-  return { ...row, title, body_md: input.body_md };
+  const ping = row.draft === 1 && input.ping !== undefined ? input.ping : row.ping;
+  await db.prepare('UPDATE announcements SET title = ?2, body_md = ?3, ping = ?4 WHERE id = ?1').bind(id, title, input.body_md, ping).run();
+  return { ...row, title, body_md: input.body_md, ping };
 }
 
 export async function createAnnouncement(
   db: D1Database,
-  input: { title: string; body_md: string; author_id: string; source: 'web' | 'discord'; draft?: boolean; publish_at?: number | null },
+  input: { title: string; body_md: string; author_id: string; source: 'web' | 'discord'; draft?: boolean; publish_at?: number | null; ping?: string | null },
   now: number,
 ): Promise<number> {
   if (!input.title.trim() || !input.body_md.trim()) {
@@ -1311,10 +1314,10 @@ export async function createAnnouncement(
   capLength(input.body_md, 4000, 'An announcement body');
   const row = await db
     .prepare(
-      `INSERT INTO announcements (title, body_md, published_at, author_id, source, draft, publish_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) RETURNING id`,
+      `INSERT INTO announcements (title, body_md, published_at, author_id, source, draft, publish_at, ping)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) RETURNING id`,
     )
-    .bind(input.title.trim(), input.body_md, now, input.author_id, input.source, input.draft ? 1 : 0, input.draft ? (input.publish_at ?? null) : null)
+    .bind(input.title.trim(), input.body_md, now, input.author_id, input.source, input.draft ? 1 : 0, input.draft ? (input.publish_at ?? null) : null, input.ping ?? null)
     .first<{ id: number }>();
   return row!.id;
 }
