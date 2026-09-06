@@ -68,6 +68,8 @@ the bottom right lets you view a page as a member or a visitor would.
   signups. Add a ticket type and it sells tickets instead; a paid ticket
   is the signup. Set a price, a member price, members-only, a quantity,
   a sales deadline, and a line describing what the ticket includes.
+- **My events.** Each member's membership page lists what they have a
+  stake in: tickets, going, maybe, waitlists and hearts, upcoming only.
 - **Signups open later, and the heart.** "Signups open on/at" in the
   event form holds signups and sales until that moment; until then the
   page shows the date and the ♡ Interested button. The count next to the

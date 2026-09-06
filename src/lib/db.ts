@@ -2163,6 +2163,40 @@ export async function markPromotionsAnnounced(db: D1Database, ids: number[], now
   for (const id of ids) await db.prepare('UPDATE waitlist_promotions SET announced_at = ?2 WHERE id = ?1').bind(id, now).run();
 }
 
+// --- my events ---------------------------------------------------------------------
+
+export type MyEventRelation = 'ticket' | 'going' | 'maybe' | 'waitlist' | 'interested';
+export interface MyEventRow extends EventRow {
+  relation: MyEventRelation;
+}
+
+// Everything upcoming a person has a stake in, strongest stake first:
+// a paid ticket, going, maybe, on the waitlist, or just interested.
+export async function listMyEvents(db: D1Database, discordId: string, now: number): Promise<MyEventRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT e.*,
+         CASE
+           WHEN EXISTS (SELECT 1 FROM tickets t WHERE t.event_id = e.id AND t.discord_id = ?1 AND t.status = 'paid') THEN 'ticket'
+           WHEN s.status = 'yes' THEN 'going'
+           WHEN s.status = 'maybe' THEN 'maybe'
+           WHEN EXISTS (SELECT 1 FROM event_waitlist w WHERE w.event_id = e.id AND w.discord_id = ?1) THEN 'waitlist'
+           ELSE 'interested'
+         END AS relation
+       FROM events e
+       LEFT JOIN signups s ON s.event_id = e.id AND s.discord_id = ?1
+       WHERE e.published_at IS NOT NULL AND e.cancelled_at IS NULL AND COALESCE(e.ends_at, e.starts_at) >= ?2
+         AND (s.discord_id IS NOT NULL
+           OR EXISTS (SELECT 1 FROM event_waitlist w WHERE w.event_id = e.id AND w.discord_id = ?1)
+           OR EXISTS (SELECT 1 FROM event_interest i WHERE i.event_id = e.id AND i.discord_id = ?1)
+           OR EXISTS (SELECT 1 FROM tickets t WHERE t.event_id = e.id AND t.discord_id = ?1 AND t.status = 'paid'))
+       ORDER BY e.starts_at`,
+    )
+    .bind(discordId, now)
+    .all<MyEventRow>();
+  return results;
+}
+
 // --- signups open at, and the Interested heart --------------------------------------
 
 export async function setSignupsOpenAt(db: D1Database, eventId: number, at: number | null): Promise<void> {
