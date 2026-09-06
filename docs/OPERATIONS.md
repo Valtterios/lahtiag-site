@@ -858,9 +858,9 @@ to view, the open threads inside them, and the chats of such voice
 channels; voice minutes likewise only in voice channels every member can
 see. So the board channel, the actives channel, an event's channels and
 team voice channels never count. `COUNT_CHANNELS=all` in `.env` turns the
-filter off. The listener logs "counting in …" whenever the set changes,
-sends the list with every batch, and the membership page shows it under
-the season line.
+filter off. The listener logs "counting in …" whenever the set changes
+and sends the list with every batch; a board member sees it under the
+season line on their own membership page, members only the rule.
 
 **Setting it up** (done 2026-09-06): the files from
 `scripts/discord-listener` in `/opt/lahtiag-listener`, and `.env` there

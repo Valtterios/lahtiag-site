@@ -387,7 +387,8 @@ puts it on the page and on Discord.
 - **Activity counts.** For the coming season pass the bot counts, per
   member and month, messages sent and minutes in voice, only in channels
   every member can see. Nothing about content is kept. The membership
-  page shows a member their counts and the list of counted channels.
+  page shows a member their counts; a board member also sees which
+  channels count.
 - **Your stats.** The membership page shows your events, tournaments and
   wins, with a card; `/profile` in Discord posts the card for everyone.
 
