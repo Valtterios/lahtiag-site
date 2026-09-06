@@ -392,6 +392,9 @@ puts it on the page and on Discord.
   warn when no Minecraft name is linked to them.
 - **Your stats.** The membership page shows your events, tournaments and
   wins, with a card; `/profile` in Discord posts the card for everyone.
+  The card carries the season so far too (events, messages, voice,
+  Minecraft), unless the member has hidden themselves from the
+  leaderboard, which keeps the season off the card as well.
 
 ## Minecraft server
 

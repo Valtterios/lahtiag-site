@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { upsertMember, createEvent, setSignup, generateBracket, getBracket, setBracketWinner, memberStats, createAnnouncement, listDueAnnouncements, publishAnnouncement } from '../src/lib/db';
-import { profileCardPng } from '../src/lib/profile-card';
+import { profileCardPng, seasonCardLine } from '../src/lib/profile-card';
 
 // A member's numbers from what is recorded, the card they make, and
 // news that publishes itself.
@@ -54,5 +54,22 @@ describe('memberStats', () => {
     expect((await listDueAnnouncements(db(), NOW + 60)).map((a) => a.title)).toEqual(['Meeting']);
     await publishAnnouncement(db(), soon, NOW + 61);
     expect(await listDueAnnouncements(db(), NOW + 100)).toEqual([]);
+  });
+});
+
+describe('the season on the card', () => {
+  const season = { label: '2026\u201327', events: 3, messages: 120, voice_minutes: 260, playtime: [{ server: 'smp', label: 'SMP', minutes: 130 }, { server: 'gtnh', label: 'GT:NH modpack', minutes: 0 }], minecraft_name: 'AinoV' };
+  it('says the season in words the card font has', () => {
+    expect(seasonCardLine(season)).toBe('3 events / 120 messages / 4 h 20 min in voice / Minecraft 2 h 10 min');
+    expect(seasonCardLine({ ...season, minecraft_name: null })).toBe('3 events / 120 messages / 4 h 20 min in voice');
+    expect(seasonCardLine({ ...season, playtime: [] })).toBe('3 events / 120 messages / 4 h 20 min in voice');
+  });
+  it('draws with and without a season', async () => {
+    const stats = { attended: 12, tournaments: 4, wins: 1, first_event_at: 1_760_000_000, last_win: null, member_since: null };
+    const withSeason = await profileCardPng('Aino', stats, season);
+    const without = await profileCardPng('Aino', stats, null);
+    expect(withSeason.length).toBeGreaterThan(1000);
+    expect(without.length).toBeGreaterThan(1000);
+    expect(withSeason).not.toEqual(without);
   });
 });

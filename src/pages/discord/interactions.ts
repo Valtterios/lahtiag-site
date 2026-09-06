@@ -64,7 +64,7 @@ import {
   FRIENDS_PER_MEMBER,
 } from '../../lib/minecraft';
 import { postBoardLine, approveButtons, decidedLine } from '../../lib/board-channel';
-import { setActive as setRegisterActive } from '../../lib/db';
+import { setActive as setRegisterActive, isLeaderboardOptIn } from '../../lib/db';
 import { applyRoles as applyRegisterRoles, loadRoleConfig as loadRegisterRoleConfig } from '../../lib/roles';
 import { editChannelMessage as editBoardMessage, dmUser as dmMember, SUPPRESS_EMBEDS as NO_EMBEDS, dismissReply } from '../../lib/discord';
 import { seasonSummary, seasonLines } from '../../lib/season';
@@ -620,7 +620,8 @@ async function handleProfile(env: WorkerEnv, interaction: Interaction): Promise<
   const name = candidates.find((n) => cleanText(n) === n.trim()) ?? candidates.map(cleanText).find((n) => n.length > 0) ?? 'Member';
   const now = Math.floor(Date.now() / 1000);
   const stats = await memberStats(env.DB, targetId, now);
-  const png = await profileCardPng(name, stats);
+  const season = (await isLeaderboardOptIn(env.DB, targetId)) ? await seasonSummary(env.DB, targetId, now) : null;
+  const png = await profileCardPng(name, stats, season);
   const ok = await editInteractionReplyWithFile(interaction.application_id, interaction.token, '', { name: 'profile.png', bytes: png, type: 'image/png' });
   if (!ok) {
     await editInteractionReply(interaction.application_id, interaction.token, 'The card could not be posted. Try again in a moment.');
