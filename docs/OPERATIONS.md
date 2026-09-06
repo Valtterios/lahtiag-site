@@ -670,12 +670,22 @@ letter case.
 The server side is `scripts/minecraft/whitelist-sync.py`, run every five
 minutes by a systemd timer on the machine that runs AMP. It fetches
 `https://lahtiag.fi/api/minecraft/whitelist` with the
-`MINECRAFT_WHITELIST_TOKEN` secret as a bearer token, compares the answer
-with the instance's own `whitelist.json`, and sends `whitelist add` and
-`whitelist remove` console commands through the instance's AMP API. A
-failed fetch changes nothing, names in `KEEP` are never removed, and
-`REMOVE=no` makes it add-only. A name that never appears on the server is
-usually not a real Mojang account; the script prints those on each run.
+`MINECRAFT_WHITELIST_TOKEN` secret as a bearer token and compares the
+answer with the instance's own `whitelist.json`. A running server gets
+`whitelist add` and `whitelist remove` console commands through the
+instance's AMP API; a stopped or sleeping server, or one without AMP
+credentials in the config, gets `whitelist.json` rewritten directly with
+the UUIDs looked up at Mojang, which the server reads when it next
+starts. A failed fetch changes nothing, names in `KEEP` are never
+removed, and `REMOVE=no` makes it add-only. A name that is not a real
+Mojang account is skipped and printed on each run.
+
+The names that were on the server before the site took over were seeded
+as board names, so nothing was removed on the first pull; a member who
+whitelists the same name takes it over.
+
+Editing a post: "Edit this post" under each post on the news page; a
+published post's Discord message is rewritten with it.
 
 Setting it up, once:
 
@@ -684,7 +694,9 @@ Setting it up, once:
    then from a laptop `ssh server cat /etc/lahtiag-whitelist.token | npx wrangler secret put MINECRAFT_WHITELIST_TOKEN`
    in the site's checkout.
 2. In AMP, create a user (say `whitelist`) with console access to the
-   Minecraft instance, nothing more.
+   Minecraft instance, nothing more. This is only needed to change a
+   running server; leave the two lines empty until then and the script
+   updates the file whenever the server is off.
 3. On the server: copy `scripts/minecraft/whitelist-sync.py` to
    `/usr/local/bin/lahtiag-whitelist-sync.py` (executable), the
    `.service` and `.timer` to `/etc/systemd/system/`, and

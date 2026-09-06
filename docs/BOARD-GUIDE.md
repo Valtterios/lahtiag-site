@@ -184,6 +184,8 @@ puts it on the page and on Discord.
 - **A picture.** The post form takes a cover picture, and each post has
   Add cover / Remove cover. It shows under the title and goes to Discord
   with the post.
+- **Edit.** "Edit this post" under each post rewrites the title and the
+  body; a published post's Discord message changes with it.
 - **The bot in Discord.** Announcements carry I'm going, Maybe and
   Interested buttons; a click signs up under the same rules as the site.
   People get a private message when put in a team or let in from a
@@ -203,6 +205,9 @@ puts it on the page and on Discord.
 - **Board.** `/whitelist add <name>` whitelists anyone, member or not;
   `/whitelist drop <name>` removes any name. A former member's names go
   off the server on their own.
+- **The old list.** The names that were on the server before the site
+  took over are on the list as board names. A member who whitelists that
+  same name takes it over, and from then on it follows their membership.
   A tick there puts you on the public leaderboard on the history page.
 
 ## Where things are

@@ -44,6 +44,7 @@ const OK: Record<string, string> = {
   published: 'Published and posted on Discord.',
   cover_saved: 'Cover saved.',
   cover_removed: 'Cover removed.',
+  edited: 'Post updated.',
 };
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
 ---
@@ -97,6 +98,19 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
               </form>
             )}
           </div>
+        )}
+        {session?.isAdmin && (
+          <details class="news-edit">
+            <summary>Edit this post</summary>
+            <form method="post" action="/announcements/edit" class="app-form">
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="id" value={item.id} />
+              <label>Title <input name="title" required maxlength="120" value={item.title} /></label>
+              <label>Body (Markdown) <textarea name="body" rows="8" required maxlength="4000">{item.body_md}</textarea></label>
+              <button class="btn btn-primary btn-sm" type="submit">Save changes</button>
+              {item.draft === 0 && <p class="queue-meta">The post on Discord is updated too.</p>}
+            </form>
+          </details>
         )}
       </article>
     ))

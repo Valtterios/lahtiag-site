@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
-import { upsertMember, createAnnouncement, listAnnouncements, deleteAnnouncement, getAnnouncement, getAnnouncementCover, setAnnouncementCover, deleteAnnouncementCover, COVER_MAX_BYTES } from '../src/lib/db';
+import { upsertMember, createAnnouncement, listAnnouncements, deleteAnnouncement, getAnnouncement, updateAnnouncement, getAnnouncementCover, setAnnouncementCover, deleteAnnouncementCover, COVER_MAX_BYTES } from '../src/lib/db';
 import { newsCoverFile, newsText } from '../src/lib/news';
 
 // A news post's cover: saved, listed as a version, attached for Discord,
@@ -30,6 +30,11 @@ describe('news covers', () => {
     await expect(setAnnouncementCover(db(), id, 'text/plain', PNG.buffer.slice(0), NOW)).rejects.toMatchObject({ code: 'bad_input' });
     await expect(setAnnouncementCover(db(), id, 'image/png', new ArrayBuffer(COVER_MAX_BYTES + 1), NOW)).rejects.toMatchObject({ code: 'bad_input' });
     await expect(setAnnouncementCover(db(), id + 99, 'image/png', PNG.buffer.slice(0), NOW)).rejects.toMatchObject({ code: 'missing' });
+    // Editing keeps the rest of the row and refuses an empty post.
+    expect((await updateAnnouncement(db(), id, { title: ' SMP is open ', body_md: 'Come play' }))?.title).toBe('SMP is open');
+    expect((await getAnnouncement(db(), id))?.body_md).toBe('Come play');
+    await expect(updateAnnouncement(db(), id, { title: '', body_md: 'x' })).rejects.toMatchObject({ code: 'bad_input' });
+    expect(await updateAnnouncement(db(), id + 99, { title: 'x', body_md: 'y' })).toBeNull();
     expect(await deleteAnnouncementCover(db(), id)).toBe(true);
     expect(await deleteAnnouncementCover(db(), id)).toBe(false);
     await setAnnouncementCover(db(), id, 'image/png', PNG.buffer.slice(0), NOW + 20);

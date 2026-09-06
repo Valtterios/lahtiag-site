@@ -552,6 +552,20 @@ a:hover {
   border: 1px solid var(--line);
 }
 
+.news-edit {
+  margin: -1.5rem 0 1.5rem;
+}
+
+.news-edit summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--blue);
+}
+
+.news-edit form {
+  margin-top: 0.6rem;
+}
+
 .cover-form input[type='file'] {
   max-width: 14rem;
   font-size: 0.85rem;

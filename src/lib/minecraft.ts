@@ -51,15 +51,26 @@ async function requireMember(db: D1Database, discordId: string): Promise<void> {
   if (!(await isCurrentMember(db, discordId))) throw new RuleError('not_member', 'Whitelisting needs a current membership.');
 }
 
+// A name the board added belongs to nobody yet: a member may claim it as
+// their own or as a friend (the server's hand-made list was seeded that
+// way). A name another member holds is taken.
+function claimable(holder: MinecraftName | null, discordId: string): boolean {
+  return holder === null || holder.discord_id === discordId || holder.kind === 'board';
+}
+
 // One own name per member: the previous one goes. A name already listed
 // as one of their friends becomes their own.
 export async function setOwnMinecraftName(db: D1Database, discordId: string, raw: string, now: number): Promise<string> {
   const name = checkMinecraftName(raw);
   await requireMember(db, discordId);
-  const holder = await holderOf(db, name);
-  if (holder && holder.discord_id !== discordId) throw new RuleError('name_taken', 'That name is already on the list.');
+  if (!claimable(await holderOf(db, name), discordId)) throw new RuleError('name_taken', 'That name is already on the list.');
   await db.batch([
-    db.prepare(`DELETE FROM minecraft_names WHERE discord_id = ?1 AND (kind = 'own' OR name = ?2 COLLATE NOCASE)`).bind(discordId, name),
+    db
+      .prepare(
+        `DELETE FROM minecraft_names WHERE (discord_id = ?1 AND kind = 'own')
+         OR (name = ?2 COLLATE NOCASE AND (discord_id = ?1 OR kind = 'board'))`,
+      )
+      .bind(discordId, name),
     db.prepare(`INSERT INTO minecraft_names (discord_id, name, kind, added_at) VALUES (?1, ?2, 'own', ?3)`).bind(discordId, name, now),
   ]);
   return name;
@@ -68,13 +79,17 @@ export async function setOwnMinecraftName(db: D1Database, discordId: string, raw
 export async function addMinecraftFriend(db: D1Database, discordId: string, raw: string, now: number): Promise<string> {
   const name = checkMinecraftName(raw);
   await requireMember(db, discordId);
-  if (await holderOf(db, name)) throw new RuleError('name_taken', 'That name is already on the list.');
+  const holder = await holderOf(db, name);
+  if (holder && holder.kind !== 'board') throw new RuleError('name_taken', 'That name is already on the list.');
   const friends = await db
     .prepare(`SELECT COUNT(*) AS n FROM minecraft_names WHERE discord_id = ?1 AND kind = 'friend'`)
     .bind(discordId)
     .first<{ n: number }>();
   if ((friends?.n ?? 0) >= FRIENDS_PER_MEMBER) throw new RuleError('friend_limit', `${FRIENDS_PER_MEMBER} friends per member.`);
-  await db.prepare(`INSERT INTO minecraft_names (discord_id, name, kind, added_at) VALUES (?1, ?2, 'friend', ?3)`).bind(discordId, name, now).run();
+  await db.batch([
+    db.prepare(`DELETE FROM minecraft_names WHERE name = ?1 COLLATE NOCASE AND kind = 'board'`).bind(name),
+    db.prepare(`INSERT INTO minecraft_names (discord_id, name, kind, added_at) VALUES (?1, ?2, 'friend', ?3)`).bind(discordId, name, now),
+  ]);
   return name;
 }
 

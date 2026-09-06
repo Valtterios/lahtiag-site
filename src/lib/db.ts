@@ -1282,6 +1282,19 @@ export async function getAnnouncement(db: D1Database, id: number): Promise<Annou
   return db.prepare('SELECT a.*, NULL AS author_name FROM announcements a WHERE id = ?1').bind(id).first<AnnouncementRow>();
 }
 
+// The board rewrites a post, draft or published; the caller mirrors a
+// published one onto its Discord message.
+export async function updateAnnouncement(db: D1Database, id: number, input: { title: string; body_md: string }): Promise<AnnouncementRow | null> {
+  const title = input.title.trim();
+  if (!title || !input.body_md.trim()) throw new RuleError('bad_input', 'An announcement needs a title and a body.');
+  capLength(title, 120, 'A title');
+  capLength(input.body_md, 4000, 'An announcement body');
+  const row = await getAnnouncement(db, id);
+  if (!row) return null;
+  await db.prepare('UPDATE announcements SET title = ?2, body_md = ?3 WHERE id = ?1').bind(id, title, input.body_md).run();
+  return { ...row, title, body_md: input.body_md };
+}
+
 export async function createAnnouncement(
   db: D1Database,
   input: { title: string; body_md: string; author_id: string; source: 'web' | 'discord'; draft?: boolean; publish_at?: number | null },

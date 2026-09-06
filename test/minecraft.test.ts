@@ -34,6 +34,7 @@ describe('minecraft whitelist', () => {
     for (const table of ['minecraft_names', 'register']) await db().prepare(`DELETE FROM ${table}`).run();
     await registered('m1', 'member');
     await registered('m2', 'member');
+    await registered('m3', 'member');
     await registered('p1', 'pending');
   });
 
@@ -73,12 +74,23 @@ describe('minecraft whitelist', () => {
     expect(await whitelistNames(db())).toEqual(['Alex', 'Buddy', 'Guest', 'Zed']);
     await db().prepare(`UPDATE register SET status = 'former' WHERE discord_id = 'm1'`).run();
     expect(await whitelistNames(db())).toEqual(['Guest', 'Zed']);
+    // A seeded board name is claimable by a member, as their own or as a friend; then it follows them.
+    await addBoardMinecraftName(db(), 'board', 'Seeded', NOW);
+    await addBoardMinecraftName(db(), 'board', 'Seeded2', NOW);
+    expect(await setOwnMinecraftName(db(), 'm2', 'seeded', NOW + 1)).toBe('seeded');
+    expect(await addMinecraftFriend(db(), 'm2', 'Seeded2', NOW + 1)).toBe('Seeded2');
+    // Their previous own name (Zed) went with the claim; the claimed names are theirs now.
+    expect((await listMinecraftNames(db(), 'm2')).map((n) => [n.name, n.kind])).toEqual([['seeded', 'own'], ['Seeded2', 'friend']]);
+    expect(await whitelistNames(db())).toEqual(['Guest', 'seeded', 'Seeded2']);
+    await expect(setOwnMinecraftName(db(), 'p1', 'Guest', NOW)).rejects.toMatchObject({ code: 'not_member' });
+    await expect(setOwnMinecraftName(db(), 'm3', 'Seeded2', NOW)).rejects.toMatchObject({ code: 'name_taken' });
+    await expect(addMinecraftFriend(db(), 'm3', 'seeded', NOW)).rejects.toMatchObject({ code: 'name_taken' });
     // The board drops any name; a member cannot take a board name off.
     expect(await removeMinecraftName(db(), 'board', 'Guest')).toBe(false);
     expect((await dropMinecraftName(db(), 'guest'))?.kind).toBe('board');
-    expect((await dropMinecraftName(db(), 'Zed'))?.discord_id).toBe('m2');
+    expect((await dropMinecraftName(db(), 'seeded'))?.discord_id).toBe('m2');
     expect(await dropMinecraftName(db(), 'Zed')).toBeNull();
-    expect(await whitelistNames(db())).toEqual([]);
+    expect(await whitelistNames(db())).toEqual(['Seeded2']);
   });
 
   it('checks the bearer token without a length or prefix shortcut', () => {
