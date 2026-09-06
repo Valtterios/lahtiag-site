@@ -34,6 +34,7 @@ export interface CheckoutLine {
   name: string; // "<event>: <type> · <name>": the receipt line says who it was for
   amountCents: number;
   quantity: number;
+  description?: string; // under this line on Stripe's page and the receipt
 }
 
 export interface CheckoutInput {
@@ -68,7 +69,9 @@ export async function createCheckoutSession(
     params[`line_items[${i}][price_data][currency]`] = 'eur';
     params[`line_items[${i}][price_data][unit_amount]`] = line.amountCents;
     params[`line_items[${i}][price_data][product_data][name]`] = line.name.slice(0, 250);
-    params[`line_items[${i}][price_data][product_data][description]`] = input.description;
+    // A line's own note wins over the session-wide one (the guest's purchase link goes on the first line only).
+    const note = line.description ?? input.description;
+    if (note) params[`line_items[${i}][price_data][product_data][description]`] = note;
   });
   for (const [k, v] of Object.entries(input.metadata)) {
     params[`metadata[${k}]`] = v;
@@ -76,7 +79,8 @@ export async function createCheckoutSession(
     // payment_intent.succeeded then identify the ticket on their own.
     params[`payment_intent_data[metadata][${k}]`] = v;
   }
-  params['payment_intent_data[description]'] = input.lines.map((l) => l.name).join(' / ').slice(0, 200);
+  // What the Dashboard and the bank line show: the purchase code first, so support can find it.
+  params['payment_intent_data[description]'] = `${input.clientReferenceId ? `${input.clientReferenceId} · ` : ''}${input.lines.map((l) => l.name).join(' / ')}`.slice(0, 200);
   try {
     const response = await fetch(`${API}/checkout/sessions`, {
       method: 'POST',
