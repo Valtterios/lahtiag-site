@@ -325,6 +325,9 @@ a:hover {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   padding: 0.75rem 1.35rem;
+  /* Links inherit the body's line height, buttons get the browser's; one
+     value keeps a <button> and an <a> the same height side by side. */
+  line-height: 1.25;
   text-decoration: none;
   border: 1px solid transparent;
   background: none;
