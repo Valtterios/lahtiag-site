@@ -543,15 +543,22 @@ const days = (t: number) => Math.floor((now - t) / 86400);
               ))}
             </tbody>
           </table>
-          <table>
-            <caption>Joined per year</caption>
-            <tbody>
-              {stats!.joinedByYear.length === 0 && <tr><th>None yet</th><td></td></tr>}
-              {stats!.joinedByYear.map((row) => (
-                <tr><th>{row.year}</th><td>{row.n}</td></tr>
-              ))}
-            </tbody>
-          </table>
+          <figure class="year-chart">
+            <figcaption>Joined per year</figcaption>
+            {stats!.joinedByYear.length === 0 ? (
+              <p class="queue-meta">None yet</p>
+            ) : (
+              <ol class="year-bars">
+                {stats!.joinedByYear.map((row) => (
+                  <li title={`${row.year}: ${row.n}`}>
+                    <span class="year-count">{row.n}</span>
+                    <span class="year-bar" style={`height: ${Math.max(4, Math.round((row.n / Math.max(...stats!.joinedByYear.map((r) => r.n))) * 72))}px`} aria-hidden="true"></span>
+                    <span class="year-label">{String(row.year).slice(-2)}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </figure>
         </div>
       </section>
     </>

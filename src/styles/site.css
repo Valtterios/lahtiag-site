@@ -631,6 +631,52 @@ a:hover {
   font-weight: 600;
 }
 
+/* Joined per year on the register: one bar per year, grows sideways. */
+.year-chart {
+  margin: 0;
+}
+.year-chart figcaption {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+.year-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+.year-bars li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 2rem;
+  margin: 0;
+}
+.year-count {
+  font-size: 0.72rem;
+  color: var(--ink);
+  line-height: 1;
+  margin-bottom: 0.2rem;
+}
+.year-bar {
+  display: block;
+  width: 1.4rem;
+  background: var(--blue);
+}
+.year-label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
 /* The leaderboard on the history page. */
 .leaderboard {
   display: grid;
