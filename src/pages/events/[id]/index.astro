@@ -20,6 +20,8 @@ import {
   listAllAnswers,
   isInterested,
   signupsOpen,
+  listWaitlist,
+  waitlistPosition,
   type TicketTypeWithSales,
 } from '../../../lib/db';
 import { channelUrl, scheduledEventUrl, countGrants, participantIds, listEventChannels, syncInterestInBackground, EVENT_CATEGORY_NAME } from '../../../lib/event-discord';
@@ -118,6 +120,10 @@ const signupsClosed = event?.signups_closed_at != null;
 const opensLater = event ? !signupsOpen(event, nowSeconds) : false;
 const open = event ? event.cancelled_at === null && !signupsClosed && !opensLater : false;
 const interested = event && session ? await isInterested(env.DB, event.id, session.discordId) : false;
+// The waitlist: solo, capped, no tickets.
+const hasWaitlist = event ? !isTeamEvent && event.capacity !== null && !ticketed : false;
+const waitlist = event && hasWaitlist ? await listWaitlist(env.DB, event.id) : [];
+const myPlace = event && hasWaitlist && session ? await waitlistPosition(env.DB, event.id, session.discordId) : null;
 if (event && !draft && event.cancelled_at === null) syncInterestInBackground(Astro.locals.cfContext, env.DB, env, event, nowSeconds);
 
 // Flashes from board actions open the (otherwise folded) board tools.
@@ -154,6 +160,9 @@ const FLASH: Record<string, string> = {
   ticket_holder: 'That person holds a paid ticket, so they are going. Refund it in Stripe to remove them.',
   too_few: 'A bracket needs at least two teams or players. Players without a team are grouped into teams when you generate.',
   not_open: 'Signups are not open yet. Press Interested and come back when they open.',
+  not_full: 'A seat is free: sign up instead of waiting.',
+  no_waitlist: 'This event has no waitlist.',
+  duplicate: 'You are already going.',
   discord_unconfigured: 'The Discord bot is not set up (no bot token). The technical handbook, "Discord roles", has the steps.',
   discord_forbidden: "Discord refused. The bot's role needs Manage Roles, Manage Channels, Create Events and Manage Events, and must sit above the roles it creates.",
   discord_event_skipped: 'Discord events are made for published, upcoming events only.',
@@ -190,6 +199,8 @@ const OK: Record<string, string> = {
   cover_saved: 'Cover image saved.',
   cover_removed: 'Cover image removed.',
   interested: "Marked as interested. You'll see it under My events.",
+  waitlisted: "You're on the waitlist. When a seat frees you're moved to Going, the event's Discord channel tells you, and it shows under My events.",
+  left_waitlist: 'Taken off the waitlist.',
   uninterested: 'Interest removed.',
   discord_created: 'Role and channel created. Everyone on the roster has the role; new signups get it as they come.',
   discord_removed: 'Deleted from Discord: the role and every channel the bot made for this event.',
@@ -449,6 +460,24 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
           )}
         </form>
       )}
+      {!ticketed && !isTeamEvent && session && open && hasWaitlist && isFull && mine?.status !== 'yes' && (
+        <form method="post" action={`/events/${event.id}/waitlist`} class="signup-bar waitlist-bar">
+          <input type="hidden" name="csrf" value={csrf} />
+          {myPlace === null ? (
+            <>
+              <input type="hidden" name="action" value="join" />
+              <button class="btn btn-primary" type="submit">Join the waitlist{waitlist.length > 0 ? ` (${waitlist.length} waiting)` : ''}</button>
+              <span class="queue-meta">First come, first in when a seat frees. You'll be moved to Going on your own.</span>
+            </>
+          ) : (
+            <>
+              <input type="hidden" name="action" value="leave" />
+              <span class="queue-meta">You're <strong>#{myPlace}</strong> on the waitlist of {waitlist.length}.</span>
+              <button class="btn btn-ghost btn-sm" type="submit">Leave the waitlist</button>
+            </>
+          )}
+        </form>
+      )}
 
       {questions.length > 0 && session && open && (mine || hasTicket || (isTeamEvent && !ticketed)) && (
         <section class="self-panel" id="details">
@@ -517,6 +546,21 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                   </span>
                 ))
               : going.map((s) => s.username).join(', ')}</div>
+          )}
+          {waitlist.length > 0 && (
+            <div class="member-line"><strong>Waitlist:</strong> {session?.isAdmin
+              ? waitlist.map((w, i) => (
+                  <span class="member-chip">
+                    {i + 1}. {w.username}
+                    <form method="post" action={`/events/${event.id}/waitlist`} class="inline-form">
+                      <input type="hidden" name="csrf" value={csrf} />
+                      <input type="hidden" name="action" value="leave" />
+                      <input type="hidden" name="discord_id" value={w.discord_id} />
+                      <button class="chip-remove" type="submit" title="Take off the waitlist">×</button>
+                    </form>
+                  </span>
+                ))
+              : `${waitlist.length} waiting`}</div>
           )}
           {maybe.length > 0 && (
             <div class="member-line"><strong>Maybe:</strong> {session?.isAdmin

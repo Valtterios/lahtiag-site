@@ -6,7 +6,8 @@
 // say the same thing; posting is best effort and never blocks a response.
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { getEvent, getBracket, listSignups, listEventTeams, type BracketMatch, type EventRow } from './db';
+import { getEvent, getBracket, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, type BracketMatch, type EventRow } from './db';
+import { syncEventRole } from './event-discord';
 import {
   postChannelMessage,
   createChannelMessage,
@@ -284,6 +285,31 @@ export async function postSignups(db: D1Database, env: { DISCORD_BOT_TOKEN?: str
   if (!event?.discord_channel_id) return;
   const teams = event.team_size !== null ? (await listEventTeams(db, eventId)).length : null;
   await postEventLine(db, env, eventId, signupsLine(closed, { teams, players: event.yes_count }));
+}
+
+// People let in from the waitlist: told in the event's channel with a
+// mention, and given the event role. Events without a channel just mark
+// the promotion done; the person sees it on the site.
+export async function announcePromotions(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, now: number): Promise<number> {
+  const rows = await listUnannouncedPromotions(db);
+  if (rows.length === 0) return 0;
+  const byEvent = new Map<number, typeof rows>();
+  for (const row of rows) byEvent.set(row.event_id, [...(byEvent.get(row.event_id) ?? []), row]);
+  for (const [eventId, group] of byEvent) {
+    const event = await getEvent(db, eventId);
+    if (event?.discord_channel_id && env.DISCORD_BOT_TOKEN) {
+      const mentions = group.map((r) => `<@${r.discord_id}>`).join(' ');
+      const line = `🎟️ A seat opened up: ${mentions}, you're in for **${safe(event.title)}**! ${group.length === 1 ? 'You are' : 'You are all'} on the going list now.`;
+      await postChannelMessage(env.DISCORD_BOT_TOKEN, event.discord_channel_id, line, { parse: [], users: group.map((r) => r.discord_id) }, SUPPRESS_EMBEDS);
+    }
+    await markPromotionsAnnounced(db, group.map((r) => r.id), now);
+    await syncEventRole(db, env, eventId, now);
+  }
+  return rows.length;
+}
+
+export function announcePromotionsInBackground(ctx: { waitUntil(promise: Promise<unknown>): void } | undefined, db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, now: number): void {
+  ctx?.waitUntil(announcePromotions(db, env, now).catch(() => {}));
 }
 
 // Fire and forget from a route: the response goes out, the line follows.

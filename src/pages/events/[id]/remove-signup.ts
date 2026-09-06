@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { adminRemoveSignup, RuleError } from '../../../lib/db';
 import { syncEventRolesInBackground } from '../../../lib/event-discord';
+import { announcePromotionsInBackground } from '../../../lib/event-channel';
 
 export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   const id = Number(params.id);
@@ -20,6 +21,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
     throw error;
   }
+  announcePromotionsInBackground(locals.cfContext, env.DB, env, Math.floor(Date.now() / 1000));
   syncEventRolesInBackground(locals.cfContext, env.DB, env, [id], Math.floor(Date.now() / 1000));
   return redirect(back, 303);
 };

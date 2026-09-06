@@ -3,7 +3,7 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { updateEvent, getEvent, setSignupsOpenAt, RuleError } from '../../../lib/db';
 import { renameEventDiscord, syncScheduledEvent } from '../../../lib/event-discord';
-import { later, postEventLine, changeLine } from '../../../lib/event-channel';
+import { later, postEventLine, changeLine, announcePromotionsInBackground } from '../../../lib/event-channel';
 import { helsinkiToUnix } from '../../../lib/time';
 import { editWebhookMessage, eventAnnouncement } from '../../../lib/discord';
 
@@ -76,6 +76,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
     // A new time or place is told to the event's channel; other edits stay quiet.
     const change = before ? changeLine(before, event) : null;
     if (change) later(locals.cfContext, postEventLine(env.DB, env, id, change, true));
+    announcePromotionsInBackground(locals.cfContext, env.DB, env, Math.floor(Date.now() / 1000));
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
     throw error;

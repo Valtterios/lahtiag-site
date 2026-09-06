@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
 import { purgeMember } from '../../lib/db';
 import { syncMemberEventRoles } from '../../lib/event-discord';
+import { announcePromotions } from '../../lib/event-channel';
 
 // Erase a member's participation everywhere — ban cleanup and the
 // GDPR-erasure path. Admin only, from the form on /events.
@@ -20,5 +21,6 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   await purgeMember(env.DB, discordId);
   // Any per-event Discord role they held goes with the signups.
   await syncMemberEventRoles(env.DB, env, discordId, Math.floor(Date.now() / 1000));
+  await announcePromotions(env.DB, env, Math.floor(Date.now() / 1000));
   return redirect('/events?ok=purged', 303);
 };

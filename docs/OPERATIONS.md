@@ -118,6 +118,13 @@ tournament day, prefer the panel.
 
 ## Events on Discord: the event list, a role and a channel
 
+**Waitlist.** A full event with plain signups, a capacity and no ticket
+types offers "Join the waitlist". Whenever a seat frees (someone leaves
+or steps back to maybe, the board removes someone, the capacity is
+raised, a member is erased) the first in line becomes Going, and the bot
+mentions them in the event's channel. Team events and ticketed events
+have no waitlist.
+
 **Interested.** People who press Interested on Discord's event list are
 read back by the bot (at most every ten minutes, when someone opens the
 event page) and counted with the site's own ♡ Interested button; each

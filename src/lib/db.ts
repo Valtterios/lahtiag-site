@@ -34,6 +34,8 @@ export class RuleError extends Error {
       | 'ticket_holder'
       | 'too_few'
   | 'not_open'
+  | 'not_full'
+  | 'no_waitlist'
   | 'bad_seeding'
   | 'bracket_live'
       | 'answers',
@@ -348,6 +350,8 @@ export async function updateEvent(
       input.location?.trim() || null,
     )
     .run();
+  // A raised capacity lets the waitlist in.
+  await promoteWaitlist(db, id);
   return (await getEvent(db, id))!;
 }
 
@@ -390,6 +394,8 @@ export async function deleteEvent(db: D1Database, id: number): Promise<EventRow>
     db.prepare('DELETE FROM event_role_grants WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM event_discord_channels WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM event_interest WHERE event_id = ?1').bind(id),
+    db.prepare('DELETE FROM event_waitlist WHERE event_id = ?1').bind(id),
+    db.prepare('DELETE FROM waitlist_promotions WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM signups WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM event_teams WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM events WHERE id = ?1').bind(id),
@@ -440,6 +446,8 @@ export async function setSignup(
     .bind(eventId, discordId, status, now)
     .run();
   if (event.team_size !== null) await dropEmptyEventTeams(db, eventId);
+  // Stepping back to maybe frees a seat for the waitlist.
+  if (status === 'maybe') await promoteWaitlist(db, eventId, now);
 }
 
 export async function removeSignup(db: D1Database, eventId: number, discordId: string): Promise<void> {
@@ -452,6 +460,7 @@ export async function removeSignup(db: D1Database, eventId: number, discordId: s
     .bind(eventId, discordId)
     .run();
   await dropEmptyEventTeams(db, eventId);
+  await promoteWaitlist(db, eventId);
 }
 
 export async function setDisplayNote(
@@ -517,7 +526,7 @@ export async function adminUpdateSignup(
     )
     .bind(eventId, discordId, status, teamId)
     .run();
-  await dropEmptyEventTeams(db, eventId);
+  await dropEmptyEventTeams(db, eventId);  if (status === 'maybe') await promoteWaitlist(db, eventId);
 }
 
 // Walk-in participants without Discord: a synthetic member row plus a
@@ -591,6 +600,7 @@ export async function adminRemoveSignup(
     .bind(eventId, discordId)
     .run();
   await dropEmptyEventTeams(db, eventId);
+  await promoteWaitlist(db, eventId);
 }
 
 // Erase a member everywhere: every signup and team membership goes, empty
@@ -604,7 +614,9 @@ export async function purgeMember(db: D1Database, discordId: string): Promise<'d
     .bind(discordId)
     .all<{ id: number }>();
   await db.prepare('DELETE FROM signups WHERE discord_id = ?1').bind(discordId).run();
+  await db.prepare('DELETE FROM event_waitlist WHERE discord_id = ?1').bind(discordId).run();
   for (const row of affected) await dropEmptyEventTeams(db, row.id);
+  for (const row of affected) await promoteWaitlist(db, row.id);
   try {
     await db.prepare('DELETE FROM members WHERE discord_id = ?1').bind(discordId).run();
     return 'deleted';
@@ -2033,6 +2045,122 @@ export async function removeRegisterAdmin(db: D1Database, email: string): Promis
     .bind(email.trim().toLowerCase())
     .run();
   return (result.meta.changes ?? 0) > 0;
+}
+
+// --- the waitlist ------------------------------------------------------------------
+// For a full solo event with a capacity and no tickets: first come, first
+// promoted when a seat frees. Team events count teams, ticketed events
+// sell seats, so neither has one.
+
+export interface WaitlistRow {
+  discord_id: string;
+  username: string;
+  created_at: number;
+}
+
+async function waitlistEvent(db: D1Database, eventId: number): Promise<EventWithCounts> {
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  if (event.team_size !== null || event.capacity === null || (await isTicketed(db, eventId))) {
+    throw new RuleError('no_waitlist', 'This event has no waitlist.');
+  }
+  return event;
+}
+
+async function seatsFree(db: D1Database, event: Pick<EventWithCounts, 'id' | 'capacity' | 'yes_count'>): Promise<number> {
+  if (event.capacity === null) return Number.POSITIVE_INFINITY;
+  const going = await db.prepare(`SELECT COUNT(*) AS n FROM signups WHERE event_id = ?1 AND status = 'yes'`).bind(event.id).first<{ n: number }>();
+  return event.capacity - (going?.n ?? 0);
+}
+
+export async function joinWaitlist(db: D1Database, eventId: number, discordId: string, now: number): Promise<void> {
+  const event = await waitlistEvent(db, eventId);
+  if (event.cancelled_at !== null) throw new RuleError('cancelled', 'This event is cancelled.');
+  if (event.published_at === null) throw new RuleError('closed', 'This event is not published yet.');
+  if (!signupsOpen(event, now)) throw new RuleError('not_open', 'Signups are not open yet.');
+  if (event.signups_closed_at !== null) throw new RuleError('closed', 'Signups are closed.');
+  const mine = await db.prepare('SELECT status FROM signups WHERE event_id = ?1 AND discord_id = ?2').bind(eventId, discordId).first<{ status: string }>();
+  if (mine?.status === 'yes') throw new RuleError('duplicate', 'You are already going.');
+  await requireEligible(db, event, discordId, true);
+  if ((await seatsFree(db, event)) > 0) throw new RuleError('not_full', 'There is a seat free: sign up instead.');
+  await db
+    .prepare('INSERT OR IGNORE INTO event_waitlist (event_id, discord_id, created_at) VALUES (?1, ?2, ?3)')
+    .bind(eventId, discordId, now)
+    .run();
+}
+
+export async function leaveWaitlist(db: D1Database, eventId: number, discordId: string): Promise<void> {
+  await db.prepare('DELETE FROM event_waitlist WHERE event_id = ?1 AND discord_id = ?2').bind(eventId, discordId).run();
+}
+
+export async function listWaitlist(db: D1Database, eventId: number): Promise<WaitlistRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT w.discord_id, m.username, w.created_at FROM event_waitlist w JOIN members m ON m.discord_id = w.discord_id
+       WHERE w.event_id = ?1 ORDER BY w.created_at, w.discord_id`,
+    )
+    .bind(eventId)
+    .all<WaitlistRow>();
+  return results;
+}
+
+// 1-based place in the queue, or null when not on it.
+export async function waitlistPosition(db: D1Database, eventId: number, discordId: string): Promise<number | null> {
+  const rows = await listWaitlist(db, eventId);
+  const at = rows.findIndex((r) => r.discord_id === discordId);
+  return at === -1 ? null : at + 1;
+}
+
+// Seats freed, people let in, first come first: each becomes a Going
+// signup and a promotion to announce. Anyone no longer eligible (say,
+// a member-only seat and their membership lapsed) is dropped from the
+// queue instead. Returns who got in.
+export async function promoteWaitlist(db: D1Database, eventId: number, now = Math.floor(Date.now() / 1000)): Promise<string[]> {
+  const event = await getEvent(db, eventId);
+  if (!event || event.capacity === null || event.team_size !== null || event.cancelled_at !== null) return [];
+  const queue = await listWaitlist(db, eventId);
+  if (queue.length === 0) return [];
+  const promoted: string[] = [];
+  let free = await seatsFree(db, event);
+  for (const row of queue) {
+    if (free <= 0) break;
+    try {
+      await requireEligible(db, event, row.discord_id, true);
+    } catch {
+      await leaveWaitlist(db, eventId, row.discord_id);
+      continue;
+    }
+    await db
+      .prepare(
+        `INSERT INTO signups (event_id, discord_id, status, created_at, event_team_id) VALUES (?1, ?2, 'yes', ?3, NULL)
+         ON CONFLICT (event_id, discord_id) DO UPDATE SET status = 'yes', event_team_id = NULL`,
+      )
+      .bind(eventId, row.discord_id, now)
+      .run();
+    await leaveWaitlist(db, eventId, row.discord_id);
+    await db.prepare('INSERT INTO waitlist_promotions (event_id, discord_id, promoted_at) VALUES (?1, ?2, ?3)').bind(eventId, row.discord_id, now).run();
+    promoted.push(row.discord_id);
+    free--;
+  }
+  return promoted;
+}
+
+export interface PromotionRow {
+  id: number;
+  event_id: number;
+  discord_id: string;
+  promoted_at: number;
+}
+
+export async function listUnannouncedPromotions(db: D1Database): Promise<PromotionRow[]> {
+  const { results } = await db
+    .prepare('SELECT id, event_id, discord_id, promoted_at FROM waitlist_promotions WHERE announced_at IS NULL ORDER BY id LIMIT 50')
+    .all<PromotionRow>();
+  return results;
+}
+
+export async function markPromotionsAnnounced(db: D1Database, ids: number[], now: number): Promise<void> {
+  for (const id of ids) await db.prepare('UPDATE waitlist_promotions SET announced_at = ?2 WHERE id = ?1').bind(id, now).run();
 }
 
 // --- signups open at, and the Interested heart --------------------------------------

@@ -3,6 +3,7 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { adminUpdateSignup, RuleError } from '../../../lib/db';
 import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
+import { announcePromotionsInBackground } from '../../../lib/event-channel';
 
 export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   const id = Number(params.id);
@@ -28,5 +29,6 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   }
   // Moving people between teams can empty one; the voice channels follow.
   syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, Math.floor(Date.now() / 1000));
+  announcePromotionsInBackground(locals.cfContext, env.DB, env, Math.floor(Date.now() / 1000));
   return redirect(back, 303);
 };

@@ -540,7 +540,7 @@ export async function postChannelMessage(
   botToken: string,
   channelId: string,
   content: string,
-  allowedMentions: { parse: string[]; roles?: string[] } = NO_MENTIONS,
+  allowedMentions: { parse: string[]; roles?: string[]; users?: string[] } = NO_MENTIONS,
   flags = 0,
 ): Promise<boolean> {
   const result = await botCall(botToken, 'POST', `/channels/${channelId}/messages`, { content, allowed_mentions: allowedMentions, flags });
