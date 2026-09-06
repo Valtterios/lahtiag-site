@@ -162,11 +162,13 @@ or channel.
 
 The bot needs, on its own role (Server Settings → Roles → the role named
 after the application): **View Channels**, **Manage Roles**, **Manage
-Channels**, **Manage Events** and **Send Messages**. Re-inviting it with
+Channels**, **Create Events**, **Manage Events** and **Send Messages**.
+Create Events and Manage Events are separate: the first makes entries on
+the event list, the second edits and removes them. Re-inviting it with
 those permissions ticked does the same in one go:
-`https://discord.com/oauth2/authorize?client_id=1544746714135793756&scope=bot&permissions=8858438672`.
-If Discord refuses ("the bot's role needs Manage Roles, Manage Channels
-and Manage Events"), one of those is missing. New roles land at the bottom
+`https://discord.com/oauth2/authorize?client_id=1544746714135793756&scope=bot&permissions=17601044483088`.
+If Discord refuses ("the bot's role needs Manage Roles, Manage Channels,
+Create Events and Manage Events"), one of those is missing. New roles land at the bottom
 of the list, below the bot's, so the order takes care of itself.
 
 ## The member register
