@@ -130,6 +130,8 @@ export interface AnnouncementRow {
   draft: number; // 1 until the board publishes it (and it goes to Discord)
   publish_at: number | null; // a draft with a time: the 15-minute job publishes it then
   cover_at?: number | null; // the cover's upload time (the image URL's version), from listAnnouncements
+  cover_w?: number | null; // its pixel size, so the page reserves the right box
+  cover_h?: number | null;
 }
 
 // The members table is a display cache, not an account table: written on
@@ -1247,7 +1249,7 @@ export async function listResults(db: D1Database, limit = 20): Promise<ResultRow
 export async function listAnnouncements(db: D1Database, limit = 20, includeDrafts = false): Promise<AnnouncementRow[]> {
   const { results } = await db
     .prepare(
-      `SELECT a.*, m.username AS author_name, c.updated_at AS cover_at
+      `SELECT a.*, m.username AS author_name, c.updated_at AS cover_at, c.width AS cover_w, c.height AS cover_h
        FROM announcements a LEFT JOIN members m ON m.discord_id = a.author_id
        LEFT JOIN announcement_covers c ON c.announcement_id = a.id
        ${includeDrafts ? '' : 'WHERE a.draft = 0'}

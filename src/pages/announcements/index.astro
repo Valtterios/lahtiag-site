@@ -69,7 +69,9 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
           {item.source === 'discord' && ', via Discord'}
         </p>
         <h2>{item.title}</h2>
-        {item.cover_at && <img class="news-cover" src={`/announcements/${item.id}/cover?v=${item.cover_at}`} alt="" loading="lazy" />}
+        {item.cover_at && (
+          <img class="news-cover" src={`/announcements/${item.id}/cover?v=${item.cover_at}`} alt="" loading="lazy" width={item.cover_w ?? undefined} height={item.cover_h ?? undefined} />
+        )}
         <div set:html={item.html} />
         {session?.isAdmin && (
           <div class="entry-actions">

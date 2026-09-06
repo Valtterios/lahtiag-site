@@ -540,16 +540,18 @@ a:hover {
   display: none;
 }
 
-/* A news post's cover: whatever shape it comes in, never taller than a
-   screen's worth, centred under the title. */
+/* A news post's cover: the width of the text, the site's cut corners like
+   an event cover, its own proportions up to a tall poster's worth (a full
+   phone story is cropped to that, centred). */
 .news-cover {
   display: block;
-  width: auto;
+  width: 100%;
   height: auto;
-  max-width: 100%;
-  max-height: 26rem;
-  margin: 0.2rem auto 1rem;
-  border: 1px solid var(--line);
+  max-width: 44rem;
+  max-height: 48rem;
+  object-fit: cover;
+  clip-path: var(--cut);
+  margin: 0.4rem 0 1.2rem;
 }
 
 .news-edit {
