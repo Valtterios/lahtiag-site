@@ -161,7 +161,7 @@ const FLASH: Record<string, string> = {
   cover_missing: 'Pick an image file first.',
   cover_bad: 'The cover must be a JPEG, PNG or WebP under 1.5 MB.',
   photo_missing: 'Pick one or more pictures first.',
-  photo_bad: 'A picture was refused: JPEG, PNG or WebP, and the page shrinks them before upload when JavaScript is on. At most 40 per event.',
+  photo_bad: 'A picture was refused: JPEG, PNG or WebP, and the page shrinks them before upload when JavaScript is on. At most 60 per event.',
   ticket_holder: 'That person holds a paid ticket, so they are going. Refund it in Stripe to remove them.',
   too_few: 'A bracket needs at least two teams or players. Players without a team are grouped into teams when you generate.',
   not_open: 'Signups are not open yet. Press Interested and come back when they open.',
@@ -1146,7 +1146,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             <form method="post" action={`/events/${event.id}/photos`} enctype="multipart/form-data" class="app-form" id="photo-form">
               <input type="hidden" name="csrf" value={csrf} />
               <label>Add photos <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required id="photo-input" /></label>
-              <p class="queue-meta">Pick several at once. The page shrinks them to 1600 px and makes thumbnails before uploading, so phone photos are fine. Shown on this page and on the history page; up to 40 per event.</p>
+              <p class="queue-meta">Pick several at once. The page shrinks them to 1600 px and makes thumbnails before uploading, so phone photos are fine. Shown on this page and on the history page; up to 60 per event.</p>
               <button class="btn btn-primary" type="submit" id="photo-submit">Upload</button>
             </form>
             {photos.length > 0 && (

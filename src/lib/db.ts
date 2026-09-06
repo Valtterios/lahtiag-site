@@ -2252,7 +2252,7 @@ export async function listEndedEventsWithRole(db: D1Database, before: number): P
 // 1600 px and a thumbnail. Kept in D1 like the covers.
 
 export const PHOTO_MAX_BYTES = 900_000;
-export const PHOTOS_PER_EVENT = 40;
+export const PHOTOS_PER_EVENT = 60;
 
 export interface EventPhotoRow {
   id: number;
