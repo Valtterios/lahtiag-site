@@ -406,6 +406,7 @@ export async function setUpEventDiscord(
     .run();
   if (channelId) await postChannelMessage(token, channelId, welcomeMessage(event, roleId, url));
   await syncEventRole(db, env, eventId, now);
+  if (categoryId) await createTeamVoiceChannels(db, env, eventId, now);
   return { ok: true, channelId };
 }
 
@@ -429,6 +430,7 @@ export async function upgradeEventDiscord(db: D1Database, env: DiscordEnv, event
   await recordEventChannel(db, eventId, event.discord_channel_id, 'discussion', null, now);
   await db.prepare('UPDATE events SET discord_category_id = ?2 WHERE id = ?1').bind(eventId, category.value.id).run();
   const made = await createChannelSet(db, env, botId, event, event.discord_role_id, category.value.id, new Set(['discussion']), url, now);
+  if (made.ok) await createTeamVoiceChannels(db, env, eventId, now);
   return made.ok ? 'ok' : made.reason;
 }
 
@@ -448,8 +450,9 @@ export type TeamVoiceResult =
   | { ok: false; reason: 'unconfigured' | 'needs_category' | 'no_teams' | 'forbidden' | 'error' };
 
 // A voice channel per team, named after it, in the event's own category.
-// Run again after teams change: new teams get theirs, disbanded teams
-// lose theirs. Names are not followed (teams don't rename).
+// Runs after every team change (and on request): new teams get theirs,
+// disbanded teams lose theirs. Names are not followed (teams don't
+// rename). Cheap for events without an own category: one lookup.
 export async function createTeamVoiceChannels(db: D1Database, env: DiscordEnv, eventId: number, now: number): Promise<TeamVoiceResult> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return { ok: false, reason: 'unconfigured' };
@@ -486,6 +489,17 @@ export async function createTeamVoiceChannels(db: D1Database, env: DiscordEnv, e
     created++;
   }
   return { ok: true, created, removed, teams: teams.length };
+}
+
+// After teams changed: follow them without holding up the response.
+export function syncTeamVoiceChannelsInBackground(
+  ctx: { waitUntil(promise: Promise<unknown>): void } | undefined,
+  db: D1Database,
+  env: DiscordEnv,
+  eventId: number,
+  now: number,
+): void {
+  ctx?.waitUntil(createTeamVoiceChannels(db, env, eventId, now).catch(() => {}));
 }
 
 // Delete in Discord everything the bot made for the event: the recorded

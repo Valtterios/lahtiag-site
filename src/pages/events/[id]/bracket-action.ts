@@ -8,8 +8,9 @@ import {
   clearBracketWinner,
   RuleError,
 } from '../../../lib/db';
+import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
 
-export const POST: APIRoute = async ({ request, params, redirect }) => {
+export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   const id = Number(params.id);
   const back = `/events/${id}/bracket`;
 
@@ -29,6 +30,8 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   try {
     if (action === 'generate' || action === 'regenerate') {
       await generateBracket(env.DB, id);
+      // Generating groups loose players into teams; a big event's voice channels follow.
+      syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, Math.floor(Date.now() / 1000));
     } else if (action === 'delete') {
       await deleteBracket(env.DB, id);
       return redirect(`/events/${id}`, 303);

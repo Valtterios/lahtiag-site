@@ -2,8 +2,9 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { adminUpdateSignup, RuleError } from '../../../lib/db';
+import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
 
-export const POST: APIRoute = async ({ request, params, redirect }) => {
+export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   const id = Number(params.id);
   const back = `/events/${id}`;
 
@@ -25,5 +26,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
     throw error;
   }
+  // Moving people between teams can empty one; the voice channels follow.
+  syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, Math.floor(Date.now() / 1000));
   return redirect(back, 303);
 };

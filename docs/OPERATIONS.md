@@ -129,9 +129,10 @@ Discord; events created from `/tournament` get the first option:
 - **A role and an own category** for a big event: a category named after
   the event holding `rules` (participants read, the board posts), `teams`,
   `discussion`, and the **Commentators** and **Interviews** voice
-  channels. Once teams exist, **Team voice channels** in Board tools →
-  Discord makes one per team, named after it; run it again after teams
-  change and new teams get theirs, disbanded ones lose theirs.
+  channels, and a voice channel per team, named after it. Those follow
+  the teams on their own: a new team gets one, a disbanded team loses
+  it, and **Refresh team voice channels** in Board tools → Discord does
+  the same by hand if Discord was down at the time.
 - **Nothing** beyond the event list.
 
 A one-channel event that grows has **Upgrade to own category**: the

@@ -11,7 +11,7 @@ import {
   RuleError,
 } from '../../../lib/db';
 import { answersComplete } from '../../../lib/questions';
-import { syncEventRolesInBackground } from '../../../lib/event-discord';
+import { syncEventRolesInBackground, syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
 
 // Tournament team actions: any signed-in member, no admin needed — forming
 // teams is the members' own business.
@@ -59,7 +59,9 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
     throw error;
   }
-  // Founding or joining a team is a signup too; the event's Discord role follows.
+  // Founding or joining a team is a signup too; the event's Discord role
+  // follows, and so do the team voice channels of a big event.
   syncEventRolesInBackground(locals.cfContext, env.DB, env, [id], now);
+  syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, now);
   return redirect(back, 303);
 };
