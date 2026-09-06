@@ -178,9 +178,12 @@ under the page's rules (members only, capacity, the waitlist when full)
 and answers the person privately. The counts on the post follow every
 change, from Discord or the site, and the job re-checks them hourly. Events
 with required questions send people to the site instead. For this the
-bot needs **Send Messages** in the announcements channel (allow its role
-there if the channel is locked); without it the plain webhook post goes
-out, buttons excluded. A new cover swaps the picture on the post.
+bot needs **View Channel**, **Send Messages** and **Attach Files** in the
+announcements channel (allow its role there if the channel is locked);
+without them the plain webhook post goes out, buttons excluded. Board
+tools → Discord → **Repost announcement** deletes the post and makes a
+fresh one, for an event announced before the buttons or after fixing
+the permissions. A new cover swaps the picture on the post.
 
 **Champion role.** The register page's Discord roles section has a
 "Reigning champion" pick: when a final is recorded the bot gives that role

@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { setUpEventDiscord, syncEventRole, tearDownEventDiscord, syncScheduledEvent, upgradeEventDiscord, createTeamVoiceChannels, archiveEventDiscord } from '../../../lib/event-discord';
+import { repostEventAnnouncement } from '../../../lib/announce';
 
 // Board: give the event its Discord role and channel (or own category),
 // upgrade one to a category, make team voice channels, sync the role
@@ -18,6 +19,10 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
   const now = Math.floor(Date.now() / 1000);
   const action = String(form.get('action') ?? '');
 
+  if (action === 'reannounce') {
+    await repostEventAnnouncement(env.DB, env, id, url.origin);
+    return redirect(`${back}?ok=discord_reannounced#discord`, 303);
+  }
   if (action === 'event') {
     const result = await syncScheduledEvent(env.DB, env, id, url.origin, now, true);
     if (result === 'created' || result === 'updated') return redirect(`${back}?ok=discord_event_created#discord`, 303);

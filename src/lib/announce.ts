@@ -70,7 +70,7 @@ export function announcementComponents(event: Pick<EventWithCounts, 'id' | 'canc
       buttons.push({ type: 2, style: 2, label: 'Maybe', custom_id: `e:maybe:${event.id}` });
     }
   }
-  buttons.push({ type: 2, style: 1, label: 'Interested', custom_id: `e:heart:${event.id}`, emoji: { name: '♡' } });
+  buttons.push({ type: 2, style: 1, label: 'Interested', custom_id: `e:heart:${event.id}`, emoji: { name: '💙' } });
   if (!ticketed || event.signups_closed_at !== null) buttons.push({ type: 2, style: 5, label: 'Details', url });
   return [{ type: 1, components: buttons }];
 }
@@ -90,6 +90,7 @@ export async function postEventAnnouncement(db: D1Database, env: AnnounceEnv, ev
       ? await createChannelMessageWithFile(env.DISCORD_BOT_TOKEN, channel, text, cover, NO_MENTIONS, SUPPRESS_EMBEDS, components)
       : await createChannelMessage(env.DISCORD_BOT_TOKEN, channel, text, NO_MENTIONS, cover ? SUPPRESS_EMBEDS : 0, components);
     if (made.ok) messageId = made.value.id;
+    else console.warn(`announcement: the bot could not post in channel ${channel} (${made.reason}); falling back to the webhook`);
   }
   // The bot could not post there (no token, or no Send Messages in that channel): the webhook, buttons excluded.
   if (!messageId) messageId = cover ? await postWebhookWithFile(env.DISCORD_WEBHOOK_URL, text, cover) : await postWebhook(env.DISCORD_WEBHOOK_URL, text);
@@ -126,6 +127,15 @@ export function refreshAnnouncementInBackground(
   const ids = [...new Set(eventIds)];
   if (ids.length === 0) return;
   ctx?.waitUntil((async () => { for (const id of ids) await refreshEventAnnouncement(db, env, id, origin); })().catch(() => {}));
+}
+
+// Post it again: the old message goes, a fresh one comes, buttons and all.
+export async function repostEventAnnouncement(db: D1Database, env: AnnounceEnv, eventId: number, origin: string): Promise<void> {
+  const event = await getEvent(db, eventId);
+  if (!event || event.published_at === null) return;
+  await deleteEventAnnouncement(db, env, event);
+  await db.prepare('UPDATE events SET discord_message_id = NULL WHERE id = ?1').bind(eventId).run();
+  await postEventAnnouncement(db, env, eventId, origin);
 }
 
 export async function deleteEventAnnouncement(db: D1Database, env: AnnounceEnv, event: { discord_message_id: string | null }): Promise<void> {

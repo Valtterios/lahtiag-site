@@ -129,7 +129,7 @@ const myPlace = event && hasWaitlist && session ? await waitlistPosition(env.DB,
 if (event && !draft && event.cancelled_at === null) syncInterestInBackground(Astro.locals.cfContext, env.DB, env, event, nowSeconds);
 
 // Flashes from board actions open the (otherwise folded) board tools.
-const DISCORD_OPEN = new Set(['discord_created', 'discord_synced', 'discord_removed', 'discord_upgraded', 'discord_archived', 'discord_team_voice', 'discord_needs_category', 'discord_no_teams', 'discord_event_created', 'discord_event_removed', 'discord_event_skipped', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
+const DISCORD_OPEN = new Set(['discord_reannounced', 'discord_created', 'discord_synced', 'discord_removed', 'discord_upgraded', 'discord_archived', 'discord_team_voice', 'discord_needs_category', 'discord_no_teams', 'discord_event_created', 'discord_event_removed', 'discord_event_skipped', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
 const ADMIN_OPEN = new Set(['team_size', 'cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'photos_added', 'photo_removed', 'photo_missing', 'photo_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
 const okKey = Astro.url.searchParams.get('ok') ?? '';
 const errKey = Astro.url.searchParams.get('err') ?? '';
@@ -218,6 +218,7 @@ const OK: Record<string, string> = {
   discord_upgraded: 'Own category made. The channel moved in as discussion, with rules, bracket, teams, Commentators and Interviews beside it.',
   discord_archived: 'Archived. The role is gone, so participants no longer see the channels; the board still does.',
   discord_event_created: "The event is on Discord's event list.",
+  discord_reannounced: 'The announcement was posted again.',
   discord_event_removed: "The Discord event was removed, as this event isn't published or is cancelled.",
 };
 // The sync's tally rides along in the query.
@@ -868,6 +869,17 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                   <input type="hidden" name="action" value="event" />
                   <button class="btn btn-ghost" type="submit">Create Discord event</button>
                 </form>
+              )}
+              {!draft && (
+                <>
+                  <h3>Announcement</h3>
+                  <p class="event-meta">{event.discord_message_id ? 'Posted in the announcements channel. Repost deletes it and posts a fresh one, with the buttons.' : 'Not posted yet.'}</p>
+                  <form method="post" action={`/events/${event.id}/discord`} class="signup-bar">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="reannounce" />
+                    <button class="btn btn-ghost" type="submit" data-confirm={event.discord_message_id ? 'Delete the current announcement and post it again?' : undefined}>{event.discord_message_id ? 'Repost announcement' : 'Post announcement'}</button>
+                  </form>
+                </>
               )}
               <h3>Role and channel</h3>
               </>
