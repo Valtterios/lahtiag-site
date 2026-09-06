@@ -954,14 +954,18 @@ a:hover {
 /* Joined per year on the register: one bar per year, grows sideways. */
 .year-chart {
   margin: 0;
+  display: flex;
+  flex-direction: column;
 }
-/* The bars sit in the same white box as the two tables beside them. */
+/* The bars sit in the same white box as the two tables beside them, and
+   the box grows to the row's height with the bars along its floor. */
 .year-chart .year-bars,
 .year-chart .queue-meta {
   background: var(--surface);
   border: 1px solid var(--line);
   padding: 0.7rem 0.8rem;
   margin: 0;
+  flex: 1 1 auto;
 }
 .year-chart figcaption {
   font-family: var(--display);
