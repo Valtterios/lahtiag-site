@@ -639,8 +639,8 @@ export async function deleteChannelMessage(botToken: string, channelId: string, 
   return result.ok || result.status === 404;
 }
 
-// Needs Manage Messages. Discord moved the endpoint in 2025; both paths
-// are tried, whichever way the server answers.
+// Needs Pin Messages (split out of Manage Messages). Discord moved the
+// endpoint in 2025; both paths are tried, whichever way the server answers.
 export async function pinChannelMessage(botToken: string, channelId: string, messageId: string): Promise<boolean> {
   const fresh = await botCall(botToken, 'PUT', `/channels/${channelId}/messages/pins/${messageId}`, undefined, 'lahtiag.fi live bracket');
   if (fresh.ok) return true;
@@ -654,6 +654,7 @@ export async function isMessagePinned(botToken: string, channelId: string, messa
 }
 
 export const PERM_MANAGE_MESSAGES = 1n << 13n;
+export const PERM_PIN_MESSAGES = 1n << 51n; // pinning moved out of Manage Messages
 
 // --- bot: messages with a picture --------------------------------------------------
 // Multipart uploads: the JSON payload plus one file. On an edit the

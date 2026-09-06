@@ -191,12 +191,13 @@ or channel.
 
 The bot needs, on its own role (Server Settings → Roles → the role named
 after the application): **View Channels**, **Manage Roles**, **Manage
-Channels**, **Create Events**, **Manage Events**, **Send Messages** and
-**Manage Messages** (for pinning the live bracket). Create Events and
-Manage Events are separate: the first makes entries on the event list,
-the second edits and removes them. Re-inviting it with those permissions
-ticked does the same in one go:
-`https://discord.com/oauth2/authorize?client_id=1544746714135793756&scope=bot&permissions=17601044491280`.
+Channels**, **Create Events**, **Manage Events**, **Send Messages**,
+**Manage Messages** and **Pin Messages** (the last one is what pins the
+live bracket; Discord split it out of Manage Messages). Create Events
+and Manage Events are separate too: the first makes entries on the event
+list, the second edits and removes them. Re-inviting it with those
+permissions ticked does the same in one go:
+`https://discord.com/oauth2/authorize?client_id=1544746714135793756&scope=bot&permissions=2269400858176528`.
 If Discord refuses ("the bot's role needs Manage Roles, Manage Channels,
 Create Events and Manage Events"), one of those is missing. New roles land at the bottom
 of the list, below the bot's, so the order takes care of itself.

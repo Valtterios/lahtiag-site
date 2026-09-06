@@ -134,10 +134,11 @@ whole system, used for roles and nothing else.
    Intent** (the sync reads the member list).
 2. Invite the bot: **OAuth2** → URL Generator → scope `bot`, permissions
    **Manage Roles**, **Manage Channels**, **Create Events**, **Manage
-   Events** and **Manage Messages** (all but the first for the per-event
-   channels, Discord's event list and the pinned live bracket; if the bot
-   is already in the server, add them to the bot's role under Server
-   Settings → Roles instead) → open the URL, pick the LahtiAG server.
+   Events**, **Manage Messages** and **Pin Messages** (all but the first
+   for the per-event channels, Discord's event list and the pinned live
+   bracket; if the bot is already in the server, add them to the bot's
+   role under Server Settings → Roles instead) → open the URL, pick the
+   LahtiAG server.
 3. In the server: Server Settings → **Roles**. Create `Member` and
    `Actives` if they don't exist. Drag the bot's own role (named after the
    application) **above** both of them; Discord refuses otherwise.
