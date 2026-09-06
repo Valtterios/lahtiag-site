@@ -50,7 +50,10 @@ describe('session cookie', () => {
 
   it('rejects a tampered signature', async () => {
     const token = await sealSession(sampleSession(), SECRET);
-    const tampered = token.slice(0, -1) + (token.endsWith('A') ? 'B' : 'A');
+    // Flip a character well inside the signature: the very last one only
+    // carries padding bits at times, which a lenient decoder ignores.
+    const at = token.length - 6;
+    const tampered = token.slice(0, at) + (token[at] === 'A' ? 'B' : 'A') + token.slice(at + 1);
     expect(await openSession(tampered, SECRET, NOW)).toBeNull();
   });
 
