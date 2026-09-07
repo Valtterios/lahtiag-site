@@ -163,7 +163,7 @@ const SOURCE: Record<string, string> = {
         )}
       </form>
 
-      <section class="entry-details">
+      <section class="entry-details panel-card">
         <h2 class="section-label">Details</h2>
         <form method="post" action={`/register/${entry.id}/action`} class="app-form entry-form">
           <input type="hidden" name="csrf" value={csrf} />
@@ -219,8 +219,8 @@ const SOURCE: Record<string, string> = {
         </form>
       </section>
 
-      <section class="entry-erase">
-        <h2 class="section-label">Erase</h2>
+      <details class="admin-edit admin-danger entry-erase">
+        <summary><b>Erase this entry</b><span class="admin-edit-hint">for good, no undo</span></summary>
         <p class="queue-intro">
           Deletes the entry for good: the person's own request to be erased, or cleanup. No undo. To
           keep the record but end the membership, use "Mark as former member" above. Event signups
@@ -230,7 +230,7 @@ const SOURCE: Record<string, string> = {
           <input type="hidden" name="csrf" value={csrf} />
           <button class="btn btn-danger" name="action" value="erase" type="submit" data-confirm="Erase this entry for good? There is no undo.">Erase this entry permanently</button>
         </form>
-      </section>
+      </details>
     </>
   )}
 </Base>

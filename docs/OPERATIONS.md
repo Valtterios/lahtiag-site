@@ -530,6 +530,15 @@ the responses sheet as CSV, `node scripts/import-register.mjs file.csv
 with `npx wrangler d1 execute lahtiag --remote --file=…`. Both files are
 gitignored (`*.csv`, `*.import.sql`); shred them afterwards.
 
+### The entry page
+
+One member's page (`/register/<id>`) is the toolbar, the name with its
+badges, the decisions the board can make right now, then **Details** as a
+card — three fields to a row where the screen allows — and, folded away
+in red at the end, **Erase this entry**. Erasing is for the person's own
+request or cleanup and has no undo; ending a membership without losing the
+record is "Mark as former member" among the decisions above.
+
 ## The privacy policy
 
 The association's documents are served by the site as PDFs in the brand

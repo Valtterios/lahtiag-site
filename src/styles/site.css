@@ -2062,7 +2062,11 @@ a:hover {
 
 .home-join .entry-actions {
   margin: 0;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
 }
 
 @media (max-width: 900px) {
@@ -3163,10 +3167,24 @@ html.display-mode,
 .entry-details,
 .entry-erase {
   margin: 0 0 2.5rem;
+  max-width: 44rem;
 }
 
+.entry-details .app-form,
 .entry-form {
-  max-width: 44rem;
+  max-width: none;
+}
+
+/* The register entry's details: a card like the membership page's, three
+   fields to a row where there is room for them. */
+.entry-details .section-label {
+  margin-top: 0;
+}
+
+@media (min-width: 900px) {
+  .entry-details .form-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .access-row {
