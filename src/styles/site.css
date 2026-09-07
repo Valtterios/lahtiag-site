@@ -2045,32 +2045,47 @@ a:hover {
   object-fit: contain;
 }
 
-/* The page's own words: the heading full width, the text in two columns
-   so a paragraph does not run the width of the screen. */
+/* The page's own words: the heading in its own column, the text beside it
+   at a readable measure, the way a magazine sets an about page. */
 .home-words {
   margin-bottom: 2.4rem;
 }
 
 .home-prose {
-  columns: 2;
-  column-gap: 2.8rem;
+  display: grid;
+  grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr);
+  column-gap: 3rem;
+  align-items: start;
 }
 
-.home-prose > :first-child {
-  margin-top: 0;
+.home-prose > * {
+  grid-column: 2;
+  max-width: var(--prose-measure);
 }
 
 .home-prose h2 {
-  column-span: all;
+  grid-column: 1;
+  margin: 0;
+  max-width: none;
 }
 
-.home-prose li {
-  break-inside: avoid;
+/* margins do not collapse between grid items, so the text keeps only its
+   bottom margins */
+.home-prose > * {
+  margin-top: 0;
+}
+
+.home-prose > :last-child {
+  margin-bottom: 0;
 }
 
 @media (max-width: 800px) {
   .home-prose {
-    columns: 1;
+    display: block;
+  }
+
+  .home-prose h2 {
+    margin-bottom: 0.8rem;
   }
 }
 
@@ -2087,9 +2102,13 @@ a:hover {
   margin: 0;
 }
 
-/* beside the join box there is no room for two columns of text */
+/* beside the join box the heading goes back above its text */
 .home-about .home-prose {
-  columns: 1;
+  display: block;
+}
+
+.home-about .home-prose h2 {
+  margin: 0 0 0.8rem;
 }
 
 .home-join {
