@@ -104,11 +104,13 @@ try {
       <ul class="news-strip">
         {news.map((post) => (
           <li class="news-tile">
-            {post.cover_at && (
-              <a class="news-tile-cover" href={`/announcements#post-${post.id}`} tabindex="-1" aria-hidden="true">
+            <a class={`news-tile-cover${post.cover_at ? '' : ' news-tile-empty'}`} href={`/announcements#post-${post.id}`} tabindex="-1" aria-hidden="true">
+              {post.cover_at ? (
                 <img src={`/announcements/${post.id}/cover?v=${post.cover_at}`} alt="" loading="lazy" />
-              </a>
-            )}
+              ) : (
+                <img src="/brand/mark-blue.png" alt="" width="512" height="443" />
+              )}
+            </a>
             <div class="news-tile-body">
               <p class="event-when">{formatHelsinkiDate(post.published_at)}</p>
               <h3><a href={`/announcements#post-${post.id}`}>{post.title}</a></h3>
@@ -139,21 +141,20 @@ try {
     </section>
   )}
 
-  <article class="prose">
-    <Content />
-  </article>
-
-  <section class="home-join">
-    <div>
+  <section class="home-about">
+    <article class="prose">
+      <Content />
+    </article>
+    <aside class="home-join">
       <h2>Membership is free</h2>
       <p>
         Open to every student at Lahti's higher education institutions, and to anyone else as a supporting member.
         Members pay less for tickets, get the member channels on Discord, and count towards the season.
       </p>
-    </div>
-    <p class="entry-actions">
-      <a class="btn btn-cta" href="/join">Become a member</a>
-      <a class="btn btn-ghost" href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Say hi on Discord</a>
-    </p>
+      <p class="entry-actions">
+        <a class="btn btn-cta" href="/join">Become a member</a>
+        <a class="btn btn-ghost" href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Say hi on Discord</a>
+      </p>
+    </aside>
   </section>
 </Base>

@@ -2030,19 +2030,50 @@ a:hover {
   line-height: 1.2;
 }
 
-/* The way in, at the end of the page. */
-.home-join {
+/* A post with no cover shows the mark, on a band rather than a big box. */
+.news-tile-empty {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem 2rem;
-  flex-wrap: wrap;
-  margin: 2.5rem 0 1rem;
-  padding: 1.4rem 1.6rem;
+  justify-content: center;
+  aspect-ratio: 3 / 1;
+}
+
+.news-tile-empty img {
+  width: 18%;
+  height: auto;
+  opacity: 0.18;
+  object-fit: contain;
+}
+
+/* The association's own words, with the way in beside them. */
+.home-about {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(17rem, 1fr);
+  gap: 1.5rem 2.5rem;
+  align-items: start;
+  margin: 2.6rem 0 1rem;
+}
+
+.home-about .prose {
+  margin: 0;
+}
+
+.home-about .prose h2:first-child {
+  margin-top: 0;
+}
+
+.home-join {
+  padding: 1.3rem 1.5rem 1.4rem;
   background: var(--surface);
   border: 1px solid var(--line);
   border-top: 4px solid var(--yellow);
   clip-path: var(--cut);
+}
+
+@media (max-width: 800px) {
+  .home-about {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .home-join h2 {
@@ -2056,17 +2087,15 @@ a:hover {
 
 .home-join p {
   margin: 0;
-  max-width: 42rem;
   color: var(--muted);
+  font-size: 0.95rem;
 }
 
 .home-join .entry-actions {
-  margin: 0;
-  flex: 0 1 auto;
-  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
+  margin: 1rem 0 0;
 }
 
 @media (max-width: 900px) {
