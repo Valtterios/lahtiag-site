@@ -34,7 +34,7 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
     const n = Number(raw);
     return Number.isInteger(n) && n > 0 ? n : Number.NaN;
   };
-  const kindInput = () => ({ name: form.get('name'), description: form.get('description'), xp: form.get('xp'), season_cap: form.get('season_cap') });
+  const kindInput = () => ({ name: form.get('name'), description: form.get('description'), xp: form.get('xp'), season_cap: form.get('season_cap'), period: form.get('period') ?? 'season' });
 
   try {
     switch (action) {

@@ -416,16 +416,18 @@ puts it on the page and on Discord.
   event are listed first. Each tick once per event; the board channel
   gets a line. The list of ticks is the board's to keep: Add to the list
   makes a new kind, Retire hides one without losing what was given. Each
-  kind says what a tick is worth in XP and how many count per member and
-  season (0 for every one); a tick keeps the XP it was given with, so
-  when the numbers change, tick "apply to this season's ticks too" to
-  bring this season along. Members see their own ticks, and what they
-  add up to, under `/season` and on the membership page.
+  kind says what a tick is worth in XP and how many count per member in
+  a season, a month or a week (0 for every one), judged by when the tick
+  was given: give as many as you like, the ones over the cap are noted
+  and shown in brackets, not paid. A tick keeps the XP it was given
+  with, so when the numbers change, tick "apply to this season's ticks
+  too" to bring this season along. Members see their own ticks, and what
+  they add up to, under `/season` and on the membership page.
 
 | | |
 |---|---|
 | ![season-ticks](images/site/season-ticks.png) | ![event-ticks](images/site/event-ticks.png) |
-| Ticks on the season page: 1 Give tick, the ticks given this season, and 2 the list of kinds with their XP and cap. | The same under an event's Manage participants, with the people at the event first. |
+| Ticks on the season page: 1 Give tick, the ticks given this season, and 2 the list of kinds with their XP, cap and period. | The same under an event's Manage participants, with the people at the event first. |
 
 - **Your stats.** The membership page shows your events, tournaments and
   wins, with a card; `/profile` in Discord posts the card for everyone.

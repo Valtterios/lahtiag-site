@@ -870,13 +870,20 @@ on the season page or under an event's Manage participants, both through
 member sees their own under `/season` and on the membership page, this
 season's only: everything is cut at 1 September (`seasonRange`), so last
 season's ticks never count in this one. A kind carries what a tick is
-worth (`xp`) and how many of them count per member and season
-(`season_cap`, 0 = every one); a tick keeps the XP it was given with
-(`ticks.xp`), so a changed kind moves nothing in past seasons, and
-saving a kind with "apply to this season's ticks" brings the current
-season's along for when the numbers land after the ticking began.
-`tickXp` adds a member's season up, caps applied, oldest ticks first.
-The first kind holds the board's outline: 100 XP, once a season.
+worth (`xp`), how many of them count per member (`season_cap`, 0 = every
+one) and the period that cap counts in (`period`: season, month or
+week, judged by when the tick was given, Helsinki time); a tick keeps
+the XP it was given with (`ticks.xp`), so a changed kind moves nothing
+in past seasons, and saving a kind with "apply to this season's ticks"
+brings the current season's along for when the numbers land after the
+ticking began. The counting is on the pass side: giving is never refused
+for a cap; `applyCaps` walks a member's ticks oldest first, groups them
+by kind and period bucket (`periodKey`), and flags the ones past the cap
+as noted, not paid; `tickXp` adds the rest up, and the season page shows
+the flag in brackets (`markCounted`). Nothing is stored per period and
+nothing resets, the same way the monthly voice and Minecraft rules will
+read the per-day counts. The first kind holds the board's outline: 100
+XP, once a season.
 
 **Play time.** For the season pass, `scripts/minecraft/playtime-sync.py`
 (installed as `/usr/local/bin/lahtiag-playtime-sync.py`, run by

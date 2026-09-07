@@ -8,8 +8,14 @@
 // so last season's totals never move when the board changes a kind.
 import type { D1Database } from '@cloudflare/workers-types';
 import { RuleError } from './db';
-import { seasonStartYear } from './activity';
+import { helsinkiDay, helsinkiYearMonth, seasonStartYear } from './activity';
+import { mondayOf } from './season-stats';
 import { helsinkiToUnix } from './time';
+
+// The period a kind's cap counts in.
+export const TICK_PERIODS = ['season', 'month', 'week'] as const;
+export type TickPeriod = (typeof TICK_PERIODS)[number];
+export const TICK_PERIOD_LABELS: Record<TickPeriod, string> = { season: 'per season', month: 'per month', week: 'per week' };
 
 export interface TickKind {
   id: number;
@@ -17,7 +23,8 @@ export interface TickKind {
   description: string | null;
   sort: number;
   xp: number; // what one tick is worth
-  season_cap: number; // how many count per member and season; 0 = every one
+  season_cap: number; // how many count per member and period; 0 = every one
+  period: TickPeriod; // the period that cap counts in
   retired_at: number | null;
   given: number; // ticks ever given under it
 }
@@ -45,6 +52,7 @@ export interface SeasonTick {
   given_at: number;
   xp: number;
   season_cap: number;
+  period: TickPeriod;
 }
 
 export interface TickKindInput {
@@ -52,6 +60,7 @@ export interface TickKindInput {
   description: unknown;
   xp: unknown;
   season_cap: unknown;
+  period?: unknown; // missing means per season
 }
 
 export interface TickableMember {
@@ -72,7 +81,7 @@ function clean(value: unknown, max: number): string {
 
 // --- the kinds ---------------------------------------------------------------
 
-const KIND_COLUMNS = `k.id, k.name, k.description, k.sort, k.xp, k.season_cap, k.retired_at,
+const KIND_COLUMNS = `k.id, k.name, k.description, k.sort, k.xp, k.season_cap, k.period, k.retired_at,
   (SELECT COUNT(*) FROM ticks t WHERE t.kind_id = k.id) AS given`;
 
 export async function listTickKinds(db: D1Database, includeRetired = false): Promise<TickKind[]> {
@@ -95,16 +104,20 @@ function whole(raw: unknown, max: number): number {
   return n;
 }
 
-function validKind(input: TickKindInput): { name: string; description: string | null; xp: number; season_cap: number } {
+function validKind(input: TickKindInput): { name: string; description: string | null; xp: number; season_cap: number; period: TickPeriod } {
   const name = clean(input.name, TICK_LIMITS.name);
   const description = clean(input.description, TICK_LIMITS.description);
   if (name.length < 2 || name.length > TICK_LIMITS.name) throw new RuleError('bad_input', 'A tick needs a name of 2 to 60 characters.');
   if (description.length > TICK_LIMITS.description) throw new RuleError('bad_input', 'The description is too long.');
+  const periodRaw = String(input.period ?? 'season');
+  const period = TICK_PERIODS.find((p) => p === periodRaw);
+  if (!period) throw new RuleError('bad_input', 'The period is per season, per month or per week.');
   return {
     name,
     description: description === '' ? null : description,
     xp: whole(input.xp, TICK_LIMITS.xp),
     season_cap: whole(input.season_cap, TICK_LIMITS.season_cap),
+    period,
   };
 }
 
@@ -118,12 +131,12 @@ async function nameTaken(db: D1Database, name: string, exceptId: number | null):
 }
 
 export async function addTickKind(db: D1Database, input: TickKindInput, by: string, now: number): Promise<TickKind> {
-  const { name, description, xp, season_cap } = validKind(input);
+  const { name, description, xp, season_cap, period } = validKind(input);
   if (await nameTaken(db, name, null)) throw new RuleError('duplicate', `There is already a tick called ${name}.`);
   const last = await db.prepare('SELECT COALESCE(MAX(sort), 0) AS sort FROM tick_kinds').first<{ sort: number }>();
   const result = await db
-    .prepare('INSERT INTO tick_kinds (name, description, sort, xp, season_cap, created_by, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)')
-    .bind(name, description, (last?.sort ?? 0) + 1, xp, season_cap, by, now)
+    .prepare('INSERT INTO tick_kinds (name, description, sort, xp, season_cap, period, created_by, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)')
+    .bind(name, description, (last?.sort ?? 0) + 1, xp, season_cap, period, by, now)
     .run();
   const id = Number(result.meta.last_row_id);
   return (await getTickKind(db, id))!;
@@ -133,12 +146,12 @@ export async function addTickKind(db: D1Database, input: TickKindInput, by: stri
 // `applySeason` the ticks of that season already given under it follow,
 // for when the numbers are settled after the ticking began.
 export async function saveTickKind(db: D1Database, id: number, input: TickKindInput, applySeason: number | null = null): Promise<TickKind> {
-  const { name, description, xp, season_cap } = validKind(input);
+  const { name, description, xp, season_cap, period } = validKind(input);
   if (!(await getTickKind(db, id))) throw new RuleError('missing', 'No such tick.');
   if (await nameTaken(db, name, id)) throw new RuleError('duplicate', `There is already a tick called ${name}.`);
   await db
-    .prepare('UPDATE tick_kinds SET name = ?2, description = ?3, xp = ?4, season_cap = ?5 WHERE id = ?1')
-    .bind(id, name, description, xp, season_cap)
+    .prepare('UPDATE tick_kinds SET name = ?2, description = ?3, xp = ?4, season_cap = ?5, period = ?6 WHERE id = ?1')
+    .bind(id, name, description, xp, season_cap, period)
     .run();
   if (applySeason !== null) {
     const { from, to } = seasonRange(applySeason);
@@ -254,7 +267,7 @@ export async function memberSeasonTicks(db: D1Database, discordId: string, now: 
   const { from, to } = seasonRange(seasonStartYear(now));
   const { results } = await db
     .prepare(
-      `SELECT t.kind_id, k.name AS kind, e.title AS event, t.given_at, t.xp, k.season_cap
+      `SELECT t.kind_id, k.name AS kind, e.title AS event, t.given_at, t.xp, k.season_cap, k.period
        FROM ticks t
        JOIN tick_kinds k ON k.id = t.kind_id
        JOIN register r ON r.id = t.register_id
@@ -272,23 +285,58 @@ export function tickList(ticks: SeasonTick[]): string {
   return ticks.map((t) => (t.event ? `${t.kind} (${t.event})` : t.kind)).join(' · ');
 }
 
-// The XP a member's season ticks add up to: each tick is worth what it
-// was given with, and a kind with a cap counts only its first ticks of
-// the season (oldest first, the order memberSeasonTicks lists them in).
-export function tickXp(ticks: SeasonTick[]): number {
-  const seen = new Map<number, number>();
-  let total = 0;
-  for (const t of ticks) {
-    const n = (seen.get(t.kind_id) ?? 0) + 1;
-    seen.set(t.kind_id, n);
-    if (t.season_cap === 0 || n <= t.season_cap) total += t.xp;
+// The bucket a tick falls in for its kind's cap: the whole season, the
+// Helsinki month, or the week (by its Monday) it was given in.
+export function periodKey(givenAt: number, period: TickPeriod): string {
+  if (period === 'month') {
+    const { year, month } = helsinkiYearMonth(givenAt);
+    return `${year}-${String(month).padStart(2, '0')}`;
   }
-  return total;
+  if (period === 'week') return mondayOf(helsinkiDay(givenAt));
+  return '';
 }
 
-// "100 XP · once a season" for the pickers and the list.
-export function kindWorth(kind: { xp: number; season_cap: number }): string {
+// Which of a member's ticks count: each tick is worth what it was given
+// with, and a kind with a cap pays only the first N given in each
+// period, oldest first. The counting happens here, on the pass side;
+// giving a tick is never refused for a cap. Rows come back in their
+// original order, flagged.
+export function applyCaps<T extends { kind_id: number; given_at: number }>(
+  ticks: T[],
+  kindOf: (tick: T) => { season_cap: number; period: TickPeriod },
+): (T & { counted: boolean })[] {
+  const order = ticks.map((t, i) => ({ t, i })).sort((a, b) => a.t.given_at - b.t.given_at || a.i - b.i);
+  const seen = new Map<string, number>();
+  const counted = new Array<boolean>(ticks.length);
+  for (const { t, i } of order) {
+    const kind = kindOf(t);
+    const key = `${t.kind_id}:${periodKey(t.given_at, kind.period)}`;
+    const n = (seen.get(key) ?? 0) + 1;
+    seen.set(key, n);
+    counted[i] = kind.season_cap === 0 || n <= kind.season_cap;
+  }
+  return ticks.map((t, i) => ({ ...t, counted: counted[i] }));
+}
+
+export function tickXp(ticks: SeasonTick[]): number {
+  return applyCaps(ticks, (t) => t).reduce((sum, t) => sum + (t.counted ? t.xp : 0), 0);
+}
+
+// The board's list of everyone's ticks, each flagged by its member's caps.
+export function markCounted(rows: TickRow[], kinds: TickKind[]): (TickRow & { counted: boolean })[] {
+  const byKind = new Map(kinds.map((k) => [k.id, k]));
+  const kindOf = (t: TickRow) => byKind.get(t.kind_id) ?? { season_cap: 0, period: 'season' as TickPeriod };
+  const out = new Map<number, boolean>();
+  const members = new Map<number, TickRow[]>();
+  for (const row of rows) members.set(row.register_id, [...(members.get(row.register_id) ?? []), row]);
+  for (const mine of members.values()) for (const t of applyCaps(mine, kindOf)) out.set(t.id, t.counted);
+  return rows.map((t) => ({ ...t, counted: out.get(t.id) ?? true }));
+}
+
+// "100 XP · once a month" for the pickers and the list.
+export function kindWorth(kind: { xp: number; season_cap: number; period: TickPeriod }): string {
   if (kind.xp === 0) return 'no XP yet';
-  const cap = kind.season_cap === 0 ? '' : kind.season_cap === 1 ? ' · once a season' : ` · up to ${kind.season_cap} a season`;
+  const unit = kind.period === 'season' ? 'season' : kind.period;
+  const cap = kind.season_cap === 0 ? '' : kind.season_cap === 1 ? ` · once a ${unit}` : ` · up to ${kind.season_cap} a ${unit}`;
   return `${kind.xp} XP${cap}`;
 }

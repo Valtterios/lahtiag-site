@@ -14,6 +14,9 @@ import {
   tickList,
   tickXp,
   kindWorth,
+  applyCaps,
+  periodKey,
+  markCounted,
 } from '../src/lib/ticks';
 import { RuleError, deleteEvent, eraseRegisterEntry } from '../src/lib/db';
 import { seasonSummary, seasonLines } from '../src/lib/season';
@@ -47,29 +50,35 @@ describe('tick kinds', () => {
   it('starts with helping at an event and lets the board add more', async () => {
     const before = await listTickKinds(env.DB);
     expect(before.map((k) => k.name)).toEqual(['Helped at an event']);
-    expect(before[0]).toMatchObject({ xp: 100, season_cap: 1 });
+    expect(before[0]).toMatchObject({ xp: 100, season_cap: 1, period: 'season' });
     expect(kindWorth(before[0])).toBe('100 XP · once a season');
     const kind = await addTickKind(env.DB, { name: '  Brought  gear ', description: 'Lent a console or a screen.', xp: '50', season_cap: '' }, 'axi', NOW);
-    expect(kind).toMatchObject({ name: 'Brought gear', description: 'Lent a console or a screen.', sort: 2, xp: 50, season_cap: 0, retired_at: null, given: 0 });
+    expect(kind).toMatchObject({ name: 'Brought gear', description: 'Lent a console or a screen.', sort: 2, xp: 50, season_cap: 0, period: 'season', retired_at: null, given: 0 });
     expect(kindWorth(kind)).toBe('50 XP');
-    expect(kindWorth({ xp: 0, season_cap: 0 })).toBe('no XP yet');
-    expect(kindWorth({ xp: 20, season_cap: 3 })).toBe('20 XP · up to 3 a season');
+    expect(kindWorth({ xp: 0, season_cap: 0, period: 'season' })).toBe('no XP yet');
+    expect(kindWorth({ xp: 20, season_cap: 3, period: 'season' })).toBe('20 XP · up to 3 a season');
+    expect(kindWorth({ xp: 20, season_cap: 1, period: 'month' })).toBe('20 XP · once a month');
+    expect(kindWorth({ xp: 20, season_cap: 2, period: 'week' })).toBe('20 XP · up to 2 a week');
+    const monthly = await addTickKind(env.DB, { name: 'Ran a game night', description: '', xp: '40', season_cap: '1', period: 'month' }, 'axi', NOW);
+    expect(monthly).toMatchObject({ period: 'month', season_cap: 1 });
+    await expect(addTickKind(env.DB, { name: 'Bad period', description: '', xp: '', season_cap: '', period: 'day' }, 'axi', NOW)).rejects.toMatchObject({ code: 'bad_input' });
     const blank = { description: '', xp: '', season_cap: '' };
     await expect(addTickKind(env.DB, { ...blank, name: 'brought GEAR' }, 'axi', NOW)).rejects.toMatchObject({ code: 'duplicate' });
     await expect(addTickKind(env.DB, { ...blank, name: 'x' }, 'axi', NOW)).rejects.toMatchObject({ code: 'bad_input' });
     await expect(addTickKind(env.DB, { ...blank, name: 'Bad XP', xp: '1.5' }, 'axi', NOW)).rejects.toMatchObject({ code: 'bad_input' });
     await expect(addTickKind(env.DB, { ...blank, name: 'Bad cap', season_cap: '-1' }, 'axi', NOW)).rejects.toMatchObject({ code: 'bad_input' });
-    const saved = await saveTickKind(env.DB, kind.id, { ...blank, name: 'Brought equipment', xp: '60', season_cap: '2' });
-    expect(saved).toMatchObject({ name: 'Brought equipment', description: null, xp: 60, season_cap: 2 });
+    const saved = await saveTickKind(env.DB, kind.id, { ...blank, name: 'Brought equipment', xp: '60', season_cap: '2', period: 'week' });
+    expect(saved).toMatchObject({ name: 'Brought equipment', description: null, xp: 60, season_cap: 2, period: 'week' });
     await expect(saveTickKind(env.DB, kind.id, { ...blank, name: 'Helped at an event' })).rejects.toMatchObject({ code: 'duplicate' });
     expect(await setTickKindRetired(env.DB, kind.id, true, NOW)).toBe(true);
-    expect((await listTickKinds(env.DB)).map((k) => k.name)).toEqual(['Helped at an event']);
+    expect((await listTickKinds(env.DB)).map((k) => k.name)).toEqual(['Helped at an event', 'Ran a game night']);
     expect((await listTickKinds(env.DB, true)).map((k) => [k.name, k.retired_at])).toEqual([
       ['Helped at an event', null],
       ['Brought equipment', NOW],
+      ['Ran a game night', null],
     ]);
     expect(await setTickKindRetired(env.DB, kind.id, false, NOW)).toBe(true);
-    expect((await listTickKinds(env.DB)).length).toBe(2);
+    expect((await listTickKinds(env.DB)).length).toBe(3);
     expect(await setTickKindRetired(env.DB, 999, true, NOW)).toBe(false);
   });
 });
@@ -107,14 +116,21 @@ describe('giving ticks', () => {
 
     const mine = await memberSeasonTicks(env.DB, AINO, NOW);
     expect(mine).toEqual([
-      { kind_id: helped.id, kind: 'Helped at an event', event: 'Autumn LAN', given_at: NOW, xp: 100, season_cap: 1 },
-      { kind_id: helped.id, kind: 'Helped at an event', event: null, given_at: NOW + 60, xp: 100, season_cap: 1 },
+      { kind_id: helped.id, kind: 'Helped at an event', event: 'Autumn LAN', given_at: NOW, xp: 100, season_cap: 1, period: 'season' },
+      { kind_id: helped.id, kind: 'Helped at an event', event: null, given_at: NOW + 60, xp: 100, season_cap: 1, period: 'season' },
     ]);
     expect(tickList(mine)).toBe('Helped at an event (Autumn LAN) · Helped at an event');
     // Once a season: the second one is noted, not paid.
     expect(tickXp(mine)).toBe(100);
+    expect(applyCaps(mine, (t) => t).map((t) => t.counted)).toEqual([true, false]);
     expect(tickXp(mine.map((t) => ({ ...t, season_cap: 0 })))).toBe(200);
-    expect(tickXp([...mine, { kind_id: 99, kind: 'Other', event: null, given_at: NOW, xp: 30, season_cap: 2 }])).toBe(130);
+    expect(tickXp([...mine, { kind_id: 99, kind: 'Other', event: null, given_at: NOW, xp: 30, season_cap: 2, period: 'season' as const }])).toBe(130);
+    // The board's list flags each member's ticks by their own caps.
+    const flagged = markCounted(await listTicks(env.DB, 2026), await listTickKinds(env.DB, true));
+    expect(flagged.map((t) => [t.event, t.counted])).toEqual([
+      [null, false],
+      ['Autumn LAN', true],
+    ]);
     // A tick keeps the XP it was given with; the season's can be brought along.
     await saveTickKind(env.DB, helped.id, { name: 'Helped at an event', description: '', xp: '150', season_cap: '1' });
     expect((await memberSeasonTicks(env.DB, AINO, NOW)).map((t) => t.xp)).toEqual([100, 100]);
@@ -141,6 +157,35 @@ describe('giving ticks', () => {
     expect(await eraseRegisterEntry(env.DB, aino)).toBe(true);
     expect((await listTicks(env.DB, 2026)).length).toBe(0);
     expect((await listTicks(env.DB, 2025)).length).toBe(0);
+  });
+
+  it('counts a monthly or weekly cap in the period the tick was given', () => {
+    const at = (m: number, d: number, h = 12) => Date.UTC(2026, m - 1, d, h) / 1000;
+    expect(periodKey(at(9, 7), 'season')).toBe('');
+    expect(periodKey(at(9, 7), 'month')).toBe('2026-09');
+    expect(periodKey(at(9, 30, 22), 'month')).toBe('2026-10'); // 01:00 on 1 October in Helsinki
+    expect(periodKey(at(9, 7), 'week')).toBe('2026-09-07');
+    expect(periodKey(at(9, 13, 20), 'week')).toBe('2026-09-07'); // Sunday night, still that week
+    expect(periodKey(at(9, 13, 22), 'week')).toBe('2026-09-14'); // 01:00 Monday in Helsinki
+    const tick = (kind_id: number, given_at: number, xp: number, season_cap: number, period: 'season' | 'month' | 'week') => ({
+      kind_id,
+      kind: 'x',
+      event: null,
+      given_at,
+      xp,
+      season_cap,
+      period,
+    });
+    // Once a month: two in September pay once, October pays again.
+    const monthly = [tick(1, at(9, 3), 40, 1, 'month'), tick(1, at(9, 20), 40, 1, 'month'), tick(1, at(10, 2), 40, 1, 'month')];
+    expect(applyCaps(monthly, (t) => t).map((t) => t.counted)).toEqual([true, false, true]);
+    expect(tickXp(monthly)).toBe(80);
+    // Twice a week, given out of order: the oldest two of the week count.
+    const weekly = [tick(2, at(9, 9), 10, 2, 'week'), tick(2, at(9, 7), 10, 2, 'week'), tick(2, at(9, 8), 10, 2, 'week'), tick(2, at(9, 14), 10, 2, 'week')];
+    expect(applyCaps(weekly, (t) => t).map((t) => t.counted)).toEqual([false, true, true, true]);
+    expect(tickXp(weekly)).toBe(30);
+    // Kinds don't share buckets.
+    expect(tickXp([...monthly, ...weekly])).toBe(110);
   });
 
   it('cuts a season at 1 September, Helsinki time', () => {
