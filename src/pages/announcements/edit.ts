@@ -1,14 +1,13 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
-import { updateAnnouncement, setAnnouncementCover, RuleError } from '../../lib/db';
-import { editWebhookMessage, editWebhookMessageFile } from '../../lib/discord';
-import { newsText, newsCoverFile, parsePing } from '../../lib/news';
+import { updateAnnouncement, setAnnouncementCover, setAnnouncementMessages, RuleError } from '../../lib/db';
+import { newsMessages, syncNewsMessages, replaceNewsCover, newsCoverFile, parsePing } from '../../lib/news';
 import { helsinkiToUnix } from '../../lib/time';
 
 // Rewrite a post: title and body always; the ping and the publish time
 // while it is a draft; a new cover any time. A published post's Discord
-// message follows, text and picture.
+// messages follow, every part of the text and the picture.
 
 export const POST: APIRoute = async ({ request, redirect }) => {
   const admin = await requireAdmin(request, env);
@@ -42,10 +41,12 @@ export const POST: APIRoute = async ({ request, redirect }) => {
       await setAnnouncementCover(env.DB, id, cover.type, await cover.arrayBuffer(), now);
       newCover = true;
     }
-    if (post.draft === 0 && post.discord_message_id && env.DISCORD_WEBHOOK_URL) {
-      await editWebhookMessage(env.DISCORD_WEBHOOK_URL, post.discord_message_id, newsText(post));
+    const onDiscord = post.draft === 0 ? newsMessages(post) : null;
+    if (onDiscord && env.DISCORD_WEBHOOK_URL) {
+      let messages = await syncNewsMessages(env.DISCORD_WEBHOOK_URL, post, onDiscord);
       const file = newCover ? await newsCoverFile(env.DB, id) : null;
-      if (file) await editWebhookMessageFile(env.DISCORD_WEBHOOK_URL, post.discord_message_id, file);
+      if (file) messages = await replaceNewsCover(env.DISCORD_WEBHOOK_URL, { ...messages, legacy: onDiscord.legacy }, file);
+      await setAnnouncementMessages(env.DB, id, messages);
     }
   } catch (error) {
     if (error instanceof RuleError) return redirect(`/announcements?err=${error.code === 'bad_input' ? 'bad_input' : error.code}`, 303);

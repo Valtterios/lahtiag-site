@@ -129,7 +129,8 @@ export interface AnnouncementRow {
   published_at: number;
   author_id: string;
   source: 'web' | 'discord';
-  discord_message_id: string | null;
+  discord_message_id: string | null; // the first text message on Discord
+  discord_messages: string | null; // every Discord message of the post, JSON (src/lib/news.ts)
   author_name: string | null;
   draft: number; // 1 until the board publishes it (and it goes to Discord)
   publish_at: number | null; // a draft with a time: the 15-minute job publishes it then
@@ -1359,6 +1360,15 @@ export async function publishAnnouncement(db: D1Database, id: number, now: numbe
     await db.prepare('UPDATE announcements SET draft = 0, published_at = ?2 WHERE id = ?1').bind(id, now).run();
   }
   return { ...row, draft: 0, published_at: row.draft === 1 ? now : row.published_at };
+}
+
+// The post's Discord messages: the first text part is the id the rest
+// of the code checks, the whole set is kept for edits and deletes.
+export async function setAnnouncementMessages(db: D1Database, id: number, messages: { image: string | null; parts: string[] }): Promise<void> {
+  await db
+    .prepare('UPDATE announcements SET discord_message_id = ?1, discord_messages = ?2 WHERE id = ?3')
+    .bind(messages.parts[0] ?? messages.image, JSON.stringify({ image: messages.image, parts: messages.parts }), id)
+    .run();
 }
 
 export async function setAnnouncementMessageId(

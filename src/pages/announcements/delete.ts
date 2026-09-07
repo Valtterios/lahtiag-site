@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
 import { deleteAnnouncement } from '../../lib/db';
-import { deleteWebhookMessage } from '../../lib/discord';
+import { deleteNewsMessages, newsMessages } from '../../lib/news';
 
 export const POST: APIRoute = async ({ request, redirect }) => {
   const admin = await requireAdmin(request, env);
@@ -14,10 +14,9 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   const id = Number(form.get('id'));
   if (!Number.isInteger(id)) return redirect('/announcements', 303);
   const deleted = await deleteAnnouncement(env.DB, id);
-  // Clean up the mirrored Discord message too; the reverse direction does
+  // Clean up the mirrored Discord messages too; the reverse direction does
   // not exist (deleting on Discord never reaches the site).
-  if (deleted?.discord_message_id && env.DISCORD_WEBHOOK_URL) {
-    await deleteWebhookMessage(env.DISCORD_WEBHOOK_URL, deleted.discord_message_id);
-  }
+  const onDiscord = deleted ? newsMessages(deleted) : null;
+  if (onDiscord && env.DISCORD_WEBHOOK_URL) await deleteNewsMessages(env.DISCORD_WEBHOOK_URL, onDiscord);
   return redirect('/announcements', 303);
 };

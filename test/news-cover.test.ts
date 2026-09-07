@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { upsertMember, createAnnouncement, listAnnouncements, deleteAnnouncement, getAnnouncement, updateAnnouncement, getAnnouncementCover, setAnnouncementCover, deleteAnnouncementCover, COVER_MAX_BYTES } from '../src/lib/db';
-import { newsCoverFile, newsText, newsPayload, parsePing, pingLabel } from '../src/lib/news';
+import { newsCoverFile, newsText, newsParts, newsMessages, pingMentions, parsePing, pingLabel } from '../src/lib/news';
 
 // A news post's cover: saved, listed as a version, attached for Discord,
 // gone with the post.
@@ -22,9 +22,12 @@ describe('news covers', () => {
     expect(parsePing('everyone')).toBe('everyone');
     expect(parsePing('123456789012345678')).toBe('123456789012345678');
     expect(() => parsePing('@here')).toThrow();
-    expect(newsPayload({ title: 'T', body_md: 'B', ping: null })).toEqual({ content: '📣 **T**\nB', mentions: { parse: [] } });
-    expect(newsPayload({ title: 'T', body_md: 'B', ping: 'everyone' })).toEqual({ content: '@everyone 📣 **T**\nB', mentions: { parse: ['everyone'] } });
-    expect(newsPayload({ title: 'T', body_md: 'B', ping: '42' })).toEqual({ content: '<@&42> 📣 **T**\nB', mentions: { parse: [], roles: ['42'] } });
+    expect(newsParts({ title: 'T', body_md: 'B', ping: null })).toEqual(['📣 **T**\nB']);
+    expect(newsParts({ title: 'T', body_md: 'B', ping: 'everyone' })).toEqual(['@everyone 📣 **T**\nB']);
+    expect(newsParts({ title: 'T', body_md: 'B', ping: '42' })).toEqual(['<@&42> 📣 **T**\nB']);
+    expect(pingMentions(null)).toEqual({ parse: [] });
+    expect(pingMentions('everyone')).toEqual({ parse: ['everyone'] });
+    expect(pingMentions('42')).toEqual({ parse: [], roles: ['42'] });
     expect(pingLabel('42', new Map([['42', 'Minecraft']]))).toBe('@Minecraft');
     expect(pingLabel('everyone', new Map())).toBe('@everyone');
     expect(pingLabel(null, new Map())).toBeNull();
@@ -47,21 +50,33 @@ describe('news covers', () => {
     expect(file?.name).toBe(`news-${id}.png`);
     expect(file?.bytes.length).toBe(PNG.length);
     expect(newsText({ title: 'SMP', body_md: 'Open!' })).toBe('📣 **SMP**\nOpen!');
-    // Discord takes 2000 characters: a long post is cut at a paragraph and links to the site.
+    // Discord takes 2000 characters a message: a long post goes in parts, whole paragraphs
+    // per part, the ping and the title on the first.
     const paragraph = 'Words and more words for the members to read, over and over. ';
     const long = Array.from({ length: 8 }, (_, i) => `**Part ${i + 1}.** ${paragraph.repeat(6)}`.trim()).join('\n\n');
     expect(long.length).toBeGreaterThan(2500);
-    const cut = newsText({ id: 4, title: 'Long one', body_md: long });
-    expect(cut.length).toBeLessThanOrEqual(2000);
-    expect(cut.startsWith('📣 **Long one**\n**Part 1.**')).toBe(true);
-    expect(cut.endsWith('\n…\nThe whole post: https://lahtiag.fi/announcements#post-4')).toBe(true);
-    expect(cut).not.toContain('Part 6');
-    // The cut lands between paragraphs, never mid-word.
-    expect(cut.split('\n…\n')[0].endsWith('.')).toBe(true);
-    const pinged = newsPayload({ id: 4, title: 'Long one', body_md: long, ping: 'everyone' });
-    expect(pinged.content.length).toBeLessThanOrEqual(2000);
-    expect(pinged.content.startsWith('@everyone 📣 **Long one**')).toBe(true);
-    expect(newsText({ title: 'Short', body_md: 'Fine as it is.' })).not.toContain('The whole post');
+    const parts = newsParts({ title: 'Long one', body_md: long, ping: 'everyone' });
+    expect(parts.length).toBe(2);
+    for (const part of parts) expect(part.length).toBeLessThanOrEqual(2000);
+    expect(parts[0].startsWith('@everyone 📣 **Long one**\n**Part 1.**')).toBe(true);
+    expect(parts[1].startsWith('**Part ')).toBe(true);
+    expect(parts.join('\n\n')).toContain('**Part 8.**');
+    for (const part of parts) expect(part.endsWith('.')).toBe(true);
+    // A paragraph longer than a message is cut at spaces, never mid-word.
+    const wall = 'word '.repeat(900).trim();
+    const walls = newsParts({ title: 'Wall', body_md: wall, ping: null });
+    expect(walls.length).toBe(3);
+    for (const part of walls) {
+      expect(part.length).toBeLessThanOrEqual(2000);
+      expect(part.endsWith('word')).toBe(true);
+    }
+    expect(walls.join(' ').split('word').length - 1).toBe(900);
+    expect(newsParts({ title: 'Empty', body_md: '', ping: null })).toEqual(['📣 **Empty**\n']);
+    // The ids kept per post: the new shape, and the one message of a post from before.
+    expect(newsMessages({ discord_message_id: '1', discord_messages: '{"image":"9","parts":["1","2"]}' })).toEqual({ image: '9', parts: ['1', '2'], legacy: false });
+    expect(newsMessages({ discord_message_id: '1', discord_messages: null })).toEqual({ image: null, parts: ['1'], legacy: true });
+    expect(newsMessages({ discord_message_id: null, discord_messages: null })).toBeNull();
+    expect(newsMessages({ discord_message_id: '1', discord_messages: 'not json' })).toEqual({ image: null, parts: ['1'], legacy: true });
     await expect(setAnnouncementCover(db(), id, 'text/plain', PNG.buffer.slice(0), NOW)).rejects.toMatchObject({ code: 'bad_input' });
     await expect(setAnnouncementCover(db(), id, 'image/png', new ArrayBuffer(COVER_MAX_BYTES + 1), NOW)).rejects.toMatchObject({ code: 'bad_input' });
     await expect(setAnnouncementCover(db(), id + 99, 'image/png', PNG.buffer.slice(0), NOW)).rejects.toMatchObject({ code: 'missing' });

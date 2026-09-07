@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
-import { getAnnouncement, setAnnouncementMessageId } from '../../lib/db';
+import { getAnnouncement, setAnnouncementMessages } from '../../lib/db';
 import { postNews } from '../../lib/news';
 
 // Post a published post on Discord after the fact: for when the webhook
@@ -19,8 +19,8 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   if (!post || post.draft === 1) return redirect('/announcements?err=missing', 303);
   if (post.discord_message_id) return redirect('/announcements?err=discord_exists', 303);
   if (!env.DISCORD_WEBHOOK_URL) return redirect('/announcements?err=discord_failed', 303);
-  const messageId = await postNews(env.DB, env.DISCORD_WEBHOOK_URL, post);
-  if (!messageId) return redirect('/announcements?err=discord_failed', 303);
-  await setAnnouncementMessageId(env.DB, id, messageId);
+  const messages = await postNews(env.DB, env.DISCORD_WEBHOOK_URL, post);
+  if (!messages) return redirect('/announcements?err=discord_failed', 303);
+  await setAnnouncementMessages(env.DB, id, messages);
   return redirect(`/announcements?ok=discord_posted#post-${id}`, 303);
 };

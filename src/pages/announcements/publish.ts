@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
-import { publishAnnouncement, setAnnouncementMessageId } from '../../lib/db';
+import { publishAnnouncement, setAnnouncementMessages } from '../../lib/db';
 import { postNews } from '../../lib/news';
 
 // Publish a draft post: it appears on the news page and goes to Discord.
@@ -16,8 +16,8 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   const post = await publishAnnouncement(env.DB, id, Math.floor(Date.now() / 1000));
   if (!post) return redirect('/announcements?err=missing', 303);
   if (env.DISCORD_WEBHOOK_URL && !post.discord_message_id) {
-    const messageId = await postNews(env.DB, env.DISCORD_WEBHOOK_URL, post);
-    if (messageId) await setAnnouncementMessageId(env.DB, id, messageId);
+    const messages = await postNews(env.DB, env.DISCORD_WEBHOOK_URL, post);
+    if (messages) await setAnnouncementMessages(env.DB, id, messages);
     // The site has it either way; Discord is told so, or the board is.
     else return redirect('/announcements?ok=published_nodiscord', 303);
   }

@@ -12,7 +12,7 @@ import {
   listTicketTypes,
   listDueAnnouncements,
   publishAnnouncement,
-  setAnnouncementMessageId,
+  setAnnouncementMessages,
   listResults,
   countNewMembers,
   getSettings,
@@ -146,8 +146,8 @@ export async function runHourly(db: D1Database, env: Env, origin: string, now: n
     const post = await publishAnnouncement(db, draft.id, now);
     if (!post) continue;
     if (env.DISCORD_WEBHOOK_URL) {
-      const messageId = await postNews(db, env.DISCORD_WEBHOOK_URL, post);
-      if (messageId) await setAnnouncementMessageId(db, post.id, messageId);
+      const messages = await postNews(db, env.DISCORD_WEBHOOK_URL, post);
+      if (messages) await setAnnouncementMessages(db, post.id, messages);
     }
     summary.news++;
   }

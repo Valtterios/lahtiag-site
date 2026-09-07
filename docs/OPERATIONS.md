@@ -192,14 +192,20 @@ under the title on the site and goes to Discord attached to the post; a
 cover changed after publishing replaces the picture on the Discord
 message too.
 
-**Long posts on Discord.** A Discord message holds 2000 characters, ping
-and title included. `newsText` (`src/lib/news.ts`) cuts a longer post at
-the last paragraph that fits and ends it with a link to the whole post
-on the site (`/announcements#post-<id>`), so publishing never fails on
-length. If Discord still refuses a post (down, a bad webhook), the site
-keeps it as published and says so; a **Post to Discord** button under
-the post (`/announcements/discord`) sends it again once the post has no
-Discord message yet.
+**A post on Discord is several messages.** The cover goes first as a
+message of its own, then the text in as many messages as it takes, the
+first carrying the ping and the title: a Discord message holds 2000
+characters, and `newsParts` (`src/lib/news.ts`) packs whole paragraphs
+into each, cutting a paragraph longer than a message at a space. Every
+message id is kept in `announcements.discord_messages` (JSON, image and
+parts; `discord_message_id` is the first text part, and posts from
+before the split carry only that one message with the cover attached to
+it), so an edit rewrites every part, adds or drops parts as the length
+changes, a new cover replaces the cover message, and a delete takes all
+of them. If Discord refuses the first part (down, a bad webhook), the
+site keeps the post as published and says so; a **Post to Discord**
+button under the post (`/announcements/discord`) sends it again once the
+post has no Discord message yet.
 
 ![The post form](images/site/news-board-tools.png)
 

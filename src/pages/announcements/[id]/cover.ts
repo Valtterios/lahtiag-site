@@ -1,9 +1,8 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { getAnnouncement, getAnnouncementCover, setAnnouncementCover, deleteAnnouncementCover, RuleError } from '../../../lib/db';
-import { newsCoverFile } from '../../../lib/news';
-import { editWebhookMessageFile } from '../../../lib/discord';
+import { getAnnouncement, getAnnouncementCover, setAnnouncementCover, deleteAnnouncementCover, setAnnouncementMessages, RuleError } from '../../../lib/db';
+import { newsCoverFile, newsMessages, replaceNewsCover, removeNewsCover } from '../../../lib/news';
 
 // A news post's cover picture. GET serves it (cached a day; the page links
 // it with the upload time as a version). POST, for the board, replaces or
@@ -35,6 +34,9 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   try {
     if (form.get('action') === 'remove') {
       await deleteAnnouncementCover(env.DB, id);
+      const post = await getAnnouncement(env.DB, id);
+      const onDiscord = post && post.draft === 0 ? newsMessages(post) : null;
+      if (onDiscord && env.DISCORD_WEBHOOK_URL) await setAnnouncementMessages(env.DB, id, await removeNewsCover(env.DISCORD_WEBHOOK_URL, onDiscord));
       return redirect('/announcements?ok=cover_removed', 303);
     }
     const file = form.get('cover');
@@ -42,7 +44,8 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     await setAnnouncementCover(env.DB, id, file.type, await file.arrayBuffer(), Math.floor(Date.now() / 1000));
     const post = await getAnnouncement(env.DB, id);
     const cover = await newsCoverFile(env.DB, id);
-    if (post?.discord_message_id && env.DISCORD_WEBHOOK_URL && cover) await editWebhookMessageFile(env.DISCORD_WEBHOOK_URL, post.discord_message_id, cover);
+    const onDiscord = post && post.draft === 0 ? newsMessages(post) : null;
+    if (onDiscord && env.DISCORD_WEBHOOK_URL && cover) await setAnnouncementMessages(env.DB, id, await replaceNewsCover(env.DISCORD_WEBHOOK_URL, onDiscord, cover));
   } catch (error) {
     if (error instanceof RuleError) return redirect(`/announcements?err=${error.code === 'bad_input' ? 'cover_bad' : error.code}`, 303);
     throw error;
