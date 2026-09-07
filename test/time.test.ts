@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { helsinkiToUnix, formatHelsinki } from '../src/lib/time';
+import { helsinkiToUnix, formatHelsinki, agoLabel } from '../src/lib/time';
 
 // Helsinki is UTC+2 (EET) in winter and UTC+3 (EEST) in summer. The 2026
 // transitions: forward on Sunday 29 March (03:00 -> 04:00 local, 01:00 UTC),
@@ -64,5 +64,19 @@ describe('formatHelsinki', () => {
       const ts = helsinkiToUnix(date, time)!;
       expect(formatHelsinki(ts)).toContain('18:00');
     }
+  });
+});
+
+describe('agoLabel', () => {
+  const NOW = utc(2026, 9, 7, 20);
+  it('counts minutes, then hours, and calls the future new', () => {
+    expect(agoLabel(NOW, NOW)).toBe('just now');
+    expect(agoLabel(NOW - 59, NOW)).toBe('just now');
+    expect(agoLabel(NOW - 60, NOW)).toBe('1 min ago');
+    expect(agoLabel(NOW - 59 * 60, NOW)).toBe('59 min ago');
+    expect(agoLabel(NOW - 60 * 60, NOW)).toBe('1 h ago');
+    expect(agoLabel(NOW - 130 * 60, NOW)).toBe('2 h 10 min ago');
+    // A payment whose clock ran ahead of ours is simply new.
+    expect(agoLabel(NOW + 30, NOW)).toBe('just now');
   });
 });

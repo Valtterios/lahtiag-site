@@ -8,6 +8,7 @@ import { qrSvg } from '../../../lib/qr';
 import { listProducts } from '../../../lib/purchases';
 import { stripeConfigured } from '../../../lib/stripe';
 import { formatHelsinkiRange, formatHelsinki } from '../../../lib/time';
+import TapPayments from '../../../components/TapPayments.astro';
 import { dailyMark } from '../../../lib/stamp';
 
 // The door of a ticketed event, on a phone: scan a ticket's QR (or type
@@ -101,6 +102,10 @@ Astro.response.headers.set('cache-control', 'no-store');
         <p class="queue-meta" id="door-scan-note" hidden></p>
       </section>
 
+      {paymentsOn && types.some((t) => t.active === 1 && t.price_cents > 0) && payments.length > 0 && (
+        <TapPayments mode="door" payments={payments} products={products} types={types} action={`/events/${event.id}/door/attach`} csrf={csrf} refresh={`/events/${event.id}/door`} />
+      )}
+
       {paymentsOn && types.some((t) => t.active === 1 && t.price_cents > 0) && (
         <section class="door-sell">
           <h2 class="section-label">Sell at the door</h2>
@@ -122,62 +127,8 @@ Astro.response.headers.set('cache-control', 'no-store');
         </section>
       )}
 
-      {paymentsOn && types.some((t) => t.active === 1 && t.price_cents > 0) && (
-        <section class="door-tap">
-          <h2 class="section-label">Card at the door</h2>
-          <p class="queue-intro">
-            No phone to scan with? In the <strong>Stripe Dashboard</strong> app tap <strong>+</strong>, <strong>Charge card or send invoice</strong>, type the amount and the buyer's name as the description, choose <strong>Tap to Pay</strong>, and let them tap their card.
-            The payment shows up below within a few seconds with that name filled in; pick the ticket and they are in.
-            Amounts:{' '}
-            {types
-              .filter((t) => t.active === 1 && t.price_cents > 0)
-              .map((t) => `${t.name} ${(t.price_cents / 100).toFixed(2)} €${t.member_price_cents !== null ? ` (members ${(t.member_price_cents / 100).toFixed(2)} €)` : ''}`)
-              .join(' · ')}
-            . <a href={`/events/${event.id}/door`}>Refresh</a>
-          </p>
-        </section>
-      )}
-
-      {payments.length > 0 && (
-        <section class="queue">
-          <h2 class="section-label">Tap payments to attach</h2>
-          <p class="queue-intro">Taken with the Stripe app. Say who paid and what for: a ticket type gives them a checked-in ticket; a shop item is sold and marked handed over. The pick is pre-set when the amount matches a price.</p>
-          {payments.map((p) => (
-            <div class="queue-card">
-              <div class="queue-body">
-                <p class="queue-name">{(p.amount_cents / 100).toFixed(2)} €{p.note ? ` · ${p.note}` : ''}</p>
-                <p class="queue-meta">{formatHelsinki(p.created_at)} · {p.stripe_payment_intent}</p>
-              </div>
-              <form method="post" action={`/events/${event.id}/door/attach`} class="queue-actions door-attach">
-                <input type="hidden" name="csrf" value={csrf} />
-                <input type="hidden" name="payment_intent" value={p.stripe_payment_intent} />
-                <input name="holder_name" placeholder="Name" required maxlength="60" aria-label="Name" value={p.note ?? ''} />
-                <select name="what" aria-label="What was paid for">
-                  <optgroup label="Tickets">
-                    {types
-                      .filter((t) => t.active === 1)
-                      .map((t) => (
-                        <option value={`ticket:${t.id}`} selected={t.price_cents === p.amount_cents || t.member_price_cents === p.amount_cents}>
-                          {t.name} · {(t.price_cents / 100).toFixed(2)} €
-                        </option>
-                      ))}
-                  </optgroup>
-                  {products.length > 0 && (
-                    <optgroup label="Shop">
-                      {products.map((pr) => (
-                        <option value={`item:${pr.id}`} selected={!types.some((t) => t.active === 1 && (t.price_cents === p.amount_cents || t.member_price_cents === p.amount_cents)) && (pr.price_cents === p.amount_cents || pr.member_price_cents === p.amount_cents)}>
-                          {pr.name} · {(pr.price_cents / 100).toFixed(2)} €
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-                {products.length > 0 && <input name="quantity" type="number" min="1" max="10" value="1" aria-label="Quantity, for shop items" class="door-qty" />}
-                <button class="btn btn-primary" type="submit">Attach</button>
-              </form>
-            </div>
-          ))}
-        </section>
+      {paymentsOn && types.some((t) => t.active === 1 && t.price_cents > 0) && payments.length === 0 && (
+        <TapPayments mode="door" payments={payments} products={products} types={types} action={`/events/${event.id}/door/attach`} csrf={csrf} refresh={`/events/${event.id}/door`} />
       )}
 
       <section class="list">

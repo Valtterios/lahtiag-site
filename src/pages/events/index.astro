@@ -120,16 +120,26 @@ const flash =
 
   {session?.isAdmin && (
     <details class="admin-panel" open={Boolean(Astro.url.searchParams.get('ok') || Astro.url.searchParams.get('err'))}>
-      <summary>Board tools · member check, whitelist, new event</summary>
+      <summary>Board tools · door pages, member check, new event</summary>
       <h2>At the door</h2>
       <p class="event-meta">
-        Is someone a member? The member check shows names and status only; the full register is
-        for the accounts with register access.
+        The door page checks tickets in, sells on the spot and attaches the card payments taken with
+        Tap to Pay. The member check shows names and status only; the full register is for the
+        accounts with register access.
       </p>
+      {upcoming.length > 0 && (
+        <p class="entry-actions">
+          {upcoming.slice(0, 3).map((e) => (
+            <a class="btn btn-primary" href={`/events/${e.id}/door`}>Door page · {e.title}</a>
+          ))}
+        </p>
+      )}
       <p class="entry-actions">
-        <a class="btn btn-primary" href="/register/lookup">Member check</a>
+        <a class="btn btn-ghost" href="/register/lookup">Member check</a>
         <a class="btn btn-ghost" href="/whitelist">Minecraft whitelist</a>
+        <a class="btn btn-ghost" href="/shop/orders">Items and card payments</a>
         <a class="btn btn-ghost" href="/announcements">News</a>
+        <a class="btn btn-ghost" href="/board">All board tools</a>
       </p>
       <h2>Create an event</h2>
       <form method="post" action="/events/new" class="app-form">

@@ -107,7 +107,7 @@ Astro.response.headers.set('cache-control', 'no-store');
     <details class="admin-panel" open={Boolean(editing || (okKey && okKey !== 'added') || Astro.url.searchParams.get('err'))}>
       <summary>Board tools · products, items to hand over</summary>
       <h2 class="section-label">Board: products</h2>
-      <p class="queue-meta"><a href="/shop/orders">Items to hand over</a></p>
+      <p class="entry-actions"><a class="btn btn-primary btn-sm" href="/shop/orders">Items to hand over</a> <a class="btn btn-ghost btn-sm" href="/shop/orders#tap">Card payment on the spot</a></p>
       {products.length > 0 && (
         <ul class="ticket-types">
           {products.map((p) => (

@@ -562,10 +562,12 @@ version:
   friendly): scan the QR with the camera or type the code, check people
   in, undo; **Sell at the door** shows a QR per ticket type that the
   buyer scans and pays on their own phone (name typed on Stripe's page);
-  **Tap payments to attach** lists Tap to Pay payments taken in the
-  Stripe Dashboard app so they can be turned into a checked-in ticket for
-  the named person. **Export CSV** on the event's Tickets panel is for the
-  treasurer.
+  **Card at the door** carries the steps for the Stripe Dashboard app, the
+  prices to charge, and every Tap to Pay payment waiting to be attached, so
+  it can be turned into a checked-in ticket for the named person. It moves
+  above the sales QRs while a payment waits, and reloads itself every 15
+  seconds while none does, so a payment just taken turns up on its own.
+  **Export CSV** on the event's Tickets panel is for the treasurer.
 - **Team events** sell tickets too: a paid ticket is the person's entry,
   and only ticket holders can create or join teams. Quantities cap
   people; the event's capacity keeps counting teams.
@@ -709,15 +711,25 @@ the site.
 ### Link the payment to a person
 
 Within a few seconds the payment reaches the site (Stripe's
-`payment_intent.succeeded` webhook). On the door page it waits under
-**Tap payments to attach** until someone says who it was; the same
-unattached payment shows on every event's door page opened within twelve
-hours, and disappears everywhere once attached.
+`payment_intent.succeeded` webhook). On the door page it waits in **Card
+at the door** until someone says who it was: the amount in full size, how
+long ago it was taken, the last six characters of Stripe's id, and what
+that amount is the price of. The name from the app's description is filled
+in, the ticket or item at that price is pre-picked, and the quantity only
+appears for a shop item. The same unattached payment shows on every event's
+door page opened within twelve hours and under "Selling on the spot" on
+lahtiag.fi/shop/orders — attaching decides what it becomes, so attach a
+ticket on the door page of the event it was taken at. lahtiag.fi/board
+says how many are waiting. Once attached it disappears everywhere.
+
+Both places render `src/components/TapPayments.astro`; the door page
+passes the event's ticket types as well as the shop's items, the orders
+page only the items.
 
 | | |
 |---|---|
 | ![door-scan](images/site/door-scan.png) | ![door-tap](images/site/door-tap.png) |
-| The door page: the mark of the day, scan or type a code; the sales QRs follow below. | "Card at the door" and the waiting payment: name pre-filled from the app's description, ticket type pre-picked when the amount matches a price. Press **Attach**. |
+| The door page: the mark of the day, scan or type a code; the sales QRs follow below. | "Card at the door": the steps in the Stripe app, the prices to charge, then each waiting payment — the name pre-filled from the app's description, the ticket pre-picked when the amount matches a price, and what the amount matched said under it. Press **Attach**. |
 
 | | |
 |---|---|

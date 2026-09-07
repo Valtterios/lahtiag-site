@@ -1,0 +1,163 @@
+---
+import type { DoorPaymentRow, TicketTypeRow } from '../lib/db';
+import type { ProductRow } from '../lib/purchases';
+import { agoLabel } from '../lib/time';
+
+// Card payments taken in the Stripe Dashboard app (Tap to Pay), and the
+// form that turns each one into something: a door ticket that is checked
+// in at once, or a shop item sold and handed over. The board sees this on
+// the door page and on the shop's orders page, which is why it lives in
+// one component; the door page also offers the ticket types, the orders
+// page only the shop's items.
+
+interface Props {
+  mode: 'door' | 'shop';
+  payments: DoorPaymentRow[];
+  products: ProductRow[];
+  types?: TicketTypeRow[]; // the event's ticket types, on the door page
+  action: string; // where the attach form posts
+  csrf: string;
+  refresh: string; // this page, for the link and the reload
+}
+
+const { mode, payments, products, types = [], action, csrf, refresh } = Astro.props;
+const now = Math.floor(Date.now() / 1000);
+const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
+const tickets = types.filter((t) => t.active === 1 && t.price_cents > 0);
+// What each amount most likely paid for: the price the buyer was charged,
+// members' price included. Tickets first on the door page, then the shop.
+const priced = [
+  ...tickets.map((t) => ({ value: `ticket:${t.id}`, name: t.name, price_cents: t.price_cents, member_price_cents: t.member_price_cents })),
+  ...products.map((p) => ({ value: mode === 'door' ? `item:${p.id}` : String(p.id), name: p.name, price_cents: p.price_cents, member_price_cents: p.member_price_cents })),
+];
+const matchFor = (cents: number) => priced.find((p) => p.price_cents === cents || p.member_price_cents === cents) ?? null;
+const field = mode === 'door' ? 'what' : 'product_id';
+const ref = (intent: string) => intent.slice(-6).toUpperCase();
+---
+<section class="panel-card tap-card" id="tap">
+  <div class="card-head">
+    <div>
+      <h2>{mode === 'door' ? 'Card at the door' : 'Selling on the spot'}</h2>
+      <p>
+        Take the payment in the <strong>Stripe Dashboard</strong> app and attach it here:
+        {mode === 'door' ? ' the buyer gets a door ticket for this event and is checked in on the spot.' : ' the item is sold and marked handed over in one go.'}
+      </p>
+    </div>
+    {payments.length > 0 ? (
+      <span class="status-badge status-pending">{payments.length} to attach</span>
+    ) : (
+      <span class="tap-watch" data-tap-poll><span class="tap-dot" aria-hidden="true"></span>Watching for payments</span>
+    )}
+  </div>
+
+  <ol class="tap-steps">
+    <li><b>1</b><span>In the app: <strong>+</strong> → <strong>Charge card or send invoice</strong></span></li>
+    <li><b>2</b><span>The amount, and the buyer's name as the description</span></li>
+    <li><b>3</b><span><strong>Tap to Pay</strong> — they tap their card or phone</span></li>
+    <li><b>4</b><span>It turns up here in seconds: check the name, pick what it was for, <strong>Attach</strong></span></li>
+  </ol>
+
+  {priced.length > 0 && (
+    <ul class="tap-prices">
+      {priced.map((p) => (
+        <li>
+          <span class="tap-price-name">{p.name}</span>
+          <span class="tap-price">{euro(p.price_cents)}</span>
+          {p.member_price_cents !== null && <span class="tap-price-member">members {euro(p.member_price_cents)}</span>}
+        </li>
+      ))}
+    </ul>
+  )}
+
+  {payments.length === 0 ? (
+    <p class="tap-empty">
+      Nothing waiting. A payment shows up here within seconds of the card being tapped — this page looks again by itself every 15 seconds, or <a href={refresh}>refresh it</a>.
+    </p>
+  ) : (
+    <ul class="tap-list">
+      {payments.map((p) => {
+        const match = matchFor(p.amount_cents);
+        return (
+          <li class="tap-payment">
+            <div class="tap-sum">
+              <strong class="tap-amount">{euro(p.amount_cents)}</strong>
+              <span class="tap-when">{agoLabel(p.created_at, now)}</span>
+              <span class="tap-ref" title={p.stripe_payment_intent}>Stripe ····{ref(p.stripe_payment_intent)}</span>
+              {match ? (
+                <span class="tap-match">{match.member_price_cents === p.amount_cents && match.price_cents !== p.amount_cents ? `the members' price of ${match.name}` : `the price of ${match.name}`}</span>
+              ) : (
+                <span class="tap-match tap-nomatch">{mode === 'door' ? 'no price matches — check what it was for' : "no item costs this — a ticket taken at the door is attached on the event's door page"}</span>
+              )}
+            </div>
+            <form method="post" action={action} class="tap-form">
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="payment_intent" value={p.stripe_payment_intent} />
+              <label class="tap-field tap-who">
+                <span>Who paid</span>
+                <input name="holder_name" required maxlength="60" placeholder="Name" value={p.note ?? ''} />
+              </label>
+              <label class="tap-field tap-what">
+                <span>What for</span>
+                <select name={field}>
+                  {mode === 'door' ? (
+                    <>
+                      <optgroup label="Tickets">
+                        {types.filter((t) => t.active === 1).map((t) => (
+                          <option value={`ticket:${t.id}`} selected={match?.value === `ticket:${t.id}`}>{t.name} · {euro(t.price_cents)}</option>
+                        ))}
+                      </optgroup>
+                      {products.length > 0 && (
+                        <optgroup label="Shop">
+                          {products.map((pr) => (
+                            <option value={`item:${pr.id}`} selected={match?.value === `item:${pr.id}`}>{pr.name} · {euro(pr.price_cents)}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </>
+                  ) : (
+                    products.map((pr) => <option value={pr.id} selected={match?.value === String(pr.id)}>{pr.name} · {euro(pr.price_cents)}</option>)
+                  )}
+                </select>
+              </label>
+              {(mode === 'shop' || products.length > 0) && (
+                <label class="tap-field tap-qty" data-tap-qty>
+                  <span>Qty</span>
+                  <input name="quantity" type="number" min="1" max="10" value="1" />
+                </label>
+              )}
+              <button class="btn btn-primary" type="submit">Attach</button>
+            </form>
+          </li>
+        );
+      })}
+    </ul>
+  )}
+</section>
+
+<script>
+  // A quantity means nothing for a ticket, so it hides while one is
+  // picked. And while nothing waits to be attached, the page looks again
+  // by itself, so a payment taken on the phone turns up without anyone
+  // reaching for the browser — never while someone is typing.
+  document.querySelectorAll<HTMLFormElement>('form.tap-form').forEach((form) => {
+    const what = form.querySelector<HTMLSelectElement>('select[name="what"]');
+    const qty = form.querySelector<HTMLLabelElement>('[data-tap-qty]');
+    if (!what || !qty) return;
+    const sync = () => {
+      qty.hidden = what.value.startsWith('ticket:');
+    };
+    what.addEventListener('change', sync);
+    sync();
+  });
+
+  if (document.querySelector('[data-tap-poll]')) {
+    const busy = () => {
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLSelectElement || active instanceof HTMLTextAreaElement) return true;
+      return [...document.querySelectorAll<HTMLInputElement>('input')].some((i) => i.type !== 'hidden' && i.type !== 'number' && i.value !== '');
+    };
+    setInterval(() => {
+      if (document.visibilityState === 'visible' && !busy()) location.reload();
+    }, 15000);
+  }
+</script>

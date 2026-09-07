@@ -3340,15 +3340,6 @@ html.display-mode,
   font-size: 0.9rem;
 }
 
-.door-attach input,
-.door-attach select {
-  font: inherit;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid var(--line);
-  padding: 0.45rem 0.7rem;
-}
-
 .door-list {
   list-style: none;
   margin: 0;
@@ -4231,9 +4222,262 @@ details.admin-panel[open] > summary {
   max-width: none;
 }
 
-.door-tap {
+/* Card payments taken with Tap to Pay, waiting to be attached
+   (src/components/TapPayments.astro): the steps, the prices, and one row
+   per payment with the amount above the form that says what it was for.
+   Built for a phone at the door first. */
+/* what waits for the board on the hub: a payment to attach */
+.board-alert {
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.8rem;
+  background: var(--yellow-soft);
+  border-left: 4px solid var(--yellow);
+  font-size: 0.92rem;
+}
+
+.board-alert a {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.tap-card {
+  max-width: 46rem;
   margin: 0 0 1.5rem;
-  max-width: 44rem;
+}
+
+.tap-watch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  margin-top: 0.35rem;
+}
+
+.tap-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--blue);
+  animation: tap-pulse 2s ease-in-out infinite;
+}
+
+@keyframes tap-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tap-dot {
+    animation: none;
+  }
+}
+
+.tap-steps {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+  font-size: 0.92rem;
+}
+
+.tap-steps li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.tap-steps b {
+  flex: none;
+  width: 1.35rem;
+  height: 1.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--blue);
+  border-radius: 50%;
+}
+
+.tap-prices {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.tap-prices li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  background: #fafbfd;
+  border: 1px solid var(--line);
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.tap-price-name {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tap-price {
+  font-weight: 700;
+}
+
+.tap-price-member {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.tap-empty {
+  margin: 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.tap-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.7rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.9rem;
+}
+
+.tap-payment {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--yellow);
+  background: #fafbfd;
+  padding: 0.7rem 0.9rem 0.9rem;
+}
+
+.tap-sum {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.7rem;
+  margin: 0 0 0.6rem;
+}
+
+.tap-amount {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.tap-when,
+.tap-ref {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.tap-ref {
+  font-family: ui-monospace, 'Cascadia Mono', 'Fira Mono', monospace;
+  font-size: 0.78rem;
+}
+
+.tap-match {
+  font-size: 0.8rem;
+  color: #1f7a3f;
+  flex-basis: 100%;
+}
+
+.tap-nomatch {
+  color: #9a6b00;
+}
+
+.tap-form {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.tap-field {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+/* a display: grid of its own would beat the browser's [hidden] */
+.tap-field[hidden] {
+  display: none;
+}
+
+.tap-field > span {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tap-field input,
+.tap-field select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 0.5rem 0.7rem;
+  width: 100%;
+}
+
+.tap-field input:focus,
+.tap-field select:focus {
+  outline: 2px solid var(--blue);
+  outline-offset: 0;
+  border-color: var(--blue);
+}
+
+.tap-who {
+  flex: 1 1 11rem;
+}
+
+.tap-what {
+  flex: 1 1 13rem;
+}
+
+.tap-qty {
+  flex: 0 0 4.5rem;
+}
+
+.tap-form .btn {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 560px) {
+  .tap-who,
+  .tap-what {
+    flex-basis: 100%;
+  }
+
+  .tap-form .btn {
+    flex: 1 1 auto;
+    padding-top: 0.7rem;
+    padding-bottom: 0.7rem;
+  }
 }
 
 /* Header account link: "Sign in" for visitors, the name when signed in. */
@@ -4281,10 +4525,6 @@ details.admin-panel[open] > summary {
   .site-cart {
     margin-left: 0.4rem;
   }
-}
-
-.door-qty {
-  width: 4.5rem;
 }
 
 /* The handbook: a long Markdown document with screenshot tables. */

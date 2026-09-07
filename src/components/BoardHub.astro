@@ -6,13 +6,22 @@ import { formatHelsinki } from '../lib/time';
 interface Props {
   // Upcoming events, for the door-page shortcuts.
   events?: { id: number; title: string; starts_at: number }[];
+  // Card payments taken with Tap to Pay and not attached to anything yet.
+  payments?: number;
 }
 
-const { events = [] } = Astro.props;
+const { events = [], payments = 0 } = Astro.props;
 ---
 <div class="paths board-links">
   <section class="path-card">
     <h2>At the door</h2>
+    <p>Check tickets in, sell on the spot, and attach the card payments you take with Tap to Pay in the Stripe app.</p>
+    {payments > 0 && (
+      <p class="board-alert">
+        <strong>{payments} card payment{payments === 1 ? '' : 's'}</strong> waiting to be attached: on the door page of the event
+        {payments === 1 ? ' it was' : ' they were'} taken at, or under <a href="/shop/orders#tap">Items to hand over</a> for a shop sale.
+      </p>
+    )}
     {events.length === 0 ? (
       <p>No upcoming events. Create one on the events page; its door page appears here.</p>
     ) : (
@@ -22,7 +31,7 @@ const { events = [] } = Astro.props;
         ))}
       </ul>
     )}
-    <p class="entry-actions"><a class="btn btn-ghost btn-sm" href="/shop/orders">Items to hand over</a></p>
+    <p class="entry-actions"><a class="btn btn-ghost btn-sm" href="/shop/orders">Items to hand over · card payments</a></p>
   </section>
   <section class="path-card">
     <h2>Members</h2>

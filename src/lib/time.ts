@@ -102,6 +102,18 @@ export function formatHelsinki(unixSeconds: number): string {
   }).format(new Date(unixSeconds * 1000));
 }
 
+// unix seconds -> "just now", "4 min ago", "2 h 10 min ago": how old a
+// card payment at the door is, where the age says more than the clock.
+export function agoLabel(unixSeconds: number, now: number): string {
+  const seconds = Math.max(0, now - unixSeconds);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest > 0 ? `${hours} h ${rest} min ago` : `${hours} h ago`;
+}
+
 // unix seconds -> "12 Sep 2026" in Helsinki time, for the register where
 // the day matters and the hour never does.
 export function formatHelsinkiDate(unixSeconds: number): string {

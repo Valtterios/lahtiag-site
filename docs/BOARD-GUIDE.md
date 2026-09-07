@@ -49,7 +49,7 @@ There are two logins.
 
 ![Board tools](images/site/board-hub.png)
 
-*lahtiag.fi/board: every board page one click away. Board login shows the same to a board member without register access.*
+*lahtiag.fi/board: every board page one click away. 1 card payments waiting to be attached, 2 the season page. Board login shows the same to a board member without register access.*
 
 Board tools sit at the bottom of a page in a folded "Board tools" block,
 so nothing sensitive shows when a page is on a projector. A small pill at
@@ -140,7 +140,7 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ![Board tools on the events page](images/site/events-board-tools.png)
 
-*Board tools on the events page: Member check, Minecraft whitelist and News, and the Create an event form below.*
+*Board tools on the events page: 1 the door page of each event coming up, 2 Member check, 3 items and card payments, 4 the Create an event form below.*
 
 ![A draft event](images/site/event-draft-page.png)
 
@@ -293,7 +293,7 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ![Board tools on the shop page](images/site/shop-board-tools.png)
 
-*Board tools on the shop page: 1 Items to hand over, and per product 2 Edit and Delete, 3 the picture.*
+*Board tools on the shop page: 1 Items to hand over, 2 the card payments taken on the spot, and per product 3 Edit and Delete, 4 the picture.*
 
 | | |
 |---|---|
@@ -301,7 +301,7 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ![Items to hand over](images/site/orders.png)
 
-*Items to hand over: 1 a Tap to Pay payment waiting to be attached to an item, 2 paid items waiting, ticked off with Handed over.*
+*Items to hand over: 1 a card payment waiting to be attached to an item, 2 paid items waiting, ticked off with Handed over.*
 
 - **Refunds** are done in Stripe, by the chair or treasurer. A full refund
   frees the seat and removes the person from the event by itself.
@@ -316,7 +316,11 @@ On a phone it does everything:
 - **Sell** to people with a phone: they scan the sales QR, pay on their
   own phone, and appear in the list.
 - **Take a card** with the Stripe app on an iPhone (Tap to Pay), then
-  pick the person and the ticket or item on the door page.
+  pick the person and the ticket or item under **Card at the door**. That
+  box has the four steps and the prices to charge, and the payment turns
+  up in it by itself within seconds — the name already filled in.
+  lahtiag.fi/board says how many payments are waiting, and the shop's
+  **Items to hand over** page attaches the ones that were shop sales.
 - **No scanner?** The holder presses "Mark as used" on their ticket in
   front of you; the ticket then shows the **mark of the day**, an icon
   that changes daily and is shown on the door page too, so a screenshot
@@ -331,7 +335,7 @@ On a phone it does everything:
 | | |
 |---|---|
 | ![door-tap](images/site/door-tap.png) | ![door-list](images/site/door-list.png) |
-| Card at the door: a payment taken with the Stripe app waits here with the name filled in. Pick the ticket, press Attach. | The list: who is in (green, with 2 Undo) and who is not (1 Check in). Answers to questions show under the name. |
+| Card at the door: the four steps in the Stripe app, the prices to charge, and each payment waiting with the name filled in and the ticket pre-picked. Press Attach. | The list: who is in (green, with 2 Undo) and who is not (1 Check in). Answers to questions show under the name. |
 
 ## Money
 
