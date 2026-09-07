@@ -148,7 +148,7 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ![Board tools on an event page](images/site/event-board-tools.png)
 
-*Board tools on an event page: 1 the status pills, the buttons for signups and the bracket, 2 the door page, and the folded sections below, 3 Tickets among them.*
+*Board tools on an event page: 1 the status pills, the buttons for signups and the bracket, 2 the door page, and the folded sections below — each with what it holds now and what is inside — 3 Tickets among them.*
 
 - **Signups or tickets.** An event with no ticket types takes plain
   signups. Add a ticket type and it sells tickets instead; a paid ticket
@@ -205,14 +205,14 @@ the bottom right lets you view a page as a member or a visitor would.
 
 - **Team captains.** Whoever founds a team can add people who signed up
   without a team and take members out, while signups are open. The
-  board's Manage participants does the rest.
+  board's Participants does the rest.
 
-![Manage participants](images/site/event-participants-panel.png)
+![Participants](images/site/event-participants-panel.png)
 
-*Manage participants: change anyone's answer, move them between teams, or add a walk-in by name.*
+*Participants: change anyone's answer, move them between teams, or add a walk-in by name.*
 
 - **Team events.** Set a team size; people form teams, or the board makes
-  teams, renames them and groups loose players under Manage participants.
+  teams, renames them and groups loose players under Participants.
   Generate the bracket from Board tools: it starts as a draft only the
   board sees, the seeding can be rearranged on the bracket page, and Go
   live shows it to everyone. Substitutes are swapped in on the bracket
@@ -438,7 +438,7 @@ post, **Post to Discord** under the post sends it again.
 - **Ticks.** Some things for the season pass can't be counted, like
   helping at an event: the board ticks them by hand. Give tick on the
   season page (pick the tick, the member, and the event if there is
-  one), or under an event's Manage participants, where the people at the
+  one), or under an event's Participants, where the people at the
   event are listed first. Each tick once per event; the board channel
   gets a line. The list of ticks is the board's to keep: Add to the list
   makes a new kind, Retire hides one without losing what was given. Each
@@ -475,7 +475,7 @@ post, **Post to Discord** under the post sends it again.
 | | |
 |---|---|
 | ![season-ticks](images/site/season-ticks.png) | ![event-ticks](images/site/event-ticks.png) |
-| Ticks on the season page: 1 Give tick, the ticks given this season, and 2 the list of kinds with their XP, cap and period. | The same under an event's Manage participants, with the people at the event first. |
+| Ticks on the season page: 1 Give tick, the ticks given this season, and 2 the list of kinds with their XP, cap and period. | The same under an event's Participants, with the people at the event first. |
 
 - **Your stats.** The membership page shows your events, tournaments and
   wins, with a card; `/profile` in Discord posts the card for everyone.

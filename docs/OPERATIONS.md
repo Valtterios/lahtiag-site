@@ -96,7 +96,7 @@ returns to the categories):
    A **substitute** (someone dropped out, a walk-in stepped in) is done
    on the bracket page: add them to the roster first, then Out/In under
    Substitute; they take over the place and any results. Teams are
-   renamed under Manage participants on the event page, and the name
+   renamed under Participants on the event page, and the name
    carries to the bracket, the pictures and the team's voice channel.
 7. **💬 Screen message** (Announce & screen) puts a one-line banner on the
    venue screen ("Finals in 5 minutes!"); submit it empty to clear.
@@ -123,9 +123,9 @@ regenerate bracket) ask "are you sure" first.
 
 ![Board tools on an event page](images/site/event-board-tools.png)
 
-*Board tools on an event page: 1 the status pills, 2 the door page, 3 the folded sections (Edit, Discord, Tickets, Questions, Manage participants, Photos, Danger zone).*
+*Board tools on an event page: 1 the status pills, 2 the door page, 3 the folded sections — each says what it holds now and what is inside (Edit, Discord, Tickets, Questions, Participants, Photos), with the danger zone kept apart in red.*
 
-The Admin panel's **Manage participants** section edits the roster directly,
+The Admin panel's **Participants** section edits the roster directly,
 skipping the normal signup rules (closed signups, capacity): change anyone's
 answer (Going/Maybe), move them between teams (team size still holds), or
 **add a walk-in participant by name** — someone without Discord. A manual
@@ -953,7 +953,7 @@ is one kind given to one register entry by a board member, optionally for
 one event, the same kind once per event; ticks go to current members only
 and follow the entry (a Discord relink keeps them, erasing the entry
 deletes them, deleting the event keeps the tick without the event). Given
-on the season page or under an event's Manage participants, both through
+on the season page or under an event's Participants, both through
 `POST /board/ticks`; every tick given is a line in the board channel. A
 member sees their own under `/season` and on the membership page, this
 season's only: everything is cut at 1 September (`seasonRange`), so last

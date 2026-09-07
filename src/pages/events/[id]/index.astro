@@ -852,7 +852,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
           )}
           {event.cancelled_at === null && (
           <details class="admin-edit">
-            <summary>Edit this event</summary>
+            <summary><b>Edit this event</b><span class="admin-edit-hint">title, time, place, capacity, description</span></summary>
             <form method="post" action={`/events/${event.id}/edit`} class="app-form">
               <input type="hidden" name="csrf" value={csrf} />
               <label>Title <input name="title" required maxlength="120" value={event.title} /></label>
@@ -913,7 +913,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
           )}
           {event.cancelled_at === null && (
           <details class="admin-edit" id="discord" open={DISCORD_OPEN.has(okKey) || DISCORD_OPEN.has(errKey)}>
-            <summary>Discord · {event.discord_event_id ? 'on the event list' : 'not on the event list'}{event.discord_role_id ? ' · role and channel' : archived ? ' · archived' : ''}</summary>
+            <summary><b>Discord</b><span class="admin-edit-meta">{event.discord_event_id ? 'on the event list' : 'not on the event list'}{event.discord_role_id ? ' · role and channel' : archived ? ' · archived' : ''}</span><span class="admin-edit-hint">announce, role, channel, reminders</span></summary>
             {!botOn ? (
               <p class="event-meta">Needs the Discord bot token; the technical handbook, "Discord roles", has the steps.</p>
             ) : (
@@ -1036,7 +1036,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
           </details>
           )}
           <details class="admin-edit" id="tickets" open={['type_saved', 'type_deleted'].includes(Astro.url.searchParams.get('ok') ?? '')}>
-            <summary>Tickets · {types.length === 0 ? 'none, plain signups' : `${types.length} ${types.length === 1 ? 'type' : 'types'}`}{sales ? ` · ${sales.tickets} sold` : ''}</summary>
+            <summary><b>Tickets</b><span class="admin-edit-meta">{types.length === 0 ? 'none, plain signups' : `${types.length} ${types.length === 1 ? 'type' : 'types'}`}{sales ? ` · ${sales.tickets} sold` : ''}</span><span class="admin-edit-hint">prices, how many, when sales close, CSV</span></summary>
             <p class="event-meta">
               Add a ticket type and the event sells tickets instead of taking plain signups (team
               events keep signups). A price of 0 is a free ticket. Member price applies to linked
@@ -1084,7 +1084,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             </form>
           </details>
           <details class="admin-edit" id="questions" open={Astro.url.searchParams.get('ok') === 'question_saved'}>
-            <summary>Questions · {questions.length === 0 ? 'none' : questions.length}</summary>
+            <summary><b>Questions</b><span class="admin-edit-meta">{questions.length === 0 ? 'none' : questions.length}</span><span class="admin-edit-hint">what to ask before someone signs up</span></summary>
             <p class="event-meta">
               Asked when someone signs up or buys a ticket. Answers show on the roster below, on the
               door page, and in the exports. Up to eight; a choice question lists its options one per line.
@@ -1124,7 +1124,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             {questions.length > 0 && <p><a class="btn btn-ghost btn-sm" href={`/events/${event.id}/roster.csv`}>Export roster with answers</a></p>}
           </details>
           <details class="admin-edit" id="participants" open={TICK_KEYS.has(okKey) || TICK_KEYS.has(errKey)}>
-            <summary>Manage participants · {going.length} going{maybe.length > 0 ? `, ${maybe.length} maybe` : ''}{waitlist.length > 0 ? `, ${waitlist.length} waiting` : ''}</summary>
+            <summary><b>Participants</b><span class="admin-edit-meta">{going.length} going{maybe.length > 0 ? `, ${maybe.length} maybe` : ''}{waitlist.length > 0 ? `, ${waitlist.length} waiting` : ''}</span><span class="admin-edit-hint">add or remove someone, give ticks</span></summary>
             <p class="event-meta">
               Changes here skip the signup rules: closed signups and capacity
               don't apply. Picking a team sets the answer to Going. Adding by
@@ -1255,7 +1255,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             </div>
           </details>
           <details class="admin-edit" id="photos-admin" open={['photos_added', 'photo_removed', 'credit_saved'].includes(okKey) || ['photo_missing', 'photo_bad'].includes(errKey)}>
-            <summary>Photos · {photos.length === 0 ? 'none' : photos.length}</summary>
+            <summary><b>Photos</b><span class="admin-edit-meta">{photos.length === 0 ? 'none' : photos.length}</span><span class="admin-edit-hint">upload afterwards, and the credit</span></summary>
             <form method="post" action={`/events/${event.id}/photos`} enctype="multipart/form-data" class="app-form" id="photo-form">
               <input type="hidden" name="csrf" value={csrf} />
               <label>Add photos <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required id="photo-input" /></label>
@@ -1285,8 +1285,8 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               </ul>
             )}
           </details>
-          <details class="admin-edit">
-            <summary>Danger zone</summary>
+          <details class="admin-edit admin-danger">
+            <summary><b>Danger zone</b><span class="admin-edit-hint">cancel the event, delete it for good</span></summary>
             <p class="event-meta">
               Deleting erases the event with its signups, teams and bracket,
               and removes the Discord announcement. Cancelling (above) is the
