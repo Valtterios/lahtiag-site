@@ -7,6 +7,7 @@ import {
   cancelEvent,
   publishEvent,
   listUpcomingEvents,
+  createTicketType,
   uncancelEvent,
   setCancelMessageId,
   getEvent,
@@ -27,7 +28,7 @@ const NOW = 1_760_000_000;
 const db = () => env.DB;
 
 async function wipe(): Promise<void> {
-  for (const table of ['signups', 'event_teams', 'events', 'announcements', 'members']) {
+  for (const table of ['signups', 'event_teams', 'ticket_types', 'events', 'announcements', 'members']) {
     await db().prepare(`DELETE FROM ${table}`).run();
   }
 }
@@ -192,6 +193,23 @@ describe('drafts', () => {
     expect((await listUpcomingEvents(db(), NOW)).map((e) => e.id)).toContain(id);
     await setSignup(db(), id, 'p', 'yes', NOW + 6);
     expect((await publishEvent(db(), id, NOW + 99)).published_at).toBe(NOW + 5);
+  });
+});
+
+describe('what a tile says a seat costs', () => {
+  it('names the cheapest paid ticket, ignores a free one, and says so when everything is free', async () => {
+    await wipe();
+    await upsertMember(db(), { discord_id: 'admin', username: 'admin', avatar_hash: null }, NOW);
+    const id = await createEvent(db(), { title: 'LAN', description: null, starts_at: NOW + 86400, ends_at: null, capacity: null, team_size: null, created_by: 'admin' }, NOW);
+    const listed = async () => (await listUpcomingEvents(db(), NOW)).find((e) => e.id === id)!;
+    expect(await listed()).toMatchObject({ ticket_types: 0, from_cents: null, from_member_cents: null });
+
+    await createTicketType(db(), id, { name: 'Spectator', price_cents: 0, member_price_cents: null, members_only: false, quantity: null, sales_close_at: null });
+    expect(await listed()).toMatchObject({ ticket_types: 1, from_cents: null, from_member_cents: null });
+
+    await createTicketType(db(), id, { name: 'Entry', price_cents: 800, member_price_cents: 500, members_only: false, quantity: null, sales_close_at: null });
+    await createTicketType(db(), id, { name: 'Entry + dinner', price_cents: 1400, member_price_cents: 1100, members_only: false, quantity: null, sales_close_at: null });
+    expect(await listed()).toMatchObject({ ticket_types: 3, from_cents: 800, from_member_cents: 500 });
   });
 });
 

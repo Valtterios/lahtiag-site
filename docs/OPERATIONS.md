@@ -553,6 +553,16 @@ version:
   needs a linked, current membership to sign up or buy; **Seats reserved
   for members** keeps that many of the capacity for members (guests stop
   at capacity minus reserved).
+- **Where a seat is offered**: the events page's tile says what it costs
+  ("From 8.00 € · members 5.00 €", "Free · sign up", "Free ticket") and how
+  much room is left ("Sold out", "3 left"), and the whole tile opens the
+  event. The shop lists the same events above its own things, with the
+  range from the cheapest seat to the dearest and a way to the event page;
+  buying happens there, never in the shop's basket, because the seats, the
+  member prices and the questions live on the event. Both read
+  `ticket_types`, `from_cents`, `from_member_cents`, `to_cents` and
+  `to_member_cents`, which come with every event row (`EVENT_COUNTS` in
+  `src/lib/db.ts`), through `src/lib/price.ts`.
 - **Buying**: signed in, from the event page. Free tickets are issued at
   once; paid ones go to Stripe's hosted page and come back to the ticket
   page (QR code) when the webhook confirms. One ticket per Discord
@@ -571,6 +581,13 @@ version:
 - **Team events** sell tickets too: a paid ticket is the person's entry,
   and only ticket holders can create or join teams. Quantities cap
   people; the event's capacity keeps counting teams.
+- **Who's coming** on the event page lists everyone signed up with the
+  face their Discord shows, in groups (going, maybe, waitlist) with the
+  counts beside the heading. The board also sees a **guest** mark on
+  anyone who is not in the member register, × to remove a signup and, on
+  the waitlist, ✓ to let someone in whatever the capacity; everyone else
+  sees names and faces, and the waitlist only as a number (their own place
+  is in the signup box).
 - **Questions** (event page → Admin → Questions): up to eight per event,
   text, choice (options one per line) or checkbox, each optional or
   required. Asked before a signup lands or before Stripe opens; on team

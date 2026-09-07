@@ -130,7 +130,7 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ![The events page](images/site/events-list.png)
 
-*The events page as a visitor sees it: upcoming events, then the recent ones.*
+*The events page as a visitor sees it: every upcoming event with its cover, what a seat costs and how much room is left, then the recent ones. The whole tile opens the event.*
 
 - **Create** on the events page, Board tools → New event. It is saved as
   a **draft**: only the board sees it. Add a cover picture, a description,
@@ -194,7 +194,7 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ![A full event with a waitlist](images/site/event-roster-waitlist.png)
 
-*Who's coming on a full event: the waitlist in order, with ✓ to let someone in and × to take them off.*
+*Who's coming on a full event: everyone signed up with the face their Discord shows, 1 the waitlist in order (✓ lets someone in whatever the capacity, × takes them off), 2 the mark on anyone who is not in the member register. Visitors see the names and faces, no marks and no buttons.*
 
 - **Questions** (T-shirt size, diet, team preference) are asked when
   someone signs up or buys, per ticket, and come out in the exports.
@@ -289,7 +289,14 @@ the bottom right lets you view a page as a member or a visitor would.
 
 - **The shop** (in the header) sells patches and such. Board tools on the
   shop page add products with a picture, prices, stock. Buyers collect
-  items at an event; **Items to hand over** lists what is waiting.
+  items at an event; **Items to hand over** lists what is waiting. The shop
+  opens with the events that sell tickets — cover, date, what a seat costs
+  from cheapest to dearest — and those tiles lead to the event page, where
+  the seats and the questions are.
+
+![Event tickets in the shop](images/site/shop-tiles.png)
+
+*The shop opens with what is coming: the cover, the date, the range a seat costs, and a way to the event page.*
 
 ![Board tools on the shop page](images/site/shop-board-tools.png)
 

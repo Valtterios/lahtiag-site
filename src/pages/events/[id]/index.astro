@@ -26,6 +26,7 @@ import {
   type TicketTypeWithSales,
 } from '../../../lib/db';
 import { channelUrl, scheduledEventUrl, countGrants, participantIds, listEventChannels, syncInterestInBackground, EVENT_CATEGORY_NAME } from '../../../lib/event-discord';
+import { avatarUrl } from '../../../lib/discord';
 import { questionOptions, answersComplete, QUESTION_KINDS } from '../../../lib/questions';
 import { purchaseOffer, pendingPurchaseFor, resumablePurchase } from '../../../lib/purchases';
 import { readBasket, basketCount } from '../../../lib/basket';
@@ -571,59 +572,86 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             {event.photo_credit && <p class="queue-meta">{event.photo_credit}</p>}
           </section>
         )}
-      {!isTeamEvent && signups.length > 0 && (
-        <section class="event-card">
-          <h2 class="section-label">Who's coming</h2>
+      {!isTeamEvent && (signups.length > 0 || waitlist.length > 0) && (
+        <section class="event-card" id="who">
+          <div class="roster-head">
+            <h2 class="section-label">Who's coming</h2>
+            <p class="roster-count">
+              {going.length} going{event.capacity !== null ? ` of ${event.capacity}` : ''}
+              {maybe.length > 0 && <> · {maybe.length} maybe</>}
+              {waitlist.length > 0 && <> · {waitlist.length} waiting</>}
+            </p>
+          </div>
           {going.length > 0 && (
-            <div class="member-line"><strong>Going:</strong> {session?.isAdmin
-              ? going.map((s) => (
-                  <span class="member-chip">
-                    {s.username}
-                    {s.is_member === 1 && <span class="member-mark" title="In the member register">member</span>}
+            <ul class="roster">
+              {going.map((s) => (
+                <li class="person">
+                  <img class="person-face" src={avatarUrl(s.discord_id, s.avatar_hash)} width="28" height="28" alt="" loading="lazy" />
+                  <span class="person-name">{s.username}</span>
+                  {session?.isAdmin && s.is_member !== 1 && <span class="member-mark member-mark-guest" title="Not in the member register">guest</span>}
+                  {session?.isAdmin && (
                     <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
                       <input type="hidden" name="csrf" value={csrf} />
                       <input type="hidden" name="discord_id" value={s.discord_id} />
                       <button class="chip-remove" type="submit" title="Remove signup">×</button>
                     </form>
-                  </span>
-                ))
-              : going.map((s) => s.username).join(', ')}</div>
-          )}
-          {waitlist.length > 0 && (
-            <div class="member-line"><strong>Waitlist:</strong> {session?.isAdmin
-              ? waitlist.map((w, i) => (
-                  <span class="member-chip">
-                    {i + 1}. {w.username}
-                    <form method="post" action={`/events/${event.id}/waitlist`} class="inline-form">
-                      <input type="hidden" name="csrf" value={csrf} />
-                      <input type="hidden" name="action" value="admit" />
-                      <input type="hidden" name="discord_id" value={w.discord_id} />
-                      <button class="chip-remove chip-admit" type="submit" title="Let in: they go to Going, whatever the capacity">✓</button>
-                    </form>
-                    <form method="post" action={`/events/${event.id}/waitlist`} class="inline-form">
-                      <input type="hidden" name="csrf" value={csrf} />
-                      <input type="hidden" name="action" value="leave" />
-                      <input type="hidden" name="discord_id" value={w.discord_id} />
-                      <button class="chip-remove" type="submit" title="Take off the waitlist">×</button>
-                    </form>
-                  </span>
-                ))
-              : `${waitlist.length} waiting`}</div>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
           {maybe.length > 0 && (
-            <div class="member-line"><strong>Maybe:</strong> {session?.isAdmin
-              ? maybe.map((s) => (
-                  <span class="member-chip">
-                    {s.username}
-                    {s.is_member === 1 && <span class="member-mark" title="In the member register">member</span>}
-                    <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
-                      <input type="hidden" name="csrf" value={csrf} />
-                      <input type="hidden" name="discord_id" value={s.discord_id} />
-                      <button class="chip-remove" type="submit" title="Remove signup">×</button>
-                    </form>
-                  </span>
-                ))
-              : maybe.map((s) => s.username).join(', ')}</div>
+            <>
+              <h3 class="roster-label">Maybe</h3>
+              <ul class="roster">
+                {maybe.map((s) => (
+                  <li class="person person-maybe">
+                    <img class="person-face" src={avatarUrl(s.discord_id, s.avatar_hash)} width="28" height="28" alt="" loading="lazy" />
+                    <span class="person-name">{s.username}</span>
+                    {session?.isAdmin && s.is_member !== 1 && <span class="member-mark member-mark-guest" title="Not in the member register">guest</span>}
+                    {session?.isAdmin && (
+                      <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="discord_id" value={s.discord_id} />
+                        <button class="chip-remove" type="submit" title="Remove signup">×</button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {waitlist.length > 0 && (
+            <>
+              <h3 class="roster-label">Waitlist</h3>
+              {session?.isAdmin ? (
+                <ul class="roster">
+                  {waitlist.map((w, i) => (
+                    <li class="person person-wait">
+                      <span class="person-place">{i + 1}</span>
+                      <img class="person-face" src={avatarUrl(w.discord_id, w.avatar_hash)} width="28" height="28" alt="" loading="lazy" />
+                      <span class="person-name">{w.username}</span>
+                      <form method="post" action={`/events/${event.id}/waitlist`} class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="admit" />
+                        <input type="hidden" name="discord_id" value={w.discord_id} />
+                        <button class="chip-remove chip-admit" type="submit" title="Let in: they go to Going, whatever the capacity">✓</button>
+                      </form>
+                      <form method="post" action={`/events/${event.id}/waitlist`} class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="leave" />
+                        <input type="hidden" name="discord_id" value={w.discord_id} />
+                        <button class="chip-remove" type="submit" title="Take off the waitlist">×</button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p class="queue-meta">
+                  {waitlist.length} waiting for a seat{myPlace !== null ? <>, you at <strong>#{myPlace}</strong></> : ''}. A freed seat goes to the first in line.
+                </p>
+              )}
+            </>
           )}
         </section>
       )}
@@ -652,7 +680,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                         <span class="member-chip">
                           {m.username}
                           {m.discord_id === team.created_by && <span class="member-mark captain-mark" title="Founded the team">captain</span>}
-                          {m.is_member === 1 && <span class="member-mark" title="In the member register">member</span>}
+                          {m.is_member !== 1 && <span class="member-mark member-mark-guest" title="Not in the member register">guest</span>}
                           <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
                             <input type="hidden" name="csrf" value={csrf} />
                             <input type="hidden" name="discord_id" value={m.discord_id} />
@@ -721,7 +749,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               ? freeAgents.map((s) => (
                   <span class="member-chip">
                     {s.username}
-                    {s.is_member === 1 && <span class="member-mark" title="In the member register">member</span>}
+                    {s.is_member !== 1 && <span class="member-mark member-mark-guest" title="Not in the member register">guest</span>}
                     <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
                       <input type="hidden" name="csrf" value={csrf} />
                       <input type="hidden" name="discord_id" value={s.discord_id} />

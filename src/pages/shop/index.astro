@@ -5,6 +5,9 @@ import { currentSession, ensureCsrf, viewAs } from '../../lib/guard';
 import ViewAs from '../../components/ViewAs.astro';
 import { listProducts, productOffer, productImageVersions } from '../../lib/purchases';
 import { readBasket, basketCount } from '../../lib/basket';
+import { listUpcomingEvents, coverVersions } from '../../lib/db';
+import { ticketRange, isFull } from '../../lib/price';
+import { formatHelsinkiRange } from '../../lib/time';
 
 // The shop: the association's things for sale (overall patches and the
 // like), collected at an event or from the board. Board members manage
@@ -20,6 +23,11 @@ const products = await listProducts(env.DB, now, true);
 const offers = new Map<number, Awaited<ReturnType<typeof productOffer>>>();
 for (const p of products) offers.set(p.id, await productOffer(env.DB, p, session?.discordId ?? null));
 const images = await productImageVersions(env.DB, products.map((p) => p.id));
+// Events with tickets on sale belong in the shop too: the price range and
+// a way in. Buying happens on the event page, where the seats, the member
+// prices and the questions are.
+const ticketedEvents = (await listUpcomingEvents(env.DB, now)).filter((e) => e.ticket_types > 0 && e.from_cents !== null);
+const eventCovers = await coverVersions(env.DB, ticketedEvents.map((e) => e.id));
 const basket = readBasket(Astro.cookies);
 const inBasket = (id: number) => basket.find((l) => l.kind === 'item' && l.id === id)?.count ?? 0;
 const count = basketCount(basket);
@@ -48,7 +56,7 @@ Astro.response.headers.set('cache-control', 'no-store');
 <Base title="Shop" description="LahtiAG patches and other things, collected at events.">
   <article class="prose">
     <h1>Shop</h1>
-    <p>Things from the association, paid here and collected at an event or from the board. No shipping.</p>
+    <p>Tickets to what is coming, and things from the association — paid here and collected at an event or from the board. No shipping.</p>
   </article>
   <ViewAs mode={view.mode} path="/shop" />
   {flash && <p class={`flash${okKey ? ' flash-good' : ''}`}>{flash}</p>}
@@ -56,10 +64,43 @@ Astro.response.headers.set('cache-control', 'no-store');
     <p class="basket-bar"><strong>{count} in your basket.</strong> <a class="btn btn-primary btn-sm" href="/checkout">Go to checkout</a></p>
   )}
 
+  {ticketedEvents.length > 0 && (
+    <section class="list">
+      <h2 class="section-label">Event tickets</h2>
+      <ul class="shop-grid">
+        {ticketedEvents.map((event) => {
+          const at = eventCovers.get(event.id);
+          const range = ticketRange(event);
+          return (
+            <li class="shop-tile shop-tile-event">
+              {at !== undefined ? (
+                <img class="shop-image shop-image-cover" src={`/events/${event.id}/cover?t=${at}`} alt="" loading="lazy" />
+              ) : (
+                <div class="shop-image shop-image-empty" aria-hidden="true"><img src="/brand/mark-blue.png" alt="" width="512" height="443" /></div>
+              )}
+              <div class="shop-tile-body">
+                <p class="event-when">{formatHelsinkiRange(event.starts_at, event.ends_at)}</p>
+                <p class="ticket-type-name"><a href={`/events/${event.id}`}>{event.title}</a></p>
+                {event.location && <p class="queue-meta">{event.location}</p>}
+                <p class="ticket-type-tags">
+                  <span class="ticket-type-price">{range.price}</span>
+                  {range.member && <span class="queue-meta">{range.member}</span>}
+                  {event.members_only === 1 && <span class="status-badge status-member">Members only</span>}
+                  {isFull(event) && <span class="status-badge status-muted">Sold out</span>}
+                </p>
+              </div>
+              <p class="basket-add"><a class="btn btn-primary" href={`/events/${event.id}`}>Tickets and details</a></p>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  )}
+
   {products.length === 0 ? (
     <p class="app-empty">Nothing for sale right now.</p>
   ) : (
-    <ul class="shop-grid">
+    <ul class="shop-grid" id="things">
       {products.map((p) => {
         const offer = offers.get(p.id)!;
         const at = images.get(p.id);

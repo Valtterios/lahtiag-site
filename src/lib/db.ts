@@ -102,6 +102,11 @@ export interface EventWithCounts extends EventRow {
   maybe_count: number;
   teams_count: number;
   interest_count: number; // people interested, on the site or on Discord, each once
+  ticket_types: number; // ticket types on sale: 0 means a signup event
+  from_cents: number | null; // the cheapest that costs something, for "from 8.00 €"
+  from_member_cents: number | null; // the same at a member's price
+  to_cents: number | null; // the dearest, for the shop's price range
+  to_member_cents: number | null;
 }
 
 export interface SignupRow {
@@ -181,7 +186,14 @@ const EVENT_COUNTS = `
     (SELECT COUNT(*) FROM signups s WHERE s.event_id = e.id AND s.status = 'yes')   AS yes_count,
     (SELECT COUNT(*) FROM signups s WHERE s.event_id = e.id AND s.status = 'maybe') AS maybe_count,
     (SELECT COUNT(*) FROM event_teams t WHERE t.event_id = e.id)                    AS teams_count,
-    (SELECT COUNT(DISTINCT i.discord_id) FROM event_interest i WHERE i.event_id = e.id) AS interest_count
+    (SELECT COUNT(DISTINCT i.discord_id) FROM event_interest i WHERE i.event_id = e.id) AS interest_count,
+    (SELECT COUNT(*) FROM ticket_types tt WHERE tt.event_id = e.id AND tt.active = 1) AS ticket_types,
+    -- the cheapest seat that costs something, and the same at a member's
+    -- price; both null when every ticket on sale is free
+    (SELECT MIN(tt.price_cents) FROM ticket_types tt WHERE tt.event_id = e.id AND tt.active = 1 AND tt.price_cents > 0) AS from_cents,
+    (SELECT MIN(COALESCE(tt.member_price_cents, tt.price_cents)) FROM ticket_types tt WHERE tt.event_id = e.id AND tt.active = 1 AND tt.price_cents > 0) AS from_member_cents,
+    (SELECT MAX(tt.price_cents) FROM ticket_types tt WHERE tt.event_id = e.id AND tt.active = 1 AND tt.price_cents > 0) AS to_cents,
+    (SELECT MAX(COALESCE(tt.member_price_cents, tt.price_cents)) FROM ticket_types tt WHERE tt.event_id = e.id AND tt.active = 1 AND tt.price_cents > 0) AS to_member_cents
   FROM events e`;
 
 // Drafts are the board's alone until published: they stay out of every
@@ -2170,6 +2182,7 @@ export async function removeRegisterAdmin(db: D1Database, email: string): Promis
 export interface WaitlistRow {
   discord_id: string;
   username: string;
+  avatar_hash: string | null;
   created_at: number;
 }
 
@@ -2211,7 +2224,7 @@ export async function leaveWaitlist(db: D1Database, eventId: number, discordId: 
 export async function listWaitlist(db: D1Database, eventId: number): Promise<WaitlistRow[]> {
   const { results } = await db
     .prepare(
-      `SELECT w.discord_id, m.username, w.created_at FROM event_waitlist w JOIN members m ON m.discord_id = w.discord_id
+      `SELECT w.discord_id, m.username, m.avatar_hash, w.created_at FROM event_waitlist w JOIN members m ON m.discord_id = w.discord_id
        WHERE w.event_id = ?1 ORDER BY w.created_at, w.discord_id`,
     )
     .bind(eventId)

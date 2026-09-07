@@ -1615,6 +1615,83 @@ a:hover {
 /* admin participant management: name chips with a remove control.
    .member-line is a div, not a p — a <form> inside <p> makes the browser
    close the paragraph early and orphan the first chip's button. */
+/* Who's coming (src/pages/events/[id]/index.astro): everyone signed up,
+   with the face their Discord shows, in the groups they are in. */
+.roster-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem 1.2rem;
+  flex-wrap: wrap;
+}
+
+.roster-count {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.roster-label {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 1rem 0 0.5rem;
+}
+
+.roster {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.person {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 0.2rem 0.6rem 0.2rem 0.25rem;
+  font-size: 0.9rem;
+}
+
+.person-face {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--line);
+}
+
+.person-name {
+  overflow-wrap: anywhere;
+}
+
+.person-maybe {
+  color: var(--muted);
+}
+
+.person-maybe .person-face {
+  opacity: 0.75;
+}
+
+.person-place {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--muted);
+  padding-left: 0.35rem;
+}
+
+.person .inline-form {
+  margin-left: 0.1rem;
+}
+
 .member-line {
   margin: 0 0 0.8rem;
   max-width: var(--prose-measure);
@@ -2342,6 +2419,14 @@ html.display-mode,
   padding: 0 0.3rem;
   margin-left: 0.3rem;
   line-height: 1.5;
+}
+
+/* the mark an admin sees next to someone who is not in the register:
+   the exception is the news, not the rule */
+.member-mark-guest {
+  color: #9a6b00;
+  border-color: #9a6b00;
+  background: var(--yellow-soft);
 }
 
 /* ---------- venue lookup (phone at the door) ---------- */
@@ -3899,6 +3984,31 @@ details.admin-panel[open] > summary {
 }
 
 /* ---------- shop tiles: two per row, square pictures ---------- */
+/* An event in the shop: the cover on top, the price range under it, and
+   the whole tile a way to the event page. */
+.shop-tile-event {
+  position: relative;
+}
+
+.shop-tile-event .ticket-type-name a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.shop-tile-event .ticket-type-name a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.shop-tile-event:hover {
+  border-color: var(--blue);
+}
+
+.shop-tile-event:hover .ticket-type-name a {
+  color: var(--blue);
+}
+
 .shop-grid {
   list-style: none;
   margin: 0 0 1rem;
@@ -3931,6 +4041,10 @@ details.admin-panel[open] > summary {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+/* an event's cover is a wide picture, not a square product shot */
+.shop-image-cover {
+  aspect-ratio: 1200 / 630;
 }
 .shop-image-empty img {
   width: 40%;
@@ -4172,6 +4286,44 @@ details.admin-panel[open] > summary {
 }
 .event-tile-actions {
   margin: auto 0 0;
+}
+
+/* The tile's bottom line: what it costs and how much room is left. The
+   title's link covers the whole tile, so the card is one target. */
+.event-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  flex-wrap: wrap;
+  margin: auto 0 0;
+}
+
+.event-price {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.event-tile {
+  position: relative;
+}
+
+.event-tile-body h2 a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.event-tile:hover {
+  border-color: var(--blue);
+}
+
+.event-tile:has(h2 a:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 /* Footer on a phone: two columns of short lists, not one long one. */
