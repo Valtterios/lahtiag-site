@@ -7,7 +7,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { seasonActivity, seasonLabel, seasonStartYear, voiceLabel } from './activity';
 import { seasonPlaytime } from './playtime';
 import { listMinecraftNames } from './minecraft';
-import { memberSeasonTicks, tickList, type SeasonTick } from './ticks';
+import { memberSeasonTicks, tickList, tickXp, type SeasonTick } from './ticks';
 import { helsinkiToUnix } from './time';
 
 export interface SeasonSummary {
@@ -18,6 +18,7 @@ export interface SeasonSummary {
   playtime: { server: string; label: string; minutes: number }[];
   minecraft_name: string | null; // the member's own whitelisted name, if any
   ticks: SeasonTick[]; // what the board noted by hand (src/lib/ticks.ts)
+  tick_xp: number; // what those are worth, caps applied
 }
 
 export function seasonStartUnix(now: number): number {
@@ -56,6 +57,7 @@ export async function seasonSummary(db: D1Database, discordId: string, now: numb
     playtime,
     minecraft_name: names.find((n) => n.kind === 'own')?.name ?? null,
     ticks,
+    tick_xp: tickXp(ticks),
   };
 }
 
@@ -76,7 +78,9 @@ export function seasonLines(summary: SeasonSummary, origin: string): string {
     `📅 Events attended: **${summary.events}**`,
     `💬 Discord: **${summary.messages}** messages · **${voiceLabel(summary.voice_minutes)}** in voice`,
     `⛏️ Minecraft: ${minecraftLine(summary, '`/whitelist me <name>` fixes that.')}`,
-    ...(summary.ticks.length > 0 ? [`✅ Ticks from the board: **${summary.ticks.length}** · ${tickList(summary.ticks)}`] : []),
+    ...(summary.ticks.length > 0
+      ? [`✅ Ticks from the board: **${summary.ticks.length}** · ${tickList(summary.ticks)}${summary.tick_xp > 0 ? ` · **${summary.tick_xp} XP**` : ''}`]
+      : []),
     `The season pass and its levels come once the board has set the rules. More on ${origin}/membership`,
   ].join('\n');
 }

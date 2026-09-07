@@ -869,8 +869,14 @@ on the season page or under an event's Manage participants, both through
 `POST /board/ticks`; every tick given is a line in the board channel. A
 member sees their own under `/season` and on the membership page, this
 season's only: everything is cut at 1 September (`seasonRange`), so last
-season's ticks never count in this one. The rules turning ticks into XP
-come with the rest of the season pass.
+season's ticks never count in this one. A kind carries what a tick is
+worth (`xp`) and how many of them count per member and season
+(`season_cap`, 0 = every one); a tick keeps the XP it was given with
+(`ticks.xp`), so a changed kind moves nothing in past seasons, and
+saving a kind with "apply to this season's ticks" brings the current
+season's along for when the numbers land after the ticking began.
+`tickXp` adds a member's season up, caps applied, oldest ticks first.
+The first kind holds the board's outline: 100 XP, once a season.
 
 **Play time.** For the season pass, `scripts/minecraft/playtime-sync.py`
 (installed as `/usr/local/bin/lahtiag-playtime-sync.py`, run by

@@ -6,7 +6,7 @@ import { requireAnyBoard } from '../../lib/board-access';
 import { listPastEvents, listUpcomingEvents } from '../../lib/db';
 import { activityChannels, channelSeason, seasonName, seasonStartYear, voiceLabel } from '../../lib/activity';
 import { availableSeasons, pickSeason, seasonTotals, serverStats, weeklyStats, weekLabel } from '../../lib/season-stats';
-import { listTickKinds, listTickableMembers, listTicks, TICK_LIMITS } from '../../lib/ticks';
+import { kindWorth, listTickKinds, listTickableMembers, listTicks, TICK_LIMITS } from '../../lib/ticks';
 import { formatHelsinkiDate } from '../../lib/time';
 
 // The board's season page: what the listener and the play-time sync have
@@ -59,7 +59,7 @@ const FLASH: Record<string, string> = {
   tick_duplicate: 'That is already there: the same tick for the same event, or a tick with that name.',
   tick_not_member: 'Ticks go to current members only.',
   tick_missing: 'That tick, member or event is no longer on the list.',
-  tick_bad_input: "That didn't save. A tick needs a name of 2 to 60 characters.",
+  tick_bad_input: "That didn't save. A tick needs a name of 2 to 60 characters; XP and the cap are whole numbers.",
   csrf: 'The form was stale. Try again.',
   unauthenticated: 'Sign in first.',
   forbidden: 'The Board role is needed for that.',
@@ -204,7 +204,7 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
             <input type="hidden" name="back" value={here} />
             <label>Tick
               <select name="kind_id" required>
-                {activeKinds.map((k) => <option value={k.id}>{k.name}</option>)}
+                {activeKinds.map((k) => <option value={k.id}>{k.name} · {kindWorth(k)}</option>)}
               </select>
             </label>
             <label>To
@@ -228,7 +228,7 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
           <div class="table-scroll">
             <table class="register-table stats-table tick-table">
               <thead>
-                <tr><th>Member</th><th>Tick</th><th>Event</th><th>Note</th><th>Given</th><th></th></tr>
+                <tr><th>Member</th><th>Tick</th><th>Event</th><th>Note</th><th>XP</th><th>Given</th><th></th></tr>
               </thead>
               <tbody>
                 {ticks.map((t) => (
@@ -237,6 +237,7 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
                     <td>{t.kind}</td>
                     <td>{t.event_id === null ? '' : t.event ? <a href={`/events/${t.event_id}`}>{t.event}</a> : 'deleted event'}</td>
                     <td>{t.note ?? ''}</td>
+                    <td>{t.xp}</td>
                     <td>{formatHelsinkiDate(t.given_at)} by {t.given_by}</td>
                     <td>
                       <form method="post" action="/board/ticks" class="inline-form">
@@ -255,7 +256,11 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
         )}
 
         <h3 class="section-label">The list of ticks</h3>
-        <p class="queue-intro">Add a kind here and it is on the give list at once. Retiring one keeps what was given under it.</p>
+        <p class="queue-intro">
+          Add a kind here and it is on the give list at once. XP is what one tick is worth; the cap is how many of them count per member
+          and season (0 for every one). A tick keeps the XP it was given with, so a change applies to ticks given from now on unless
+          you also apply it to {current ? 'this' : 'that'} season's ticks. Retiring a kind keeps what was given under it.
+        </p>
         <ul class="kind-list">
           {kinds.map((k) => (
             <li class={k.retired_at !== null ? 'kind-retired' : undefined}>
@@ -265,6 +270,9 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
                 <input type="hidden" name="back" value={here} />
                 <label>Name <input name="name" required maxlength={TICK_LIMITS.name} value={k.name} /></label>
                 <label>Description <input name="description" maxlength={TICK_LIMITS.description} value={k.description ?? ''} placeholder="optional" /></label>
+                <label>XP <input name="xp" type="number" min="0" max={TICK_LIMITS.xp} step="1" value={k.xp} class="input-short" /></label>
+                <label>Cap per season <input name="season_cap" type="number" min="0" max={TICK_LIMITS.season_cap} step="1" value={k.season_cap} class="input-short" /></label>
+                <label class="check"><input type="checkbox" name="apply_season" value={year} checked /> <span>apply to {current ? 'this' : 'that'} season's ticks too</span></label>
                 <span class="queue-meta">{k.given} given{k.retired_at !== null ? ' · retired' : ''}</span>
                 <button class="btn btn-ghost btn-sm" name="action" value="kind_save" type="submit">Save</button>
                 {k.retired_at === null ? (
@@ -282,6 +290,8 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
               <input type="hidden" name="back" value={here} />
               <label>New tick <input name="name" required maxlength={TICK_LIMITS.name} placeholder="Brought equipment" /></label>
               <label>Description <input name="description" maxlength={TICK_LIMITS.description} placeholder="optional" /></label>
+              <label>XP <input name="xp" type="number" min="0" max={TICK_LIMITS.xp} step="1" value="0" class="input-short" /></label>
+              <label>Cap per season <input name="season_cap" type="number" min="0" max={TICK_LIMITS.season_cap} step="1" value="0" class="input-short" /></label>
               <button class="btn btn-primary btn-sm" type="submit">Add to the list</button>
             </form>
           </li>

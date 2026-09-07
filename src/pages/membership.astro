@@ -220,7 +220,7 @@ const MESSAGES: Record<FieldError, string> = {
           )}
           {season && season.ticks.length > 0 && (
             <p class="queue-meta">
-              Ticks from the board this season: {tickList(season.ticks)}.
+              Ticks from the board this season: {tickList(season.ticks)}{season.tick_xp > 0 ? <>, worth <strong>{season.tick_xp} XP</strong></> : ''}.
             </p>
           )}
           <form method="post" action="/membership/leaderboard" class="app-form-row leaderboard-optin">

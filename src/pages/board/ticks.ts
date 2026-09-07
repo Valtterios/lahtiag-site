@@ -34,6 +34,7 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
     const n = Number(raw);
     return Number.isInteger(n) && n > 0 ? n : Number.NaN;
   };
+  const kindInput = () => ({ name: form.get('name'), description: form.get('description'), xp: form.get('xp'), season_cap: form.get('season_cap') });
 
   try {
     switch (action) {
@@ -55,12 +56,15 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
         return gone ? go('ok', 'tick_removed') : go('err', 'tick_missing');
       }
       case 'kind_add':
-        await addTickKind(env.DB, form.get('name'), form.get('description'), access.who, now);
+        await addTickKind(env.DB, kindInput(), access.who, now);
         return go('ok', 'kind_added');
       case 'kind_save': {
         const id = num('kind_id');
         if (!id) return go('err', 'tick_bad_input');
-        await saveTickKind(env.DB, id, form.get('name'), form.get('description'));
+        // The season the page showed, so "apply to this season's ticks"
+        // means the one the board was looking at.
+        const season = num('apply_season');
+        await saveTickKind(env.DB, id, kindInput(), season && !Number.isNaN(season) ? season : null);
         return go('ok', 'kind_saved');
       }
       case 'kind_retire':

@@ -12,6 +12,8 @@ import {
   memberSeasonTicks,
   seasonRange,
   tickList,
+  tickXp,
+  kindWorth,
 } from '../src/lib/ticks';
 import { RuleError, deleteEvent, eraseRegisterEntry } from '../src/lib/db';
 import { seasonSummary, seasonLines } from '../src/lib/season';
@@ -45,13 +47,21 @@ describe('tick kinds', () => {
   it('starts with helping at an event and lets the board add more', async () => {
     const before = await listTickKinds(env.DB);
     expect(before.map((k) => k.name)).toEqual(['Helped at an event']);
-    const kind = await addTickKind(env.DB, '  Brought  gear ', 'Lent a console or a screen.', 'axi', NOW);
-    expect(kind).toMatchObject({ name: 'Brought gear', description: 'Lent a console or a screen.', sort: 2, retired_at: null, given: 0 });
-    await expect(addTickKind(env.DB, 'brought GEAR', '', 'axi', NOW)).rejects.toMatchObject({ code: 'duplicate' });
-    await expect(addTickKind(env.DB, 'x', '', 'axi', NOW)).rejects.toMatchObject({ code: 'bad_input' });
-    const saved = await saveTickKind(env.DB, kind.id, 'Brought equipment', '');
-    expect(saved).toMatchObject({ name: 'Brought equipment', description: null });
-    await expect(saveTickKind(env.DB, kind.id, 'Helped at an event', '')).rejects.toMatchObject({ code: 'duplicate' });
+    expect(before[0]).toMatchObject({ xp: 100, season_cap: 1 });
+    expect(kindWorth(before[0])).toBe('100 XP · once a season');
+    const kind = await addTickKind(env.DB, { name: '  Brought  gear ', description: 'Lent a console or a screen.', xp: '50', season_cap: '' }, 'axi', NOW);
+    expect(kind).toMatchObject({ name: 'Brought gear', description: 'Lent a console or a screen.', sort: 2, xp: 50, season_cap: 0, retired_at: null, given: 0 });
+    expect(kindWorth(kind)).toBe('50 XP');
+    expect(kindWorth({ xp: 0, season_cap: 0 })).toBe('no XP yet');
+    expect(kindWorth({ xp: 20, season_cap: 3 })).toBe('20 XP · up to 3 a season');
+    const blank = { description: '', xp: '', season_cap: '' };
+    await expect(addTickKind(env.DB, { ...blank, name: 'brought GEAR' }, 'axi', NOW)).rejects.toMatchObject({ code: 'duplicate' });
+    await expect(addTickKind(env.DB, { ...blank, name: 'x' }, 'axi', NOW)).rejects.toMatchObject({ code: 'bad_input' });
+    await expect(addTickKind(env.DB, { ...blank, name: 'Bad XP', xp: '1.5' }, 'axi', NOW)).rejects.toMatchObject({ code: 'bad_input' });
+    await expect(addTickKind(env.DB, { ...blank, name: 'Bad cap', season_cap: '-1' }, 'axi', NOW)).rejects.toMatchObject({ code: 'bad_input' });
+    const saved = await saveTickKind(env.DB, kind.id, { ...blank, name: 'Brought equipment', xp: '60', season_cap: '2' });
+    expect(saved).toMatchObject({ name: 'Brought equipment', description: null, xp: 60, season_cap: 2 });
+    await expect(saveTickKind(env.DB, kind.id, { ...blank, name: 'Helped at an event' })).rejects.toMatchObject({ code: 'duplicate' });
     expect(await setTickKindRetired(env.DB, kind.id, true, NOW)).toBe(true);
     expect((await listTickKinds(env.DB)).map((k) => k.name)).toEqual(['Helped at an event']);
     expect((await listTickKinds(env.DB, true)).map((k) => [k.name, k.retired_at])).toEqual([
@@ -74,7 +84,7 @@ describe('giving ticks', () => {
     const [helped] = await listTickKinds(env.DB);
 
     const tick = await giveTick(env.DB, { kindId: helped.id, registerId: aino, eventId: lan, note: ' Ran the  desk ' }, 'axi', NOW);
-    expect(tick).toMatchObject({ kind: 'Helped at an event', member: 'Aino Virtanen', discord_id: AINO, event: 'Autumn LAN', note: 'Ran the desk', given_by: 'axi', given_at: NOW });
+    expect(tick).toMatchObject({ kind: 'Helped at an event', member: 'Aino Virtanen', discord_id: AINO, event: 'Autumn LAN', note: 'Ran the desk', xp: 100, given_by: 'axi', given_at: NOW });
     await expect(giveTick(env.DB, { kindId: helped.id, registerId: aino, eventId: lan }, 'axi', NOW)).rejects.toMatchObject({ code: 'duplicate' });
     await expect(giveTick(env.DB, { kindId: helped.id, registerId: bo, eventId: null }, 'axi', NOW)).rejects.toMatchObject({ code: 'not_member' });
     await expect(giveTick(env.DB, { kindId: helped.id, registerId: 999, eventId: null }, 'axi', NOW)).rejects.toMatchObject({ code: 'missing' });
@@ -97,16 +107,28 @@ describe('giving ticks', () => {
 
     const mine = await memberSeasonTicks(env.DB, AINO, NOW);
     expect(mine).toEqual([
-      { kind: 'Helped at an event', event: 'Autumn LAN', given_at: NOW },
-      { kind: 'Helped at an event', event: null, given_at: NOW + 60 },
+      { kind_id: helped.id, kind: 'Helped at an event', event: 'Autumn LAN', given_at: NOW, xp: 100, season_cap: 1 },
+      { kind_id: helped.id, kind: 'Helped at an event', event: null, given_at: NOW + 60, xp: 100, season_cap: 1 },
     ]);
     expect(tickList(mine)).toBe('Helped at an event (Autumn LAN) · Helped at an event');
+    // Once a season: the second one is noted, not paid.
+    expect(tickXp(mine)).toBe(100);
+    expect(tickXp(mine.map((t) => ({ ...t, season_cap: 0 })))).toBe(200);
+    expect(tickXp([...mine, { kind_id: 99, kind: 'Other', event: null, given_at: NOW, xp: 30, season_cap: 2 }])).toBe(130);
+    // A tick keeps the XP it was given with; the season's can be brought along.
+    await saveTickKind(env.DB, helped.id, { name: 'Helped at an event', description: '', xp: '150', season_cap: '1' });
+    expect((await memberSeasonTicks(env.DB, AINO, NOW)).map((t) => t.xp)).toEqual([100, 100]);
+    await saveTickKind(env.DB, helped.id, { name: 'Helped at an event', description: '', xp: '150', season_cap: '1' }, 2026);
+    expect((await memberSeasonTicks(env.DB, AINO, NOW)).map((t) => t.xp)).toEqual([150, 150]);
+    expect((await listTicks(env.DB, 2025)).map((t) => t.xp)).toEqual([100]);
+    await saveTickKind(env.DB, helped.id, { name: 'Helped at an event', description: '', xp: '100', season_cap: '1' }, 2026);
     expect(await memberSeasonTicks(env.DB, BO, NOW)).toEqual([]);
     expect((await listTickKinds(env.DB))[0].given).toBe(3);
 
     const summary = await seasonSummary(env.DB, AINO, NOW);
     expect(summary.ticks.length).toBe(2);
-    expect(seasonLines(summary, 'https://lahtiag.fi')).toContain('✅ Ticks from the board: **2** · Helped at an event (Autumn LAN) · Helped at an event');
+    expect(summary.tick_xp).toBe(100);
+    expect(seasonLines(summary, 'https://lahtiag.fi')).toContain('✅ Ticks from the board: **2** · Helped at an event (Autumn LAN) · Helped at an event · **100 XP**');
 
     // Deleting the event keeps the tick, without the event; erasing the
     // member takes their ticks with them; removing one is removing one.

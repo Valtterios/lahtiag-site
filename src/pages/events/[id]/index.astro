@@ -31,7 +31,7 @@ import { purchaseOffer, pendingPurchaseFor, resumablePurchase } from '../../../l
 import { readBasket, basketCount } from '../../../lib/basket';
 import { stripeConfigured } from '../../../lib/stripe';
 import { formatHelsinkiRange, unixToHelsinkiInputs, formatHelsinki } from '../../../lib/time';
-import { listTickKinds, listTickableMembers, listTicks } from '../../../lib/ticks';
+import { kindWorth, listTickKinds, listTickableMembers, listTicks } from '../../../lib/ticks';
 import { seasonStartYear } from '../../../lib/activity';
 
 const nowSeconds = Math.floor(Date.now() / 1000);
@@ -1165,7 +1165,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 <ul class="tick-list">
                   {eventTicks.map((t) => (
                     <li>
-                      <span><strong>{t.member}</strong> · {t.kind}{t.note ? ` · ${t.note}` : ''} <small class="queue-meta">by {t.given_by}</small></span>
+                      <span><strong>{t.member}</strong> · {t.kind}{t.note ? ` · ${t.note}` : ''}{t.xp > 0 ? ` · ${t.xp} XP` : ''} <small class="queue-meta">by {t.given_by}</small></span>
                       <form method="post" action="/board/ticks" class="inline-form">
                         <input type="hidden" name="csrf" value={csrf} />
                         <input type="hidden" name="action" value="remove" />
@@ -1189,7 +1189,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                     <input type="hidden" name="back" value={`/events/${event.id}`} />
                     <label>Tick
                       <select name="kind_id" required>
-                        {tickKinds.map((k) => <option value={k.id}>{k.name}</option>)}
+                        {tickKinds.map((k) => <option value={k.id}>{k.name} · {kindWorth(k)}</option>)}
                       </select>
                     </label>
                     <label>To

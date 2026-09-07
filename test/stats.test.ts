@@ -58,7 +58,7 @@ describe('memberStats', () => {
 });
 
 describe('the season on the card', () => {
-  const season = { label: '2026\u201327', events: 3, messages: 120, voice_minutes: 260, playtime: [{ server: 'smp', label: 'SMP', minutes: 130 }, { server: 'gtnh', label: 'GT:NH modpack', minutes: 0 }], minecraft_name: 'AinoV', ticks: [] };
+  const season = { label: '2026\u201327', events: 3, messages: 120, voice_minutes: 260, playtime: [{ server: 'smp', label: 'SMP', minutes: 130 }, { server: 'gtnh', label: 'GT:NH modpack', minutes: 0 }], minecraft_name: 'AinoV', ticks: [], tick_xp: 0 };
   it('says a duration the way a narrow tile can hold it', () => {
     expect(shortDuration(0)).toBe('0 min');
     expect(shortDuration(45)).toBe('45 min');

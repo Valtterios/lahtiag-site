@@ -4054,6 +4054,18 @@ details.admin-panel[open] > summary {
   min-width: 22rem;
 }
 
+.kind-list .input-short {
+  width: 5.5rem;
+}
+
+.kind-list .participant-row label.check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 .stats-table {
   min-width: 0;
 }
