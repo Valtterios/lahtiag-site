@@ -451,7 +451,7 @@ async function handleClaimStart(env: WorkerEnv, interaction: Interaction): Promi
     await reply(CLAIM_ERRORS.not_member);
     return;
   }
-  await reply('🙋 **Claim a tick** for the season pass. Which one?', [
+  await reply('🙋 **Claim a tick** for the season pass · step 1 of 3. Which tick?', [
     {
       type: 1,
       components: [
@@ -483,7 +483,7 @@ async function handleClaimEventPick(env: WorkerEnv, interaction: Interaction): P
   const now = Math.floor(Date.now() / 1000);
   const [past, upcoming] = await Promise.all([listPastEvents(env.DB, now, 12), listUpcomingEvents(env.DB, now)]);
   const events = [...past, ...upcoming].slice(0, 24);
-  await edit(`**${kind.name}** · ${kindWorth(kind)}. For which event?`, [
+  await edit(`🙋 **Claim a tick** · step 2 of 3: **${kind.name}** (${kindWorth(kind)}). For which event? Pick one, or no particular event; a short form then asks what you did.`, [
     {
       type: 1,
       components: [
@@ -509,7 +509,7 @@ function claimNoteModal(kindId: string, eventId: string) {
     type: 9,
     data: {
       custom_id: `s:modal:claim:${kindId}:${eventId}`,
-      title: 'Claim a tick',
+      title: 'Claim a tick · step 3 of 3',
       components: [field({ type: 4, custom_id: 'note', style: 2, label: 'What did you do?', required: true, max_length: CLAIM_NOTE_MAX, placeholder: 'Set up the screens and ran the desk' })],
     },
   };
