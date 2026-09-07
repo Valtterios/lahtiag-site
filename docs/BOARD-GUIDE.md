@@ -486,9 +486,9 @@ post, **Post to Discord** under the post sends it again.
   `/whitelist approve <name>` and lahtiag.fi/whitelist do the same. The
   member gets a DM either way.
 
-![The whitelist table](images/site/whitelist-table.png)
+![The whitelist page](images/site/whitelist-table.png)
 
-*lahtiag.fi/whitelist: friends waiting for a decision at the top with Approve and Decline, and everyone on the list below.*
+*lahtiag.fi/whitelist: the numbers at the top, then the cards. 1 Approve or Decline a friend, 2 hand a board name to the member it belongs to, 3 search the whole list or filter it (all, members' own, friends, board names, waiting, off the servers).*
 
 - **Board.** `/whitelist add <name>` whitelists anyone, member or not;
   `/whitelist drop <name>` removes any name; lahtiag.fi/whitelist is the
@@ -507,10 +507,12 @@ post, **Post to Discord** under the post sends it again.
 - **The old list.** The names that were on the server before the site
   took over are on the list as board names. A member who whitelists that
   same name takes it over, and from then on it follows their membership.
-  The board can do it for them: **Link** next to a board name on
-  lahtiag.fi/whitelist (the picker guesses the member from the name), or
-  `/whitelist link <name> @member`. The member gets a DM. Play time only
-  counts for a member through their own linked name, so link the regulars.
+  The board can do it for them: "Board names to hand over" on
+  lahtiag.fi/whitelist has a picker per name (it guesses the member from
+  the name), or `/whitelist link <name> @member`. The member gets a DM.
+  Play time only counts for a member through their own linked name, so
+  link the regulars; the list's Played column shows which names are worth
+  chasing.
   Everyone is on the public leaderboard on the history page; a tick
   there hides you.
 

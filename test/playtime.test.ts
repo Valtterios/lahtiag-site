@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { env } from 'cloudflare:test';
-import { parsePlaytimeBatch, applyPlaytimeBatch, prunePlaytimeBatches, seasonPlaytime, monthlyPlaytime } from '../src/lib/playtime';
+import { parsePlaytimeBatch, applyPlaytimeBatch, prunePlaytimeBatches, seasonPlaytime, monthlyPlaytime, seasonPlaytimeByUuid } from '../src/lib/playtime';
 
 const SEP = Date.UTC(2026, 8, 6, 12) / 1000;
 const ID = '100000000000000001';
@@ -40,6 +40,12 @@ describe('Minecraft play time', () => {
       { server: 'smp', label: 'SMP', minutes: 0 },
       { server: 'gtnh', label: 'GT:NH modpack', minutes: 0 },
     ]);
+    // The whitelist page reads the season per account, whoever it belongs
+    // to: the day before the season started stays out of it.
+    const byName = await seasonPlaytimeByUuid(env.DB, SEP);
+    expect(byName.get(AINO)).toEqual({ minutes: 115, last: '2026-09-06' });
+    expect(byName.get(FRIEND)).toEqual({ minutes: 200, last: '2026-09-02' });
+    expect(byName.get('0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f')).toBeUndefined();
     expect(await prunePlaytimeBatches(env.DB, SEP + 1)).toBe(3);
   });
 });

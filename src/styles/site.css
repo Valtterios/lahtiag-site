@@ -366,6 +366,14 @@ a:hover {
   color: #fff;
 }
 
+/* The small size, for buttons inside a row or a card's heading. It used
+   to live in SessionBox.astro, which meant a page that didn't import the
+   component got full-size buttons where it asked for small ones. */
+.btn-sm {
+  padding: 0.45rem 0.95rem;
+  font-size: 0.85rem;
+}
+
 /* ---------- prose ---------- */
 
 .prose h1 {
@@ -1042,32 +1050,117 @@ a:hover {
   flex-shrink: 0;
 }
 
-/* The board's whitelist table. */
-.table-scroll {
-  overflow-x: auto;
-  margin: 0 0 1.5rem;
+/* The board's whitelist page (src/pages/whitelist.astro): the queue in one
+   card, every name in another. The table runs to the card's edges and
+   scrolls sideways on a narrow screen; the actions live in a flex box
+   inside the cell, never on the cell itself, which is what used to push
+   the member picker out of the table. */
+.wl-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.wl-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  background: #fafbfd;
+}
+
+.wl-item-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+  flex: 1 1 16rem;
+}
+
+.wl-item-meta strong {
+  color: var(--ink);
+}
+
+.wl-do {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.seg-count {
+  color: inherit;
+  opacity: 0.6;
+  margin-left: 0.15rem;
+}
+
+.wl-names .register-search,
+.wl-names .segmented {
+  margin-bottom: 0.7rem;
+}
+
+/* The table fills the card, its first and last column lining up with the
+   card's own padding. */
+.wl-names .table-scroll {
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin: 0 -1.4rem;
 }
 
 .wl-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.92rem;
+  font-size: 0.9rem;
+  min-width: 62rem;
 }
 
 .wl-table th,
 .wl-table td {
   text-align: left;
-  padding: 0.45rem 0.6rem;
+  padding: 0.55rem 0.7rem;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
   white-space: nowrap;
 }
 
+.wl-names .wl-table th:first-child,
+.wl-names .wl-table td:first-child {
+  padding-left: 1.4rem;
+}
+
+.wl-names .wl-table th:last-child,
+.wl-names .wl-table td:last-child {
+  padding-right: 1.4rem;
+}
+
 .wl-table th {
-  font-size: 0.78rem;
-  letter-spacing: 0.05em;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--muted, inherit);
+  color: var(--muted);
+  background: var(--bg);
+}
+
+.wl-table tbody tr:hover {
+  background: #fafbfd;
+}
+
+.wl-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.wl-name {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
 }
 
 .wl-table .mc-name {
@@ -1075,10 +1168,68 @@ a:hover {
   font-weight: 700;
 }
 
-.wl-actions {
+.wl-table td:last-child {
+  width: 1%;
+}
+
+.wl-none {
+  color: var(--muted);
+}
+
+.wl-when {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* member / friend / board, next to who the name belongs to */
+.kind-tag {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 0.05rem 0.35rem;
+  margin-left: 0.4rem;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.kind-own {
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
+.kind-board {
+  color: #9a6b00;
+  border-color: #9a6b00;
+  background: var(--yellow-soft);
+}
+
+/* the picker that hands a board name to the member it belongs to */
+.wl-link {
   display: flex;
+  align-items: center;
   gap: 0.4rem;
 }
+
+.wl-link select {
+  font: inherit;
+  font-size: 0.85rem;
+  max-width: 12rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 0.35rem 0.5rem;
+}
+
+.wl-link select:focus {
+  outline: 2px solid var(--blue);
+  outline-offset: 0;
+  border-color: var(--blue);
+}
+
 
 .signup-bar {
   display: flex;

@@ -81,7 +81,7 @@ shot('news-draft', '/announcements', 'admin', clip={'sel': 'article.news-card', 
 shot('news-edit-draft', '/announcements', 'admin', open=['details.news-edit'], clip={'sel': 'details.news-edit', 'i': 0}, hl=['details.news-edit select', {'sel': 'details.news-edit input[type=date]', 'i': 0}], nums=True)
 shot('news-published-cover', '/announcements', 'admin', clip={'sel': 'article.news-card', 'i': 2}, top=700, hl=['text=Remove cover'], pad=0)
 # Minecraft, history
-shot('whitelist-table', '/whitelist', 'admin', clip='h1', skip=-10, extend=700, hl=['text=Approve'])
+shot('whitelist-table', '/whitelist', 'admin', clip='.page-head', skip=-10, extend=1180, hl=['text=Approve', '#hand-over form', '.wl-names .segmented'], nums=True)
 shot('history-hall', '/history', clip='h1', skip=-10, extend=780)
 
 json.dump({'base': 'http://localhost:8788', 'shots': [s for s, _ in S]}, open('scripts/handbook/shots.json', 'w'), indent=1)

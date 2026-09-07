@@ -119,7 +119,7 @@ Astro.response.headers.set('cache-control', 'no-store');
                   <form method="post" action={`/purchase/${purchase.id}/collect`}>
                     <input type="hidden" name="csrf" value={csrf} />
                     <input type="hidden" name="item" value={it.id} />
-                    <button class="btn btn-primary btn-sm" type="submit" data-confirm="Mark this as collected? Do it in front of the board member handing it over.">Mark as collected</button>
+                    <button class="btn btn-primary" type="submit" data-confirm="Mark this as collected? Do it in front of the board member handing it over.">Mark as collected</button>
                   </form>
                 )}
               </li>

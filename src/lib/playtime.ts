@@ -99,3 +99,19 @@ export async function monthlyPlaytime(db: D1Database, discordId: string, unixSec
     .all<{ month: string; server: string; minutes: number }>();
   return results;
 }
+
+// This season's play time per account, for the board's whitelist page:
+// the minutes played under each UUID and the last day it was seen. Keyed
+// by UUID, so a name with no UUID (added before the Mojang lookup) and a
+// name nobody has played on are both simply missing.
+export async function seasonPlaytimeByUuid(db: D1Database, unixSeconds: number): Promise<Map<string, { minutes: number; last: string }>> {
+  const { from, to } = seasonDays(unixSeconds);
+  const { results } = await db
+    .prepare(
+      `SELECT uuid, SUM(minutes) AS minutes, MAX(day) AS last
+       FROM minecraft_playtime WHERE day BETWEEN ?1 AND ?2 GROUP BY uuid`,
+    )
+    .bind(from, to)
+    .all<{ uuid: string; minutes: number; last: string }>();
+  return new Map(results.map((r) => [r.uuid, { minutes: r.minutes, last: r.last }]));
+}

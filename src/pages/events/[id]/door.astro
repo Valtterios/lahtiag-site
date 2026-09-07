@@ -173,7 +173,7 @@ Astro.response.headers.set('cache-control', 'no-store');
                   )}
                 </select>
                 {products.length > 0 && <input name="quantity" type="number" min="1" max="10" value="1" aria-label="Quantity, for shop items" class="door-qty" />}
-                <button class="btn btn-primary btn-sm" type="submit">Attach</button>
+                <button class="btn btn-primary" type="submit">Attach</button>
               </form>
             </div>
           ))}
@@ -202,9 +202,9 @@ Astro.response.headers.set('cache-control', 'no-store');
                   <input type="hidden" name="csrf" value={csrf} />
                   <input type="hidden" name="code" value={t.code} />
                   {t.checked_in_at ? (
-                    <button class="btn btn-ghost btn-sm" name="undo" value="1" type="submit">Undo</button>
+                    <button class="btn btn-ghost" name="undo" value="1" type="submit">Undo</button>
                   ) : (
-                    <button class="btn btn-primary btn-sm" type="submit">Check in</button>
+                    <button class="btn btn-primary" type="submit">Check in</button>
                   )}
                 </form>
               </li>

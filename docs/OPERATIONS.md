@@ -766,18 +766,29 @@ letter case.
 
 *The bot's answer to `/whitelist me`, with the skin, visible to that person only.*
 
-A friend is an application: it sits in the table at lahtiag.fi/whitelist
-and in the board channel as a line with Approve and Decline buttons (the
-bot posts it, since a webhook cannot carry buttons; without the bot the
-webhook posts it without them). Any board member decides, on the buttons,
-with `/whitelist approve <name>` or `/whitelist decline <name>`, or on
-the table; the member gets a DM. The name reaches the servers only once
-approved. Actives requests from the membership page arrive the same way,
-and approving one gives the Actives role right there.
+A friend is an application: it sits at the top of lahtiag.fi/whitelist,
+in "Waiting for a decision", and in the board channel as a line with
+Approve and Decline buttons (the bot posts it, since a webhook cannot
+carry buttons; without the bot the webhook posts it without them). Any
+board member decides, on the buttons, with `/whitelist approve <name>` or
+`/whitelist decline <name>`, or on the page; the member gets a DM. The
+name reaches the servers only once approved. Actives requests from the
+membership page arrive the same way, and approving one gives the Actives
+role right there.
 
-![The whitelist table](images/site/whitelist-table.png)
+The page itself is four numbers (on the servers, waiting, friends, board
+names), then the cards: what waits for a decision, the board names to
+hand over while there are any, and everyone on the list. The list is a
+table with the name and its skin, who it belongs to and as what, the
+servers, the play time this season under that exact name, the status and
+the day it was added, with **Drop** on every row. A search and the
+filters above it (all, members' own, friends, board names, waiting, off
+the servers) are `?q=` and `?view=` in the address, so a filtered list can
+be linked to.
 
-*lahtiag.fi/whitelist: the pending friends with Approve and Decline, and the whole list.*
+![The whitelist page](images/site/whitelist-table.png)
+
+*lahtiag.fi/whitelist: 1 Approve or Decline a friend, 2 hand a board name over, 3 search and filter the list.*
 
 Every name is checked with Mojang when it is saved: a name with no
 account is refused, the exact spelling and the account's UUID are stored,
@@ -847,9 +858,11 @@ server starts pulling.
 **Linking the old names.** The names seeded from the server's own list
 are board names, which belong to nobody, so their play time counts for no
 member until the name is theirs. Besides the member claiming it with
-`/whitelist me`, the board links it: **Link** on the table row (the picker
-offers current members without an own name, the likely one preselected by
-resemblance to their Discord name) or `/whitelist link <name> @member`
+`/whitelist me`, the board links it: in "Board names to hand over" on
+lahtiag.fi/whitelist, one picker per name (it offers current members
+without an own name, the likely one preselected by resemblance to their
+Discord name; **Link** on a board name's table row jumps to it), or with
+`/whitelist link <name> @member`
 (`linkBoardName` in `src/lib/minecraft.ts`). The row becomes the member's
 own name on every server, the member gets a DM, the board channel a line.
 

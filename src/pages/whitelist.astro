@@ -1,20 +1,25 @@
 ---
 import { env } from 'cloudflare:workers';
 import Base from '../layouts/Base.astro';
-import SessionBox from '../components/SessionBox.astro';
 import { currentSession, ensureCsrf } from '../lib/guard';
-import { listPendingFriends, listAllMinecraftNames, listLinkableMembers, suggestLink, serversLabel, narrowed, SERVERS, type MinecraftNameRow } from '../lib/minecraft';
-import { formatHelsinki } from '../lib/time';
+import { listPendingFriends, listAllMinecraftNames, listLinkableMembers, suggestLink, serversLabel, narrowed, SERVERS, type MinecraftKind, type MinecraftNameRow } from '../lib/minecraft';
+import { seasonPlaytimeByUuid } from '../lib/playtime';
+import { voiceLabel } from '../lib/activity';
+import { formatHelsinki, formatHelsinkiDate } from '../lib/time';
 
-// The board's whitelist table: friend requests waiting for a decision at
-// the top, then every name with who it belongs to. Members manage their
-// own names on the membership page; this page only decides.
+// The board's whitelist page: the numbers at the top, friend requests
+// waiting for a decision in one card, then every name in another with who
+// it belongs to, how much it played this season and what can be done with
+// it. Members manage their own names on the membership page; this page
+// only decides.
 
 const session = await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
 const isBoard = session?.isAdmin === true;
+const now = Math.floor(Date.now() / 1000);
 const pending: MinecraftNameRow[] = isBoard ? await listPendingFriends(env.DB) : [];
 const names: MinecraftNameRow[] = isBoard ? await listAllMinecraftNames(env.DB) : [];
+const played = isBoard ? await seasonPlaytimeByUuid(env.DB, now) : new Map();
 // Board names can be handed to the member they belong to; the picker offers current members without an own name.
 const linkable = isBoard && names.some((n) => n.kind === 'board') ? (await listLinkableMembers(env.DB)).filter((m) => m.own_names === 0) : [];
 const memberLabel = (m: (typeof linkable)[number]) => `${m.full_name}${m.username || m.discord_name ? ` (${m.username ?? m.discord_name})` : ''}`;
@@ -36,108 +41,266 @@ const OK: Record<string, string> = {
   linked: 'Linked. The name is the member\'s own now, on every server, and they got a DM.',
 };
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
-const kindLabel = (n: MinecraftNameRow) => (n.kind === 'own' ? 'member' : n.kind === 'friend' ? 'friend' : 'board');
-const serversCell = (n: MinecraftNameRow) => (narrowed(n.servers) ? `${serversLabel(n.servers)} only` : 'all');
-const status = (n: MinecraftNameRow) => (n.approved_at === null ? 'waiting' : n.kind === 'board' || n.member_current ? 'on the servers' : 'off (membership ended)');
+
+// A name counts as on the servers while its owner is a current member;
+// board names always are, and a friend waits until the board says yes.
+const live = (n: MinecraftNameRow) => n.approved_at !== null && (n.kind === 'board' || Boolean(n.member_current));
+const lapsed = (n: MinecraftNameRow) => n.approved_at !== null && n.kind !== 'board' && !n.member_current;
+const KIND_LABEL: Record<MinecraftKind, string> = { own: 'member', friend: 'friend', board: 'board' };
+const serversCell = (n: MinecraftNameRow) => (narrowed(n.servers) ? `${serversLabel(n.servers)} only` : 'every server');
+const serversShort = (n: MinecraftNameRow) => (narrowed(n.servers) ? serversLabel(n.servers) : 'all');
+const statusOf = (n: MinecraftNameRow) =>
+  n.approved_at === null ? { label: 'Waiting', cls: 'status-pending' } : live(n) ? { label: 'On the servers', cls: 'status-member' } : { label: 'Membership ended', cls: 'status-former' };
+const playOf = (n: MinecraftNameRow) => (n.uuid ? played.get(n.uuid) ?? null : null);
+const dayLabel = (day: string) => formatHelsinkiDate(Date.parse(`${day}T12:00:00Z`) / 1000);
+
+// The list is filtered on the server, like the register's: a view and a
+// search in the query string, so a link to it keeps what it shows.
+const VIEWS = [
+  { key: 'all', label: 'All' },
+  { key: 'own', label: "Members' own" },
+  { key: 'friend', label: 'Friends' },
+  { key: 'board', label: 'Board names' },
+  { key: 'waiting', label: 'Waiting' },
+  { key: 'off', label: 'Off the servers' },
+] as const;
+type ViewKey = (typeof VIEWS)[number]['key'];
+const inView = (n: MinecraftNameRow, key: ViewKey) =>
+  key === 'all' ? true : key === 'waiting' ? n.approved_at === null : key === 'off' ? lapsed(n) : n.kind === key;
+const view: ViewKey = VIEWS.find((v) => v.key === Astro.url.searchParams.get('view'))?.key ?? 'all';
+const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 40);
+const needle = q.toLowerCase();
+const rows = names.filter((n) => inView(n, view) && (needle === '' || n.name.toLowerCase().includes(needle) || (n.by_name ?? '').toLowerCase().includes(needle)));
+const viewHref = (key: ViewKey) => `/whitelist?view=${key}${q ? `&q=${encodeURIComponent(q)}` : ''}#names`;
+const count = (key: ViewKey) => names.filter((n) => inView(n, key)).length;
+const onServers = names.filter(live).length;
+const boardNames = names.filter((n) => n.kind === 'board');
 ---
 <Base title="Minecraft whitelist" description="The LahtiAG Minecraft servers' whitelist, for the board.">
-  <article class="prose">
+  <header class="page-head">
     <h1>Minecraft whitelist</h1>
+    {session && (
+      <div class="account-bar">
+        <span class="account-who">Signed in as <strong>{session.username}</strong>{isBoard ? ' · board access' : ''}</span>
+        <a class="btn btn-ghost btn-sm" href="/membership#minecraft">My own names</a>
+        {isBoard && <a class="btn btn-ghost btn-sm" href="/board">Board tools</a>}
+        <form method="post" action="/logout" class="inline-form">
+          <input type="hidden" name="csrf" value={csrf} />
+          <button class="btn btn-ghost btn-sm" type="submit">Sign out</button>
+        </form>
+      </div>
+    )}
+  </header>
+
+  <article class="prose">
     <p>
-      Members put their own name on the list on <a href="/membership#minecraft">their membership page</a> or with <code>/whitelist</code> in Discord, and it goes on every LahtiAG server
-      ({SERVERS.map((s) => s.label).join(' and ')}). A friend they bring is an application the board approves here or in the board channel.
+      Members put their own name on the list on <a href="/membership#minecraft">their membership page</a> or with <code>/whitelist</code> in Discord, and it goes on every LahtiAG server.
+      A friend they bring is an application the board approves here or in the board channel.
     </p>
   </article>
-  {session && <SessionBox session={session} csrf={csrf} />}
+
   {flash && <p class="flash">{flash}</p>}
 
   {!isBoard && (
-    <p class="app-empty">The table is for the board. {session ? 'Your own names are on your membership page.' : ''} <a href="/membership#minecraft">Membership page</a></p>
+    <div class="paths">
+      <section class="path-card">
+        <h2>{session ? 'The board decides here' : 'Sign in first'}</h2>
+        <p>
+          {session
+            ? 'This page needs the admin role in Discord. Your own names, and the friends you bring, are on your membership page.'
+            : 'The list is for the board. Members add their own names on the membership page.'}
+        </p>
+        {!session && <a class="btn btn-primary" href="/login?next=/whitelist">Sign in with Discord</a>}
+        <a class="btn btn-ghost" href="/membership#minecraft">Membership page</a>
+      </section>
+      <section class="path-card">
+        <h2>The servers</h2>
+        <ul class="mc-servers">
+          {SERVERS.map((s) => (
+            <li><span class="mc-server-name">{s.label}</span><code>{s.address}</code></li>
+          ))}
+        </ul>
+      </section>
+    </div>
   )}
 
   {isBoard && (
     <>
-      <section class="list">
-        <h2 class="section-label">Waiting for a decision</h2>
+      <ul class="stat-tiles">
+        <li><a href={viewHref('all')}><strong>{onServers}</strong><span>On the servers</span></a></li>
+        <li class={pending.length > 0 ? 'stat-attention' : ''}><a href="#waiting"><strong>{pending.length}</strong><span>Waiting</span></a></li>
+        <li><a href={viewHref('friend')}><strong>{count('friend')}</strong><span>Friends</span></a></li>
+        <li><a href={linkable.length > 0 && boardNames.length > 0 ? '#hand-over' : viewHref('board')}><strong>{count('board')}</strong><span>Board names</span></a></li>
+      </ul>
+
+      <section class="panel-card" id="waiting">
+        <div class="card-head">
+          <div>
+            <h2>Waiting for a decision</h2>
+            <p>
+              A friend a member brought along. Approve and the name is on the servers within a few minutes; the member gets a DM either way.
+              The board channel has the same two buttons, and <code>/whitelist approve</code> does it from Discord.
+            </p>
+          </div>
+          <span class={`status-badge ${pending.length > 0 ? 'status-pending' : 'status-member'}`}>{pending.length > 0 ? `${pending.length} waiting` : 'Nothing waiting'}</span>
+        </div>
         {pending.length === 0 ? (
-          <p class="queue-meta">Nothing waiting.</p>
+          <p class="app-empty">Nothing waiting. Friend requests land here and in the board channel.</p>
+        ) : (
+          <ul class="wl-queue">
+            {pending.map((n) => (
+              <li class="wl-item">
+                {n.uuid ? <img class="mc-face" src={`/membership/minecraft/face/${n.uuid}`} width="32" height="32" alt="" loading="lazy" /> : <span class="mc-face mc-face-empty" />}
+                <span class="mc-name">{n.name}</span>
+                <span class="wl-item-meta">
+                  brought by <strong>{n.by_name ?? n.discord_id}</strong>{n.member_current ? '' : ' (not a current member)'} · {serversCell(n)} · asked {formatHelsinki(n.added_at)}
+                </span>
+                <div class="wl-do">
+                  <form method="post" action="/whitelist/act" class="inline-form">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="approve" />
+                    <input type="hidden" name="name" value={n.name} />
+                    <button class="btn btn-primary btn-sm" type="submit">Approve</button>
+                  </form>
+                  <form method="post" action="/whitelist/act" class="inline-form">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="decline" />
+                    <input type="hidden" name="name" value={n.name} />
+                    <button class="btn btn-ghost btn-sm" type="submit">Decline</button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {linkable.length > 0 && boardNames.length > 0 && (
+        <section class="panel-card" id="hand-over">
+          <div class="card-head">
+            <div>
+              <h2>Board names to hand over</h2>
+              <p>
+                Names the board whitelisted itself: an account from a server the association took over, or a guest. Hand one to the member it belongs to and it
+                becomes their own name, on every server, and what it plays counts for them. The picker guesses from the name; <code>/whitelist link</code> does the same in Discord.
+              </p>
+            </div>
+            <span class="status-badge status-muted">{boardNames.length} to hand over</span>
+          </div>
+          <ul class="wl-queue">
+            {boardNames.map((n) => {
+              const play = playOf(n);
+              return (
+                <li class="wl-item">
+                  {n.uuid ? <img class="mc-face" src={`/membership/minecraft/face/${n.uuid}`} width="32" height="32" alt="" loading="lazy" /> : <span class="mc-face mc-face-empty" />}
+                  <span class="mc-name">{n.name}</span>
+                  <span class="wl-item-meta">
+                    {serversCell(n)} · added {formatHelsinkiDate(n.added_at)}{play ? ` · ${voiceLabel(play.minutes)} this season` : ' · never played this season'}
+                  </span>
+                  <form method="post" action="/whitelist/act" class="wl-link">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="link" />
+                    <input type="hidden" name="name" value={n.name} />
+                    <select name="discord_id" aria-label={`Whose name is ${n.name}`}>
+                      <option value="">Link to a member…</option>
+                      {linkable.map((m) => (
+                        <option value={m.discord_id} selected={suggestLink(n.name, linkable)?.discord_id === m.discord_id}>{memberLabel(m)}</option>
+                      ))}
+                    </select>
+                    <button class="btn btn-primary btn-sm" type="submit">Link</button>
+                  </form>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      <section class="panel-card wl-names" id="names">
+        <div class="card-head">
+          <div>
+            <h2>Everyone on the list</h2>
+            <p>
+              {names.length} names, {onServers} on the servers right now. A name stays on while its member is current; board names always.
+              Play time is this season, under that exact name.
+            </p>
+          </div>
+          <ul class="mc-servers">
+            {SERVERS.map((s) => (
+              <li><span class="mc-server-name">{s.label}</span><code>{s.address}</code></li>
+            ))}
+          </ul>
+        </div>
+
+        <form method="get" action="/whitelist" class="register-search">
+          <input type="hidden" name="view" value={view} />
+          <input type="search" name="q" value={q} placeholder="Search a Minecraft name or the member it belongs to" aria-label="Search the whitelist" />
+          <button class="btn btn-primary" type="submit">Search</button>
+          {q !== '' && <a class="btn btn-ghost" href={`/whitelist?view=${view}#names`}>Clear</a>}
+        </form>
+        <nav class="segmented" aria-label="Filter the list">
+          {VIEWS.map((v) => (
+            <a href={viewHref(v.key)} aria-current={view === v.key ? 'page' : undefined}>{v.label} <span class="seg-count">{count(v.key)}</span></a>
+          ))}
+        </nav>
+
+        {rows.length === 0 ? (
+          <p class="app-empty">{q === '' ? 'Nothing on this list right now.' : `No name matches “${q}”.`}</p>
         ) : (
           <div class="table-scroll">
             <table class="wl-table">
-              <thead><tr><th></th><th>Name</th><th>Servers</th><th>Brought by</th><th>Asked</th><th></th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Belongs to</th>
+                  <th>Servers</th>
+                  <th>Played</th>
+                  <th>Status</th>
+                  <th>Added</th>
+                  <th></th>
+                </tr>
+              </thead>
               <tbody>
-                {pending.map((n) => (
-                  <tr>
-                    <td>{n.uuid && <img class="mc-face" src={`/membership/minecraft/face/${n.uuid}`} width="28" height="28" alt="" loading="lazy" />}</td>
-                    <td class="mc-name">{n.name}</td>
-                    <td>{serversCell(n)}</td>
-                    <td>{n.by_name ?? n.discord_id}{n.member_current ? '' : ' (not a current member)'}</td>
-                    <td>{formatHelsinki(n.added_at)}</td>
-                    <td class="wl-actions">
-                      <form method="post" action="/whitelist/act" class="inline-form">
-                        <input type="hidden" name="csrf" value={csrf} />
-                        <input type="hidden" name="action" value="approve" />
-                        <input type="hidden" name="name" value={n.name} />
-                        <button class="btn btn-primary btn-sm" type="submit">Approve</button>
-                      </form>
-                      <form method="post" action="/whitelist/act" class="inline-form">
-                        <input type="hidden" name="csrf" value={csrf} />
-                        <input type="hidden" name="action" value="decline" />
-                        <input type="hidden" name="name" value={n.name} />
-                        <button class="btn btn-ghost btn-sm" type="submit">Decline</button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((n) => {
+                  const play = playOf(n);
+                  const status = statusOf(n);
+                  return (
+                    <tr>
+                      <td>
+                        <span class="wl-name">
+                          {n.uuid ? <img class="mc-face" src={`/membership/minecraft/face/${n.uuid}`} width="28" height="28" alt="" loading="lazy" /> : <span class="mc-face mc-face-empty" />}
+                          <span class="mc-name">{n.name}</span>
+                        </span>
+                      </td>
+                      <td>
+                        {n.kind === 'board' ? <span class="wl-none">nobody yet</span> : <span>{n.by_name ?? n.discord_id}</span>}
+                        <span class={`kind-tag kind-${n.kind}`}>{KIND_LABEL[n.kind]}</span>
+                      </td>
+                      <td>{serversShort(n)}</td>
+                      <td>{play ? <span title={`Last played ${dayLabel(play.last)}`}>{voiceLabel(play.minutes)}</span> : <span class="wl-none">–</span>}</td>
+                      <td><span class={`status-badge ${status.cls}`}>{status.label}</span></td>
+                      <td class="wl-when">{formatHelsinkiDate(n.added_at)}</td>
+                      <td>
+                        <div class="wl-do">
+                          {n.kind === 'board' && linkable.length > 0 && <a class="btn btn-ghost btn-sm" href="#hand-over">Link</a>}
+                          <form method="post" action="/whitelist/act" class="inline-form">
+                            <input type="hidden" name="csrf" value={csrf} />
+                            <input type="hidden" name="action" value="drop" />
+                            <input type="hidden" name="name" value={n.name} />
+                            <button class="btn btn-ghost btn-sm" type="submit" data-confirm={`Drop ${n.name} from the whitelist?`}>Drop</button>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
-      </section>
-
-      <section class="list">
-        <h2 class="section-label">Everyone on the list</h2>
-        <p class="queue-meta">{names.length} names. A name is on the servers while its member is current; board names always.</p>
-        <div class="table-scroll">
-          <table class="wl-table">
-            <thead><tr><th></th><th>Name</th><th>Kind</th><th>Belongs to</th><th>Servers</th><th>Status</th><th>Added</th><th></th></tr></thead>
-            <tbody>
-              {names.map((n) => (
-                <tr>
-                  <td>{n.uuid && <img class="mc-face" src={`/membership/minecraft/face/${n.uuid}`} width="28" height="28" alt="" loading="lazy" />}</td>
-                  <td class="mc-name">{n.name}</td>
-                  <td>{kindLabel(n)}</td>
-                  <td>{n.by_name ?? n.discord_id}</td>
-                  <td>{serversCell(n)}</td>
-                  <td>{status(n)}</td>
-                  <td>{formatHelsinki(n.added_at)}</td>
-                  <td class="wl-actions">
-                    {n.kind === 'board' && linkable.length > 0 && (
-                      <form method="post" action="/whitelist/act" class="inline-form wl-link">
-                        <input type="hidden" name="csrf" value={csrf} />
-                        <input type="hidden" name="action" value="link" />
-                        <input type="hidden" name="name" value={n.name} />
-                        <select name="discord_id" aria-label={`Whose name is ${n.name}`}>
-                          <option value="">Link to a member…</option>
-                          {linkable.map((m) => (
-                            <option value={m.discord_id} selected={suggestLink(n.name, linkable)?.discord_id === m.discord_id}>{memberLabel(m)}</option>
-                          ))}
-                        </select>
-                        <button class="btn btn-ghost btn-sm" type="submit">Link</button>
-                      </form>
-                    )}
-                    <form method="post" action="/whitelist/act" class="inline-form">
-                      <input type="hidden" name="csrf" value={csrf} />
-                      <input type="hidden" name="action" value="drop" />
-                      <input type="hidden" name="name" value={n.name} />
-                      <button class="btn btn-ghost btn-sm" type="submit" data-confirm={`Drop ${n.name} from the whitelist?`}>Drop</button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <p class="queue-meta card-foot">
+          In Discord the same list is <code>/whitelist list</code>, and <code>/whitelist add</code>, <code>/whitelist drop</code> and <code>/whitelist link</code> do what the buttons here do.
+        </p>
       </section>
     </>
   )}
