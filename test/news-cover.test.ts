@@ -47,6 +47,21 @@ describe('news covers', () => {
     expect(file?.name).toBe(`news-${id}.png`);
     expect(file?.bytes.length).toBe(PNG.length);
     expect(newsText({ title: 'SMP', body_md: 'Open!' })).toBe('📣 **SMP**\nOpen!');
+    // Discord takes 2000 characters: a long post is cut at a paragraph and links to the site.
+    const paragraph = 'Words and more words for the members to read, over and over. ';
+    const long = Array.from({ length: 8 }, (_, i) => `**Part ${i + 1}.** ${paragraph.repeat(6)}`.trim()).join('\n\n');
+    expect(long.length).toBeGreaterThan(2500);
+    const cut = newsText({ id: 4, title: 'Long one', body_md: long });
+    expect(cut.length).toBeLessThanOrEqual(2000);
+    expect(cut.startsWith('📣 **Long one**\n**Part 1.**')).toBe(true);
+    expect(cut.endsWith('\n…\nThe whole post: https://lahtiag.fi/announcements#post-4')).toBe(true);
+    expect(cut).not.toContain('Part 6');
+    // The cut lands between paragraphs, never mid-word.
+    expect(cut.split('\n…\n')[0].endsWith('.')).toBe(true);
+    const pinged = newsPayload({ id: 4, title: 'Long one', body_md: long, ping: 'everyone' });
+    expect(pinged.content.length).toBeLessThanOrEqual(2000);
+    expect(pinged.content.startsWith('@everyone 📣 **Long one**')).toBe(true);
+    expect(newsText({ title: 'Short', body_md: 'Fine as it is.' })).not.toContain('The whole post');
     await expect(setAnnouncementCover(db(), id, 'text/plain', PNG.buffer.slice(0), NOW)).rejects.toMatchObject({ code: 'bad_input' });
     await expect(setAnnouncementCover(db(), id, 'image/png', new ArrayBuffer(COVER_MAX_BYTES + 1), NOW)).rejects.toMatchObject({ code: 'bad_input' });
     await expect(setAnnouncementCover(db(), id + 99, 'image/png', PNG.buffer.slice(0), NOW)).rejects.toMatchObject({ code: 'missing' });

@@ -1,13 +1,26 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { getAnnouncementCover, RuleError, type AnnouncementRow } from './db';
 import { postWebhook, postWebhookWithFile, NO_MENTIONS, SUPPRESS_EMBEDS, type MessageFile } from './discord';
+import { SITE_ORIGIN } from './config';
 
 // A news post on Discord: the title, the Markdown body, and the cover
 // attached when the post has one (then link previews stay off, the
 // picture is the visual). A post can ping @everyone or one role.
 
-export function newsText(post: Pick<AnnouncementRow, 'title' | 'body_md'>): string {
-  return `📣 **${post.title}**\n${post.body_md}`;
+// Discord takes 2000 characters in a message. A longer post is cut at a
+// paragraph and ends with a link to the whole of it on the site.
+export const DISCORD_MESSAGE_MAX = 2000;
+
+export function newsText(post: Pick<AnnouncementRow, 'title' | 'body_md'> & { id?: number }, room = DISCORD_MESSAGE_MAX): string {
+  const head = `📣 **${post.title}**\n`;
+  const full = head + post.body_md;
+  if (full.length <= room) return full;
+  const tail = `\n…\nThe whole post: ${SITE_ORIGIN}/announcements${post.id ? `#post-${post.id}` : ''}`;
+  const budget = Math.max(0, room - head.length - tail.length);
+  let cut = post.body_md.lastIndexOf('\n\n', budget);
+  if (cut < budget / 2) cut = post.body_md.lastIndexOf(' ', budget);
+  if (cut <= 0) cut = budget;
+  return head + post.body_md.slice(0, cut).trimEnd() + tail;
 }
 
 // The form's ping choice: nobody, everyone, or a role id.
@@ -19,10 +32,12 @@ export function parsePing(raw: string | null | undefined): string | null {
   throw new RuleError('bad_input', 'Unknown ping choice.');
 }
 
-export function newsPayload(post: Pick<AnnouncementRow, 'title' | 'body_md' | 'ping'>): { content: string; mentions: { parse: string[]; roles?: string[] } } {
-  if (post.ping === 'everyone') return { content: `@everyone ${newsText(post)}`, mentions: { parse: ['everyone'] } };
-  if (post.ping) return { content: `<@&${post.ping}> ${newsText(post)}`, mentions: { parse: [], roles: [post.ping] } };
-  return { content: newsText(post), mentions: NO_MENTIONS };
+export function newsPayload(post: Pick<AnnouncementRow, 'title' | 'body_md' | 'ping'> & { id?: number }): { content: string; mentions: { parse: string[]; roles?: string[] } } {
+  const prefix = post.ping === 'everyone' ? '@everyone ' : post.ping ? `<@&${post.ping}> ` : '';
+  const content = prefix + newsText(post, DISCORD_MESSAGE_MAX - prefix.length);
+  if (post.ping === 'everyone') return { content, mentions: { parse: ['everyone'] } };
+  if (post.ping) return { content, mentions: { parse: [], roles: [post.ping] } };
+  return { content, mentions: NO_MENTIONS };
 }
 
 export function pingLabel(ping: string | null, roleNames: Map<string, string>): string | null {

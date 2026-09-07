@@ -51,6 +51,10 @@ const OK: Record<string, string> = {
   scheduled: 'Scheduled. It publishes itself and goes to Discord within 15 minutes of that time; Publish sends it now instead.',
   bad_time: "That publish date and time didn't parse.",
   published: 'Published and posted on Discord.',
+  published_nodiscord: "Published on the site, but Discord didn't take the post. Post to Discord under it tries again.",
+  discord_posted: 'Posted on Discord.',
+  discord_failed: "Discord didn't take the post. Try again in a moment.",
+  discord_exists: 'That post is on Discord already.',
   cover_saved: 'Cover saved.',
   cover_removed: 'Cover removed.',
   edited: 'Post updated.',
@@ -71,7 +75,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
     </p>
   ) : (
     rendered.map((item) => (
-      <article class={`news-card prose${item.draft ? ' news-draft' : ''}`}>
+      <article class={`news-card prose${item.draft ? ' news-draft' : ''}`} id={`post-${item.id}`}>
         <p class="event-when">
           {item.draft === 1 && <span class="status-badge status-muted">Draft</span>}
           {item.draft === 1 && item.ping && <span class="status-badge status-muted">pings {pingLabel(item.ping, roleNames)}</span>}
@@ -91,6 +95,13 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                 <input type="hidden" name="csrf" value={csrf} />
                 <input type="hidden" name="id" value={item.id} />
                 <button class="btn btn-cta btn-sm" type="submit" data-confirm="Publish this post? It goes on Discord right away.">Publish</button>
+              </form>
+            )}
+            {item.draft === 0 && !item.discord_message_id && (
+              <form method="post" action="/announcements/discord" class="inline-form">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="id" value={item.id} />
+                <button class="btn btn-ghost btn-sm" type="submit" data-confirm="Post this on Discord now?">Post to Discord</button>
               </form>
             )}
             <form method="post" action="/announcements/delete" class="inline-form">

@@ -348,7 +348,10 @@ On a phone it does everything:
 ## News
 
 Board tools on the news page. A post is saved as a draft; **Publish**
-puts it on the page and on Discord.
+puts it on the page and on Discord. Discord shows about the first 1,900
+characters of a long post with a link to the whole of it on the site. If
+the page says Discord didn't take a post, **Post to Discord** under the
+post sends it again.
 
 ![Writing a post](images/site/news-board-tools.png)
 

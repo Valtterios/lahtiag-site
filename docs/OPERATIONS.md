@@ -192,6 +192,15 @@ under the title on the site and goes to Discord attached to the post; a
 cover changed after publishing replaces the picture on the Discord
 message too.
 
+**Long posts on Discord.** A Discord message holds 2000 characters, ping
+and title included. `newsText` (`src/lib/news.ts`) cuts a longer post at
+the last paragraph that fits and ends it with a link to the whole post
+on the site (`/announcements#post-<id>`), so publishing never fails on
+length. If Discord still refuses a post (down, a bad webhook), the site
+keeps it as published and says so; a **Post to Discord** button under
+the post (`/announcements/discord`) sends it again once the post has no
+Discord message yet.
+
 ![The post form](images/site/news-board-tools.png)
 
 *The post form under Board tools on the news page: 1 the cover, 2 the ping, 3 the schedule.*

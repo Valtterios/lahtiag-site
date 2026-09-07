@@ -18,6 +18,8 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   if (env.DISCORD_WEBHOOK_URL && !post.discord_message_id) {
     const messageId = await postNews(env.DB, env.DISCORD_WEBHOOK_URL, post);
     if (messageId) await setAnnouncementMessageId(env.DB, id, messageId);
+    // The site has it either way; Discord is told so, or the board is.
+    else return redirect('/announcements?ok=published_nodiscord', 303);
   }
   return redirect('/announcements?ok=published', 303);
 };
