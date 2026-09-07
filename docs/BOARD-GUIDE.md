@@ -161,7 +161,7 @@ the bottom right lets you view a page as a member or a visitor would.
 
 | | |
 |---|---|
-| ![Tickets as a member sees them](images/site/event-member-tickets.png) | What a member sees on the event page: one box per ticket type with the member price, and a button that adds it to the basket (Add for a friend once they hold their own ticket). |
+| ![Tickets as a member sees them](images/site/event-member-tickets.png) | What a member sees on the event page: one box per ticket type with the member price, and a button that adds it to the basket. Once they hold their own ticket the box says so, with a link to it, and the buttons quieten down to Add for a friend. |
 
 - **Reminders.** The day before an event the bot posts a reminder in the
   event's Discord channel and pings its role; a day before a ticket

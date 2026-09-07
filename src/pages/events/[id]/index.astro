@@ -357,12 +357,18 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
           </form>
         </div>
       )}
-      <SessionBox session={session} csrf={csrf} prompt={ticketed ? 'Sign in with Discord for member prices and to keep tickets on your account.' : undefined} />
+      {!session && <SessionBox session={session} csrf={csrf} prompt={ticketed ? 'Sign in with Discord for member prices and to keep tickets on your account.' : undefined} />}
       {flash && <p class="flash">{flash}</p>}
 
       {ticketed && (
         <section class="tickets-box" id="buy">
           <h2 class="section-label">Tickets</h2>
+          {hasTicket && myTicket && (
+            <p class="ticket-have">
+              <span class="status-badge status-member">You're in</span>
+              <span>{myTicket.type_name}{myTicket.checked_in_at ? ', checked in' : ''} · <a href={`/tickets/${myTicket.code}`}>Show your ticket</a></span>
+            </p>
+          )}
           {pendingPurchase && (
             <div class="queue-card">
               <div class="queue-body">
@@ -418,7 +424,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                           {Array.from({ length: max }, (_, i) => i + 1).map((n) => <option value={n}>{n}</option>)}
                         </select>
                       )}
-                      <button class="btn btn-cta" type="submit">{have > 0 ? `In basket (${have}) · Add more` : hasTicket ? 'Add for a friend' : 'Add to basket'}</button>
+                      <button class={`btn ${hasTicket && have === 0 ? 'btn-ghost' : 'btn-cta'}`} type="submit">{have > 0 ? `In basket (${have}) · Add more` : hasTicket ? 'Add for a friend' : 'Add to basket'}</button>
                     </form>
                   ) : null}
                 </li>
@@ -508,7 +514,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
       )}
 
       {questions.length > 0 && session && open && (mine || hasTicket || (isTeamEvent && !ticketed)) && (
-        <section class="self-panel" id="details">
+        <section class="self-panel event-card" id="details">
           <h2 class="section-label">Your details for this event</h2>
           {isTeamEvent && !answersOk && <p class="flash">Answer the required questions before forming or joining a team.</p>}
           <form method="post" action={`/events/${event.id}/answers`} class="app-form">
@@ -673,12 +679,13 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                   {team.name}
                   <span class="event-meta"> {members.length} / {event.team_size}</span>
                 </h3>
-                <div class="member-line">
-                  {members.length === 0 && 'Empty'}
+                <ul class="roster">
+                  {members.length === 0 && <li class="queue-meta">Empty</li>}
                   {session?.isAdmin
                     ? members.map((m) => (
-                        <span class="member-chip">
-                          {m.username}
+                        <li class="person">
+                          <img class="person-face" src={avatarUrl(m.discord_id, m.avatar_hash)} width="28" height="28" alt="" loading="lazy" />
+                          <span class="person-name">{m.username}</span>
                           {m.discord_id === team.created_by && <span class="member-mark captain-mark" title="Founded the team">captain</span>}
                           {m.is_member !== 1 && <span class="member-mark member-mark-guest" title="Not in the member register">guest</span>}
                           <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
@@ -686,12 +693,13 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                             <input type="hidden" name="discord_id" value={m.discord_id} />
                             <button class="chip-remove" type="submit" title="Remove signup">×</button>
                           </form>
-                        </span>
+                        </li>
                       ))
                     : captain
                       ? members.map((m) => (
-                          <span class="member-chip">
-                            {m.username}
+                          <li class="person">
+                            <img class="person-face" src={avatarUrl(m.discord_id, m.avatar_hash)} width="28" height="28" alt="" loading="lazy" />
+                            <span class="person-name">{m.username}</span>
                             {m.discord_id === team.created_by && <span class="member-mark captain-mark" title="Founded the team">captain</span>}
                             {m.discord_id !== session!.discordId && (
                               <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form">
@@ -702,15 +710,16 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                                 <button class="chip-remove" type="submit" title="Take out of the team">×</button>
                               </form>
                             )}
-                          </span>
+                          </li>
                         ))
                       : members.map((m) => (
-                          <span class="member-chip">
-                            {m.username}
+                          <li class="person">
+                            <img class="person-face" src={avatarUrl(m.discord_id, m.avatar_hash)} width="28" height="28" alt="" loading="lazy" />
+                            <span class="person-name">{m.username}</span>
                             {m.discord_id === team.created_by && <span class="member-mark captain-mark" title="Founded the team">captain</span>}
-                          </span>
+                          </li>
                         ))}
-                </div>
+                </ul>
                 {captain && slotsLeft > 0 && freeAgents.length > 0 && (
                   <form method="post" action={`/events/${event.id}/team-captain`} class="participant-row">
                     <input type="hidden" name="csrf" value={csrf} />
@@ -745,19 +754,25 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
           })}
 
           {freeAgents.length > 0 && (
-            <div class="member-line"><strong>Looking for a team:</strong> {session?.isAdmin
-              ? freeAgents.map((s) => (
-                  <span class="member-chip">
-                    {s.username}
-                    {s.is_member !== 1 && <span class="member-mark member-mark-guest" title="Not in the member register">guest</span>}
-                    <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
-                      <input type="hidden" name="csrf" value={csrf} />
-                      <input type="hidden" name="discord_id" value={s.discord_id} />
-                      <button class="chip-remove" type="submit" title="Remove signup">×</button>
-                    </form>
-                  </span>
-                ))
-              : freeAgents.map((s) => s.username).join(', ')}</div>
+            <>
+              <h3 class="roster-label">Looking for a team</h3>
+              <ul class="roster">
+                {freeAgents.map((s) => (
+                  <li class="person">
+                    <img class="person-face" src={avatarUrl(s.discord_id, s.avatar_hash)} width="28" height="28" alt="" loading="lazy" />
+                    <span class="person-name">{s.username}</span>
+                    {session?.isAdmin && s.is_member !== 1 && <span class="member-mark member-mark-guest" title="Not in the member register">guest</span>}
+                    {session?.isAdmin && (
+                      <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="discord_id" value={s.discord_id} />
+                        <button class="chip-remove" type="submit" title="Remove signup">×</button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
 
           {session && open && (!ticketed || hasTicket) && (

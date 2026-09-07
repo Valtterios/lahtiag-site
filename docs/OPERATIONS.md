@@ -581,13 +581,19 @@ version:
 - **Team events** sell tickets too: a paid ticket is the person's entry,
   and only ticket holders can create or join teams. Quantities cap
   people; the event's capacity keeps counting teams.
+- **The side column** is the ticket box, and under it the questions the
+  event asks. Someone who already holds a ticket sees that at the top of
+  the box with a link to it, and the buy buttons stop shouting; someone
+  signed out gets the sign-in prompt instead, since a linked account is
+  what member prices need.
 - **Who's coming** on the event page lists everyone signed up with the
   face their Discord shows, in groups (going, maybe, waitlist) with the
   counts beside the heading. The board also sees a **guest** mark on
   anyone who is not in the member register, × to remove a signup and, on
   the waitlist, ✓ to let someone in whatever the capacity; everyone else
   sees names and faces, and the waitlist only as a number (their own place
-  is in the signup box).
+  is in the signup box). Teams show the same faces, with the captain marked
+  and, for the board, the guests.
 - **Questions** (event page → Admin → Questions): up to eight per event,
   text, choice (options one per line) or checkbox, each optional or
   required. Asked before a signup lands or before Stripe opens; on team

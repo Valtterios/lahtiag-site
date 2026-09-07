@@ -3203,6 +3203,25 @@ html.display-mode,
   margin: 0 0 2rem;
 }
 
+/* the line that says the seat is already yours */
+.ticket-have {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.8rem;
+  font-size: 0.92rem;
+}
+
+/* the questions in the side column read as a card like the tickets */
+.event-side .self-panel {
+  padding: 1.1rem 1.3rem;
+}
+
+.event-side .self-panel .section-label {
+  margin-top: 0;
+}
+
 .ticket-types {
   list-style: none;
   margin: 0 0 0.8rem;
