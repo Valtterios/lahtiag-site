@@ -4,6 +4,8 @@ import { checkCsrf } from '../../lib/guard';
 import { requireAnyBoard } from '../../lib/board-access';
 import { RuleError } from '../../lib/db';
 import { addTickKind, giveTick, removeTick, saveTickKind, setTickKindRetired } from '../../lib/ticks';
+import { claimDecisionDm, decideClaim } from '../../lib/claims';
+import { dmUser } from '../../lib/discord';
 import { seasonStartYear } from '../../lib/activity';
 import { postBoardLine } from '../../lib/board-channel';
 
@@ -35,7 +37,14 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
     const n = Number(raw);
     return Number.isInteger(n) && n > 0 ? n : Number.NaN;
   };
-  const kindInput = () => ({ name: form.get('name'), description: form.get('description'), xp: form.get('xp'), season_cap: form.get('season_cap'), period: form.get('period') ?? 'season' });
+  const kindInput = () => ({
+    name: form.get('name'),
+    description: form.get('description'),
+    xp: form.get('xp'),
+    season_cap: form.get('season_cap'),
+    period: form.get('period') ?? 'season',
+    claimable: form.get('claimable'),
+  });
 
   try {
     switch (action) {
@@ -66,6 +75,17 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
         // seasons keep what they were paid.
         await saveTickKind(env.DB, id, kindInput(), seasonStartYear(now));
         return go('ok', 'kind_saved');
+      }
+      case 'claim_approve':
+      case 'claim_decline': {
+        const id = num('claim_id');
+        if (!id) return go('err', 'tick_bad_input');
+        const result = await decideClaim(env.DB, id, action === 'claim_approve' ? 'approve' : 'decline', access.who, now);
+        if (!result) return go('err', 'tick_missing');
+        if (env.DISCORD_BOT_TOKEN) {
+          locals.cfContext.waitUntil(dmUser(env.DISCORD_BOT_TOKEN, result.claim.discord_id, claimDecisionDm(result.claim, new URL(request.url).origin)));
+        }
+        return go('ok', action === 'claim_approve' ? 'claim_approved' : 'claim_declined');
       }
       case 'kind_retire':
       case 'kind_restore': {

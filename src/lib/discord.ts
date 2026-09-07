@@ -293,11 +293,12 @@ export async function editInteractionReply(
   content: string,
   components: unknown[] = [],
   embeds: unknown[] = [],
+  allowedMentions?: unknown,
 ): Promise<void> {
   await fetch(`${API}/webhooks/${applicationId}/${interactionToken}/messages/@original`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ content, components, embeds }),
+    body: JSON.stringify({ content, components, embeds, ...(allowedMentions ? { allowed_mentions: allowedMentions } : {}) }),
   }).catch(() => {});
 }
 

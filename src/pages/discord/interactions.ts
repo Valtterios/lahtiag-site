@@ -18,6 +18,7 @@ import {
   listEventTeams,
   listSignups,
   listUpcomingEvents,
+  listPastEvents,
   setAnnouncementMessageId,
   setBracketWinner,
   clearBracketWinner,
@@ -68,6 +69,10 @@ import { setActive as setRegisterActive, isLeaderboardOptIn } from '../../lib/db
 import { applyRoles as applyRegisterRoles, loadRoleConfig as loadRegisterRoleConfig } from '../../lib/roles';
 import { editChannelMessage as editBoardMessage, dmUser as dmMember, SUPPRESS_EMBEDS as NO_EMBEDS, dismissReply } from '../../lib/discord';
 import { seasonSummary, seasonLines } from '../../lib/season';
+import { listClaimableKinds, createClaim, decideClaim, claimLine, claimDecisionDm, CLAIM_NOTE_MAX } from '../../lib/claims';
+import { getTickKind, kindWorth } from '../../lib/ticks';
+import { xpStandings, leaderboardText } from '../../lib/xp';
+import { NO_MENTIONS } from '../../lib/discord';
 
 // The Discord bot: an HTTP Interactions endpoint inside the same Worker
 // (spec, Discord bot). No gateway, no second host, same database.
@@ -225,6 +230,18 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     return json({ type: 5, data: { flags: 64 } });
   }
 
+  // /claim: ask the board for a tick, privately, step by step (the panel
+  // stays). /leaderboard: this season's XP, for everyone, with buttons
+  // that answer privately to whoever presses them.
+  if (interaction.type === 2 && interaction.data?.name === 'claim') {
+    locals.cfContext.waitUntil(fleeting(handleClaimStart(env, interaction)));
+    return json({ type: 5, data: { flags: 64 } });
+  }
+  if (interaction.type === 2 && interaction.data?.name === 'leaderboard') {
+    locals.cfContext.waitUntil(fleeting(handleLeaderboard(env, interaction, url.origin)));
+    return json({ type: 5 });
+  }
+
   // /whitelist: the Minecraft server's list. Private answers; the board
   // subcommands check the role themselves.
   if (interaction.type === 2 && interaction.data?.name === 'whitelist') {
@@ -255,9 +272,30 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     return json({ type: 5, data: { flags: 64 } });
   }
 
+  // Season buttons (s:...): anyone in the server, answered privately even
+  // when the button sits on the public leaderboard. A modal must be the
+  // immediate response; a pick inside the private claim panel edits the
+  // panel; the rest is a fresh private reply.
+  if (interaction.type === 3 && interaction.data?.custom_id?.startsWith('s:')) {
+    const id = interaction.data.custom_id;
+    if (id === 's:mc') return json(minecraftNameModal());
+    if (id.startsWith('s:claimev:')) return json(claimNoteModal(id.slice('s:claimev:'.length), String(interaction.data.values?.[0] ?? '0')));
+    if (id === 's:claimkind') {
+      locals.cfContext.waitUntil(fleeting(handleClaimEventPick(env, interaction)));
+      return json({ type: 6 });
+    }
+    locals.cfContext.waitUntil(fleeting(handleSeasonButton(env, interaction, url.origin)));
+    return json({ type: 5, data: { flags: 64 } });
+  }
+  if (interaction.type === 5 && interaction.data?.custom_id?.startsWith('s:modal:')) {
+    locals.cfContext.waitUntil(fleeting(handleSeasonModal(env, interaction, url.origin)));
+    return json({ type: 5, data: { flags: 64 } });
+  }
+
   // Approve / Decline under a board line (a whitelist friend, an actives
-  // request): any board member. The line itself is rewritten, no reply.
-  if (interaction.type === 3 && interaction.data?.custom_id && /^[wa]:(ok|no):/.test(interaction.data.custom_id)) {
+  // request, a tick claim): any board member. The line itself is
+  // rewritten, no reply.
+  if (interaction.type === 3 && interaction.data?.custom_id && /^[wac]:(ok|no):/.test(interaction.data.custom_id)) {
     if (!isAdmin) {
       return refuse('This needs the admin role.');
     }
@@ -332,12 +370,190 @@ function faceEmbed(origin: string, name: string, uuid: string, note: string): un
   return [{ title: name, description: note, thumbnail: { url: faceUrl(origin, uuid) }, color: 0x2b5cff }];
 }
 
+// --- the season pass: /season, /claim, /leaderboard and the buttons under them ---
+
+const CLAIM_ERRORS: Record<string, string> = {
+  not_member: 'Claims need a current membership with your Discord account linked to it. `/join` sorts that out.',
+  missing: 'That tick is not open for claims any more.',
+  duplicate: 'You already have that: a tick for this event, or a claim waiting for the board.',
+};
+
+// The buttons under /season and the leaderboard: private follow-ups for
+// whoever presses them, wherever the message sits.
+function seasonButtons(origin: string, claimable: boolean, withSeason: boolean): unknown[] {
+  return [
+    {
+      type: 1,
+      components: [
+        ...(withSeason ? [{ type: 2, style: 1, label: 'My season', custom_id: 's:me', emoji: { name: '📅' } }] : []),
+        ...(claimable ? [{ type: 2, style: withSeason ? 2 : 1, label: 'Claim a tick', custom_id: 's:claim', emoji: { name: '🙋' } }] : []),
+        { type: 2, style: 2, label: 'Link my Minecraft name', custom_id: 's:mc', emoji: { name: '⛏️' } },
+        { type: 2, style: 5, label: 'Membership page', url: `${origin}/membership` },
+      ],
+    },
+  ];
+}
+
 async function handleSeason(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
   const userId = interaction.member?.user?.id;
   if (!userId) return;
-  const summary = await seasonSummary(env.DB, userId, Math.floor(Date.now() / 1000));
-  await editInteractionReply(interaction.application_id, interaction.token, seasonLines(summary, origin));
+  const now = Math.floor(Date.now() / 1000);
+  const [summary, claimable] = await Promise.all([seasonSummary(env.DB, userId, now), listClaimableKinds(env.DB)]);
+  await editInteractionReply(interaction.application_id, interaction.token, seasonLines(summary, origin), seasonButtons(origin, claimable.length > 0, false));
   return 'keep';
+}
+
+async function handleLeaderboard(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
+  const now = Math.floor(Date.now() / 1000);
+  const [standings, claimable] = await Promise.all([xpStandings(env.DB, now), listClaimableKinds(env.DB)]);
+  await editInteractionReply(
+    interaction.application_id,
+    interaction.token,
+    leaderboardText(standings, interaction.member?.user?.id ?? null, now),
+    seasonButtons(origin, claimable.length > 0, true),
+    [],
+    NO_MENTIONS,
+  );
+  return 'keep';
+}
+
+// A button pressed under /season or the leaderboard: a fresh private reply.
+async function handleSeasonButton(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
+  const id = interaction.data?.custom_id ?? '';
+  if (id === 's:me') return handleSeason(env, interaction, origin);
+  if (id === 's:claim') return handleClaimStart(env, interaction);
+  await editInteractionReply(interaction.application_id, interaction.token, 'Unknown button.');
+}
+
+// /claim, step 1: which tick. The panel is private and stays; the picks
+// swap it in place until the note's modal opens.
+async function handleClaimStart(env: WorkerEnv, interaction: Interaction): Promise<Outcome> {
+  const reply = (content: string, components: unknown[] = []) => editInteractionReply(interaction.application_id, interaction.token, content, components);
+  const userId = interaction.member?.user?.id;
+  if (!userId) return;
+  const kinds = await listClaimableKinds(env.DB);
+  if (kinds.length === 0) {
+    await reply('Nothing is open for claims right now; the board gives ticks by hand.');
+    return;
+  }
+  const entry = await getRegisterByDiscord(env.DB, userId);
+  if (!entry || entry.status !== 'member') {
+    await reply(CLAIM_ERRORS.not_member);
+    return;
+  }
+  await reply('🙋 **Claim a tick** for the season pass. Which one?', [
+    {
+      type: 1,
+      components: [
+        {
+          type: 3,
+          custom_id: 's:claimkind',
+          placeholder: 'Pick a tick',
+          options: kinds.slice(0, 25).map((k) => ({
+            label: k.name.slice(0, 100),
+            description: `${kindWorth(k)}${k.description ? ` · ${k.description}` : ''}`.slice(0, 100),
+            value: String(k.id),
+          })),
+        },
+      ],
+    },
+  ]);
+  return 'keep';
+}
+
+// Step 2: which event, if any; the same panel, edited in place. The past
+// comes first, newest on top, since that is where the helping happened.
+async function handleClaimEventPick(env: WorkerEnv, interaction: Interaction): Promise<Outcome> {
+  const edit = (content: string, components: unknown[] = []) => editInteractionReply(interaction.application_id, interaction.token, content, components);
+  const kind = await getTickKind(env.DB, Number(interaction.data?.values?.[0]));
+  if (!kind || !kind.claimable || kind.retired_at !== null) {
+    await edit(CLAIM_ERRORS.missing);
+    return;
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const [past, upcoming] = await Promise.all([listPastEvents(env.DB, now, 12), listUpcomingEvents(env.DB, now)]);
+  const events = [...past, ...upcoming].slice(0, 24);
+  await edit(`**${kind.name}** · ${kindWorth(kind)}. For which event?`, [
+    {
+      type: 1,
+      components: [
+        {
+          type: 3,
+          custom_id: `s:claimev:${kind.id}`,
+          placeholder: 'Pick the event, or none',
+          options: [
+            { label: 'No particular event', value: '0' },
+            ...events.map((e) => ({ label: e.title.slice(0, 100), description: formatHelsinkiDate(e.starts_at), value: String(e.id) })),
+          ],
+        },
+      ],
+    },
+  ]);
+  return 'keep';
+}
+
+// Step 3: what they did, in a modal (the immediate answer to the event pick).
+function claimNoteModal(kindId: string, eventId: string) {
+  const field = (component: Record<string, unknown>) => ({ type: 1, components: [component] });
+  return {
+    type: 9,
+    data: {
+      custom_id: `s:modal:claim:${kindId}:${eventId}`,
+      title: 'Claim a tick',
+      components: [field({ type: 4, custom_id: 'note', style: 2, label: 'What did you do?', required: true, max_length: CLAIM_NOTE_MAX, placeholder: 'Set up the screens and ran the desk' })],
+    },
+  };
+}
+
+// "Link my Minecraft name": the same as /whitelist me, from a button.
+function minecraftNameModal() {
+  const field = (component: Record<string, unknown>) => ({ type: 1, components: [component] });
+  return {
+    type: 9,
+    data: {
+      custom_id: 's:modal:mc',
+      title: 'Link your Minecraft name',
+      components: [field({ type: 4, custom_id: 'name', style: 1, label: 'Your Minecraft (Java) name', required: true, min_length: 3, max_length: 16, placeholder: 'Steve' })],
+    },
+  };
+}
+
+async function handleSeasonModal(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
+  const reply = (content: string, embeds: unknown[] = []) => editInteractionReply(interaction.application_id, interaction.token, content, [], embeds);
+  const userId = interaction.member?.user?.id;
+  if (!userId) return;
+  const fields = new Map<string, string>();
+  for (const modalRow of interaction.data?.components ?? []) {
+    for (const component of modalRow.components) fields.set(component.custom_id, component.value ?? '');
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const modalId = interaction.data?.custom_id ?? '';
+  const page = `${origin}/membership#minecraft`;
+  try {
+    if (modalId === 's:modal:mc') {
+      const p = await setOwnMinecraftName(env.DB, userId, fields.get('name') ?? '', now);
+      if (p.takenFrom && env.DISCORD_BOT_TOKEN) {
+        await dmMember(env.DISCORD_BOT_TOKEN, p.takenFrom, `**${p.name}** is a member now and took their whitelist name with them. Your friend slot is free again: ${page}`);
+      }
+      await reply(`✅ **${p.name}** is on the whitelist as you, on every server. The server picks it up within a few minutes.`, faceEmbed(origin, p.name, p.uuid, 'Your skin? Then it is the right account.'));
+      return;
+    }
+    if (modalId.startsWith('s:modal:claim:')) {
+      const [kindText, eventText] = modalId.slice('s:modal:claim:'.length).split(':');
+      const claim = await createClaim(env.DB, { discordId: userId, kindId: Number(kindText), eventId: Number(eventText) || null, note: fields.get('note') }, now);
+      await postBoardLine(env.DB, env, claimLine(claim, origin), approveButtons('c', String(claim.id)));
+      await reply(`📨 Your claim for **${claim.kind}**${claim.event ? ` (${claim.event})` : ''} went to the board. You get a DM once it is decided.`);
+      return;
+    }
+    await reply('Unknown form.');
+  } catch (error) {
+    if (error instanceof RuleError) {
+      const texts = modalId === 's:modal:mc' ? WHITELIST_ERRORS : CLAIM_ERRORS;
+      await reply(texts[error.code] ?? error.message);
+      return;
+    }
+    throw error;
+  }
 }
 
 async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin: string, isAdmin: boolean): Promise<Outcome> {
@@ -481,6 +697,14 @@ async function handleBoardButton(env: WorkerEnv, interaction: Interaction, origi
       const entry = await setRegisterActive(env.DB, Number(key), verdict === 'ok', who, now);
       await applyRegisterRoles(await loadRegisterRoleConfig(env, env.DB), entry);
       await settle(verdict === 'ok' ? `✅ Approved by ${who}; the Actives role is on.` : `❌ Declined by ${who}.`);
+    } else if (kind === 'c') {
+      const result = await decideClaim(env.DB, Number(key), verdict === 'ok' ? 'approve' : 'decline', who, now);
+      if (!result) {
+        await settle('ℹ️ Already handled.');
+        return;
+      }
+      if (token) await dmMember(token, result.claim.discord_id, claimDecisionDm(result.claim, origin));
+      await settle(verdict === 'ok' ? `✅ Approved by ${who}; the tick is given.` : `❌ Declined by ${who}.`);
     }
   } catch (error) {
     if (error instanceof RuleError) {

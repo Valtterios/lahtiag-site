@@ -7,6 +7,7 @@ import { listPastEvents, listUpcomingEvents } from '../../lib/db';
 import { activityChannels, channelSeason, seasonName, seasonStartYear, voiceLabel } from '../../lib/activity';
 import { availableSeasons, pickSeason, seasonTotals, serverStats, weeklyStats, weekLabel } from '../../lib/season-stats';
 import { kindWorth, listTickKinds, listTickableMembers, listTicks, markCounted, TICK_LIMITS, TICK_PERIODS, TICK_PERIOD_LABELS } from '../../lib/ticks';
+import { listPendingClaims } from '../../lib/claims';
 import { formatHelsinkiDate } from '../../lib/time';
 
 // The board's season page: what the listener and the play-time sync have
@@ -26,7 +27,7 @@ const year = pickSeason(Astro.url.searchParams.get('season'), seasons, now);
 const current = year === seasonStartYear(now);
 const here = current ? '/board/season' : `/board/season?season=${year}`;
 
-const [totals, weeks, channels, servers, counted, kinds, members, ticks, past, upcoming] = access.ok
+const [totals, weeks, channels, servers, counted, kinds, members, ticks, past, upcoming, claims] = access.ok
   ? await Promise.all([
       seasonTotals(env.DB, year, now),
       weeklyStats(env.DB, year, now),
@@ -38,8 +39,9 @@ const [totals, weeks, channels, servers, counted, kinds, members, ticks, past, u
       listTicks(env.DB, year),
       listPastEvents(env.DB, now, 12),
       listUpcomingEvents(env.DB, now, true),
+      listPendingClaims(env.DB),
     ])
-  : [null, [], [], [], [], [], [], [], [], []];
+  : [null, [], [], [], [], [], [], [], [], [], []];
 const activeKinds = kinds.filter((k) => k.retired_at === null);
 // Which ticks count under their kinds' caps, per member.
 const tickRows = markCounted(ticks, kinds);
@@ -58,6 +60,8 @@ const FLASH: Record<string, string> = {
   kind_saved: 'Tick saved.',
   kind_retired: 'Retired: it leaves the give list; ticks already given under it stay.',
   kind_restored: 'Back on the list.',
+  claim_approved: 'Claim approved: the tick is given and the member has a DM.',
+  claim_declined: 'Claim declined; the member has a DM.',
   tick_duplicate: 'That is already there: the same tick for the same event, or a tick with that name.',
   tick_not_member: 'Ticks go to current members only.',
   tick_missing: 'That tick, member or event is no longer on the list.',
@@ -192,12 +196,38 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
         </div>
       </section>
 
+      {claims.length > 0 && (
+        <section class="queue season-section" id="claims">
+          <h2 class="section-label">Claims waiting for a decision</h2>
+          <p class="queue-intro">
+            Members asked for these with <code>/claim</code> in Discord. The same claims sit in the board channel with buttons;
+            deciding in either place tells the member by DM. Approving gives the tick like by hand, caps included.
+          </p>
+          {claims.map((c) => (
+            <div class="queue-card">
+              <div class="queue-body">
+                <p class="queue-name">{c.member} · {c.kind}{c.event_id !== null && <> for {c.event ?? 'a deleted event'}</>}</p>
+                <p class="queue-meta">{c.note ? `“${c.note}” · ` : ''}{c.xp} XP · asked {formatHelsinkiDate(c.created_at)}</p>
+              </div>
+              <form method="post" action="/board/ticks" class="queue-actions">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="claim_id" value={c.id} />
+                <input type="hidden" name="back" value={here} />
+                <button class="btn btn-primary" name="action" value="claim_approve" type="submit">Approve</button>
+                <button class="btn btn-ghost" name="action" value="claim_decline" type="submit" data-confirm="Decline this claim? The member is told by DM.">Decline</button>
+              </form>
+            </div>
+          ))}
+        </section>
+      )}
+
       <section class="numbers season-section" id="ticks">
         <h2 class="section-label">Ticks</h2>
         <p class="queue-intro">
           What the board notes by hand for the season pass, because nothing can count it: helping at an event, and whatever
-          the board adds to the list below. A member sees their own ticks under <code>/season</code> and on the membership page.
-          Ticks for an event can also be given from the event's Manage participants.
+          the board adds to the list below. A member sees their own ticks under <code>/season</code> and on the membership page,
+          and can ask for the kinds marked claimable with <code>/claim</code>. Ticks for an event can also be given from the
+          event's Manage participants.
         </p>
         {current && activeKinds.length > 0 && members.length > 0 && (
           <form method="post" action="/board/ticks" class="participant-row tick-form">
@@ -280,6 +310,7 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
                     {TICK_PERIODS.map((p) => <option value={p} selected={k.period === p}>{TICK_PERIOD_LABELS[p]}</option>)}
                   </select>
                 </label>
+                <label class="check"><input type="checkbox" name="claimable" checked={k.claimable} /> <span>members can claim it</span></label>
                 <span class="queue-meta">{k.given} given{k.retired_at !== null ? ' · retired' : ''}</span>
                 <button class="btn btn-ghost btn-sm" name="action" value="kind_save" type="submit">Save</button>
                 {k.retired_at === null ? (
@@ -304,6 +335,7 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
                   {TICK_PERIODS.map((p) => <option value={p}>{TICK_PERIOD_LABELS[p]}</option>)}
                 </select>
               </label>
+              <label class="check"><input type="checkbox" name="claimable" /> <span>members can claim it</span></label>
               <button class="btn btn-primary btn-sm" type="submit">Add to the list</button>
             </form>
           </li>

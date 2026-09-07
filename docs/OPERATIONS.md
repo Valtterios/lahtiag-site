@@ -885,6 +885,37 @@ nothing resets, the same way the monthly voice and Minecraft rules will
 read the per-day counts. The first kind holds the board's outline: 100
 XP, once a season.
 
+**Claims.** A kind the board marks claimable on the season page can be
+asked for by a member: `/claim` in Discord (or the Claim a tick button
+under `/season` and the leaderboard) walks them through the kind, the
+event if any, and a note in a modal; `src/lib/claims.ts` stores the
+claim (`tick_claims`, one pending claim per kind, member and event, and
+none where the tick is already given) and posts a line with Approve and
+Decline to the board channel (`approveButtons('c', id)`, handled in
+`handleBoardButton` like a friend request). The season page lists the
+same claims under "Claims waiting for a decision" for the board without
+Discord at hand; deciding in either place gives the tick through
+`giveTick` (so the once-per-event rule and the caps apply as usual, and
+a claim whose tick was meanwhile given by hand stays pending with a
+warning) and DMs the member (`claimDecisionDm`). Claims need a current
+membership with the Discord account linked; `/season` and the membership
+page say how many of the member's claims are waiting.
+
+**The XP leaderboard.** `/leaderboard` posts the season's top ten by XP
+for everyone to see (`src/lib/xp.ts`: `xpStandings` adds every linked
+member's ticks up with the caps, `leaderboardText` prints it with the
+reader's own rank under the list when they are not in it). XP is the
+ticks until the board sets the rules; events, Discord activity and
+Minecraft play join in the same function then. Members hidden from the
+history page's leaderboard are hidden here too, and see only their own
+rank. The message carries buttons that answer privately to whoever
+presses them, on the public message as well: My season (the `/season`
+reply), Claim a tick, Link my Minecraft name (a modal that does what
+`/whitelist me` does), and a link to the membership page; the same
+buttons sit under `/season`. Custom ids start with `s:`; the modals with
+`s:modal:`. Both commands are registered with
+`scripts/register-commands.mjs` like the others.
+
 **Play time.** For the season pass, `scripts/minecraft/playtime-sync.py`
 (installed as `/usr/local/bin/lahtiag-playtime-sync.py`, run by
 `lahtiag-playtime@smp.timer` and `@gtnh.timer` every five minutes, same

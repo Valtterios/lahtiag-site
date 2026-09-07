@@ -122,6 +122,8 @@ const commands = [
     description: 'Become a LahtiAG member, or link your Discord to your membership',
   },
   { name: 'season', description: 'Your season so far: events, Discord activity, Minecraft play time' },
+  { name: 'claim', description: 'Claim a tick for the season pass; the board approves it' },
+  { name: 'leaderboard', description: "This season's XP leaderboard (everyone sees it)" },
   {
     name: 'whitelist',
     description: 'The LahtiAG Minecraft servers\' whitelist',

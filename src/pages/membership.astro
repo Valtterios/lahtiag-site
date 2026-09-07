@@ -223,6 +223,9 @@ const MESSAGES: Record<FieldError, string> = {
               Ticks from the board this season: {tickList(season.ticks)}{season.tick_xp > 0 ? <>, worth <strong>{season.tick_xp} XP</strong></> : ''}.
             </p>
           )}
+          {season && season.claims_pending > 0 && (
+            <p class="queue-meta">Claims waiting for the board: {season.claims_pending}. You get a DM when they are decided.</p>
+          )}
           <form method="post" action="/membership/leaderboard" class="app-form-row leaderboard-optin">
             <input type="hidden" name="csrf" value={csrf} />
             <label class="check"><input type="checkbox" name="hide" checked={!onLeaderboard} /> <span>Hide me from the public leaderboard on the <a href="/history">history page</a>, and keep my season off my profile card (everyone is on both unless hidden)</span></label>

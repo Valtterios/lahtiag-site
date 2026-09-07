@@ -46,6 +46,7 @@ shot('join', '/join', clip='h1', skip=-10, extend=470, hl=['text=Sign in, then a
 shot('board-hub', '/board', 'admin', clip='.board-links', pad=16, hl=['text=Season'])
 shot('season-top', '/board/season', 'admin', clip='h1', skip=0, extend=700, hl=['.stat-tiles'])
 shot('season-ticks', '/board/season', 'admin', clip='#ticks', pad=12, hl=['text=Give tick', 'text=Add to the list'], nums=True)
+shot('season-claims', '/board/season', 'admin', clip='#claims', pad=12, hl=['text=Approve'])
 shot('event-ticks', '/events/2', 'admin', open=['details.admin-panel'], openText=['Manage participants'], clip='.ticks-box', pad=12, hl=['text=Give tick'])
 # Events
 shot('events-list', '/events', top=790, pad=0)

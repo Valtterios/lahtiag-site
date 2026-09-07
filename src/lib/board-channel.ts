@@ -36,8 +36,9 @@ export async function postBoardLine(db: D1Database, env: BoardEnv, content: stri
 
 // Approve / Decline under a board line. The custom id carries what it is
 // about: "w" a whitelist friend (the name), "a" an actives request (the
-// register id). Any board member may press them.
-export function approveButtons(kind: 'w' | 'a', key: string): unknown[] {
+// register id), "c" a tick claim (the claim id). Any board member may
+// press them.
+export function approveButtons(kind: 'w' | 'a' | 'c', key: string): unknown[] {
   return [
     {
       type: 1,

@@ -25,6 +25,7 @@ export interface TickKind {
   xp: number; // what one tick is worth
   season_cap: number; // how many count per member and period; 0 = every one
   period: TickPeriod; // the period that cap counts in
+  claimable: boolean; // members may ask for it themselves (src/lib/claims.ts)
   retired_at: number | null;
   given: number; // ticks ever given under it
 }
@@ -61,6 +62,7 @@ export interface TickKindInput {
   xp: unknown;
   season_cap: unknown;
   period?: unknown; // missing means per season
+  claimable?: unknown; // a checkbox: 'on', true or '1' means yes
 }
 
 export interface TickableMember {
@@ -81,18 +83,23 @@ function clean(value: unknown, max: number): string {
 
 // --- the kinds ---------------------------------------------------------------
 
-const KIND_COLUMNS = `k.id, k.name, k.description, k.sort, k.xp, k.season_cap, k.period, k.retired_at,
+const KIND_COLUMNS = `k.id, k.name, k.description, k.sort, k.xp, k.season_cap, k.period, (k.claimable = 1) AS claimable, k.retired_at,
   (SELECT COUNT(*) FROM ticks t WHERE t.kind_id = k.id) AS given`;
+
+// D1 hands booleans back as 0/1.
+function kindRow(row: TickKind | null): TickKind | null {
+  return row ? { ...row, claimable: Boolean(row.claimable) } : null;
+}
 
 export async function listTickKinds(db: D1Database, includeRetired = false): Promise<TickKind[]> {
   const { results } = await db
     .prepare(`SELECT ${KIND_COLUMNS} FROM tick_kinds k ${includeRetired ? '' : 'WHERE k.retired_at IS NULL'} ORDER BY k.sort, k.id`)
     .all<TickKind>();
-  return results;
+  return results.map((r) => kindRow(r)!);
 }
 
 export async function getTickKind(db: D1Database, id: number): Promise<TickKind | null> {
-  return db.prepare(`SELECT ${KIND_COLUMNS} FROM tick_kinds k WHERE k.id = ?1`).bind(id).first<TickKind>();
+  return kindRow(await db.prepare(`SELECT ${KIND_COLUMNS} FROM tick_kinds k WHERE k.id = ?1`).bind(id).first<TickKind>());
 }
 
 // A whole number from a form field; blank counts as zero.
@@ -104,7 +111,7 @@ function whole(raw: unknown, max: number): number {
   return n;
 }
 
-function validKind(input: TickKindInput): { name: string; description: string | null; xp: number; season_cap: number; period: TickPeriod } {
+function validKind(input: TickKindInput): { name: string; description: string | null; xp: number; season_cap: number; period: TickPeriod; claimable: boolean } {
   const name = clean(input.name, TICK_LIMITS.name);
   const description = clean(input.description, TICK_LIMITS.description);
   if (name.length < 2 || name.length > TICK_LIMITS.name) throw new RuleError('bad_input', 'A tick needs a name of 2 to 60 characters.');
@@ -118,6 +125,7 @@ function validKind(input: TickKindInput): { name: string; description: string | 
     xp: whole(input.xp, TICK_LIMITS.xp),
     season_cap: whole(input.season_cap, TICK_LIMITS.season_cap),
     period,
+    claimable: input.claimable === true || input.claimable === 'on' || input.claimable === '1',
   };
 }
 
@@ -131,12 +139,12 @@ async function nameTaken(db: D1Database, name: string, exceptId: number | null):
 }
 
 export async function addTickKind(db: D1Database, input: TickKindInput, by: string, now: number): Promise<TickKind> {
-  const { name, description, xp, season_cap, period } = validKind(input);
+  const { name, description, xp, season_cap, period, claimable } = validKind(input);
   if (await nameTaken(db, name, null)) throw new RuleError('duplicate', `There is already a tick called ${name}.`);
   const last = await db.prepare('SELECT COALESCE(MAX(sort), 0) AS sort FROM tick_kinds').first<{ sort: number }>();
   const result = await db
-    .prepare('INSERT INTO tick_kinds (name, description, sort, xp, season_cap, period, created_by, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)')
-    .bind(name, description, (last?.sort ?? 0) + 1, xp, season_cap, period, by, now)
+    .prepare('INSERT INTO tick_kinds (name, description, sort, xp, season_cap, period, claimable, created_by, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)')
+    .bind(name, description, (last?.sort ?? 0) + 1, xp, season_cap, period, claimable ? 1 : 0, by, now)
     .run();
   const id = Number(result.meta.last_row_id);
   return (await getTickKind(db, id))!;
@@ -147,12 +155,12 @@ export async function addTickKind(db: D1Database, input: TickKindInput, by: stri
 // passes the current season), while other seasons keep what they were
 // paid.
 export async function saveTickKind(db: D1Database, id: number, input: TickKindInput, applySeason: number | null = null): Promise<TickKind> {
-  const { name, description, xp, season_cap, period } = validKind(input);
+  const { name, description, xp, season_cap, period, claimable } = validKind(input);
   if (!(await getTickKind(db, id))) throw new RuleError('missing', 'No such tick.');
   if (await nameTaken(db, name, id)) throw new RuleError('duplicate', `There is already a tick called ${name}.`);
   await db
-    .prepare('UPDATE tick_kinds SET name = ?2, description = ?3, xp = ?4, season_cap = ?5, period = ?6 WHERE id = ?1')
-    .bind(id, name, description, xp, season_cap, period)
+    .prepare('UPDATE tick_kinds SET name = ?2, description = ?3, xp = ?4, season_cap = ?5, period = ?6, claimable = ?7 WHERE id = ?1')
+    .bind(id, name, description, xp, season_cap, period, claimable ? 1 : 0)
     .run();
   if (applySeason !== null) {
     const { from, to } = seasonRange(applySeason);

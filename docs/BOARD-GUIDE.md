@@ -423,6 +423,24 @@ puts it on the page and on Discord.
   tick of this season; past seasons keep what they were paid. Members
   see their own ticks, and what they add up to, under `/season` and on
   the membership page.
+- **Claims.** Tick "members can claim it" on a kind and members can ask
+  for it themselves: `/claim` in Discord (or the Claim a tick button
+  under `/season` and the leaderboard) asks which tick, which event, and
+  what they did. The claim lands in the board channel with Approve and
+  Decline, and on the season page under "Claims waiting for a decision";
+  either place decides it, gives the tick and tells the member by DM.
+  Helping at an event is claimable from the start.
+
+![A claim waiting on the season page](images/site/season-claims.png)
+
+*A claim on the season page: who, which tick, what they wrote; Approve gives the tick, and the member gets a DM either way.*
+
+- **The leaderboard.** `/leaderboard` posts the season's top ten by XP
+  for everyone, with the reader's own rank under it. Its buttons answer
+  privately to whoever presses them: My season, Claim a tick, Link my
+  Minecraft name, and the membership page. A member hidden from the
+  history page's leaderboard is hidden here too. Until the rules are
+  set the XP is the ticks, so post it once there is something on it.
 
 | | |
 |---|---|

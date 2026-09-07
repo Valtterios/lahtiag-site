@@ -8,6 +8,7 @@ import { seasonActivity, seasonLabel, seasonStartYear, voiceLabel } from './acti
 import { seasonPlaytime } from './playtime';
 import { listMinecraftNames } from './minecraft';
 import { memberSeasonTicks, tickList, tickXp, type SeasonTick } from './ticks';
+import { memberPendingClaims } from './claims';
 import { helsinkiToUnix } from './time';
 
 export interface SeasonSummary {
@@ -19,6 +20,7 @@ export interface SeasonSummary {
   minecraft_name: string | null; // the member's own whitelisted name, if any
   ticks: SeasonTick[]; // what the board noted by hand (src/lib/ticks.ts)
   tick_xp: number; // what those are worth, caps applied
+  claims_pending: number; // claims of theirs the board has not decided yet
 }
 
 export function seasonStartUnix(now: number): number {
@@ -42,12 +44,13 @@ export async function seasonEvents(db: D1Database, discordId: string, now: numbe
 }
 
 export async function seasonSummary(db: D1Database, discordId: string, now: number): Promise<SeasonSummary> {
-  const [events, activity, playtime, names, ticks] = await Promise.all([
+  const [events, activity, playtime, names, ticks, claims_pending] = await Promise.all([
     seasonEvents(db, discordId, now),
     seasonActivity(db, discordId, now),
     seasonPlaytime(db, discordId, now),
     listMinecraftNames(db, discordId),
     memberSeasonTicks(db, discordId, now),
+    memberPendingClaims(db, discordId, now),
   ]);
   return {
     label: seasonLabel(now),
@@ -58,6 +61,7 @@ export async function seasonSummary(db: D1Database, discordId: string, now: numb
     minecraft_name: names.find((n) => n.kind === 'own')?.name ?? null,
     ticks,
     tick_xp: tickXp(ticks),
+    claims_pending,
   };
 }
 
@@ -81,6 +85,7 @@ export function seasonLines(summary: SeasonSummary, origin: string): string {
     ...(summary.ticks.length > 0
       ? [`✅ Ticks from the board: **${summary.ticks.length}** · ${tickList(summary.ticks)}${summary.tick_xp > 0 ? ` · **${summary.tick_xp} XP**` : ''}`]
       : []),
+    ...(summary.claims_pending > 0 ? [`⏳ Claims waiting for the board: **${summary.claims_pending}**`] : []),
     `The season pass and its levels come once the board has set the rules. More on ${origin}/membership`,
   ].join('\n');
 }

@@ -439,6 +439,7 @@ export async function deleteEvent(db: D1Database, id: number): Promise<EventRow>
     db.prepare('DELETE FROM waitlist_promotions WHERE event_id = ?1').bind(id),
     // A tick given for the event stays with the member, without the event.
     db.prepare('UPDATE ticks SET event_id = NULL WHERE event_id = ?1').bind(id),
+    db.prepare('UPDATE tick_claims SET event_id = NULL WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM signups WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM event_teams WHERE event_id = ?1').bind(id),
     db.prepare('DELETE FROM events WHERE id = ?1').bind(id),
@@ -2096,6 +2097,7 @@ export async function listLinkedEntries(db: D1Database): Promise<RegisterRow[]> 
 // The GDPR erasure path for the register: the row is gone, nothing is
 // anonymized, because nothing references it.
 export async function eraseRegisterEntry(db: D1Database, id: number): Promise<boolean> {
+  await db.prepare('DELETE FROM tick_claims WHERE register_id = ?1').bind(id).run();
   await db.prepare('DELETE FROM ticks WHERE register_id = ?1').bind(id).run();
   const result = await db.prepare('DELETE FROM register WHERE id = ?1').bind(id).run();
   return (result.meta.changes ?? 0) > 0;

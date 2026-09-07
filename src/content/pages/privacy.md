@@ -81,9 +81,13 @@ membership page, and the current season's totals on your profile card,
 which any member can post in Discord with `/profile`; hiding yourself
 from the leaderboard on your membership page keeps them off the card.
 The board can also note by hand, for the same rewards, that you helped
-at an event or did something else on its short list; you see these notes
-on your membership page, and they go with your register entry when it is
-erased.
+at an event or did something else on its short list, and you can ask for
+such a note yourself in Discord, in which case what you wrote is kept
+with the request until the board decides it. You see these notes on
+your membership page, and they go with your register entry when it is
+erased. The season's points can be posted as a leaderboard in Discord
+with your Discord name on it; hiding yourself from the leaderboard on
+your membership page keeps you off that list too.
 
 Event announcements are also posted to the association's Discord server;
 what happens to data inside Discord is governed by
