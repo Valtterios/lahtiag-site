@@ -4036,3 +4036,94 @@ details.admin-panel[open] > summary {
 .account-bar form {
   margin-left: auto;
 }
+
+/* The board's season page and the ticks (src/pages/board/season.astro). */
+.season-picker {
+  margin: 0 0 1.5rem;
+}
+
+.season-section {
+  margin: 0 0 2.5rem;
+}
+
+.season-section h3.section-label {
+  margin-top: 1.5rem;
+}
+
+.kind-list input[name='description'] {
+  min-width: 22rem;
+}
+
+.stats-table {
+  min-width: 0;
+}
+
+.stats-table th:not(:first-child),
+.stats-table td:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tick-table th,
+.tick-table td {
+  text-align: left;
+  white-space: normal;
+}
+
+.tick-form {
+  margin: 0 0 1rem;
+  align-items: flex-end;
+}
+
+.tick-form label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.tick-form select {
+  max-width: 18rem;
+}
+
+.kind-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.kind-list .participant-row label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.kind-retired input {
+  color: var(--muted);
+}
+
+.ticks-box {
+  margin-top: 1.2rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+}
+
+.ticks-box .section-label {
+  margin-top: 0;
+}
+
+.tick-list {
+  list-style: none;
+  margin: 0 0 0.8rem;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.tick-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}

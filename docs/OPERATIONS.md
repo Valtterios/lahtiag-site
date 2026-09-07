@@ -843,6 +843,35 @@ plainly when no Minecraft name is linked to the member, since play under
 a name that isn't theirs counts for nobody. The pass's XP and levels will
 be computed from the same numbers once the board has set the rules.
 
+**The board's season page.** `/board/season` (`src/pages/board/season.astro`,
+open to the Board role and the register accounts alike through
+`requireAnyBoard` in `src/lib/board-access.ts`) shows what has been
+counted, nobody named: the totals, the same by week (Mondays,
+`src/lib/season-stats.ts`), by channel, Minecraft by server, and how many
+of the people counted are linked members. It is the check that the
+counting is right before any rule of the pass hangs on it. One season at
+a time, the current one unless `?season=2025` asks for a past one; the
+seasons on offer are the academic years with anything counted, and last
+season never blends into this one. `/board` is the hub with every board
+page, the same one a board member without register access sees at
+`/register`. Both prefixes are in `run_worker_first` in `wrangler.toml`
+(both environments), like every server route.
+
+**Ticks.** What the board notes by hand for the season pass, because
+nothing can count it: helping at an event, and whatever else the board
+adds to the list on the season page (`tick_kinds`; a retired kind leaves
+the give list and keeps its ticks). A tick (`ticks`, `src/lib/ticks.ts`)
+is one kind given to one register entry by a board member, optionally for
+one event, the same kind once per event; ticks go to current members only
+and follow the entry (a Discord relink keeps them, erasing the entry
+deletes them, deleting the event keeps the tick without the event). Given
+on the season page or under an event's Manage participants, both through
+`POST /board/ticks`; every tick given is a line in the board channel. A
+member sees their own under `/season` and on the membership page, this
+season's only: everything is cut at 1 September (`seasonRange`), so last
+season's ticks never count in this one. The rules turning ticks into XP
+come with the rest of the season pass.
+
 **Play time.** For the season pass, `scripts/minecraft/playtime-sync.py`
 (installed as `/usr/local/bin/lahtiag-playtime-sync.py`, run by
 `lahtiag-playtime@smp.timer` and `@gtnh.timer` every five minutes, same
@@ -975,6 +1004,7 @@ no subdirectories.
 | Worker + assets + routes + vars | `wrangler.toml` (root); preview env repeats EVERYTHING — named environments inherit nothing |
 | Database schema | `migrations/`, forward-only, applied **manually**: `npx wrangler d1 migrations apply lahtiag --remote` (and `lahtiag-preview --env preview`) — CI never touches the database |
 | All SQL | `src/lib/db.ts`, one function per operation; routes and bot handlers never contain SQL |
+| The board's season page and the ticks | `src/pages/board/`, `src/lib/season-stats.ts`, `src/lib/ticks.ts`; the counting itself in `src/lib/activity.ts` and `src/lib/playtime.ts` |
 | Member register | `migrations/0006_register.sql`; form choices + validation in `src/lib/register.ts`; pages under `src/pages/register/` and `src/pages/join.astro`; import script `scripts/import-register.mjs` |
 | Register sign-in (Google) | `src/lib/board.ts` (board cookie, allowlist, `requireBoard`), `src/lib/google.ts` (OAuth calls), routes `src/pages/auth/google*`; fixed allowlist `REGISTER_ADMINS` in `wrangler.toml`, the rest in the `register_admins` table |
 | Auth (cookies, CSRF) | `src/lib/auth.ts`, `src/lib/guard.ts` — stateless HMAC-signed session cookie, 24 h |

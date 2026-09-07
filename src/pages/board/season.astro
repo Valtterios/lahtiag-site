@@ -1,0 +1,292 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import { ensureCsrf } from '../../lib/guard';
+import { requireAnyBoard } from '../../lib/board-access';
+import { listPastEvents, listUpcomingEvents } from '../../lib/db';
+import { activityChannels, channelSeason, seasonName, seasonStartYear, voiceLabel } from '../../lib/activity';
+import { availableSeasons, pickSeason, seasonTotals, serverStats, weeklyStats, weekLabel } from '../../lib/season-stats';
+import { listTickKinds, listTickableMembers, listTicks, TICK_LIMITS } from '../../lib/ticks';
+import { formatHelsinkiDate } from '../../lib/time';
+
+// The board's season page: what the listener and the play-time sync have
+// counted, by week, channel and server, with nobody named, so the board
+// can see the counting is right before the season pass hangs rules on
+// it; and the ticks, the things the board notes by hand, with the list
+// of kinds it keeps itself. One season at a time, the current one unless
+// picked otherwise: last season never blends into this one.
+
+const access = await requireAnyBoard(Astro.request, env);
+Astro.response.status = access.ok ? 200 : access.status;
+const csrf = ensureCsrf(Astro.cookies);
+const now = Math.floor(Date.now() / 1000);
+
+const seasons = access.ok ? await availableSeasons(env.DB, now) : [];
+const year = pickSeason(Astro.url.searchParams.get('season'), seasons, now);
+const current = year === seasonStartYear(now);
+const here = current ? '/board/season' : `/board/season?season=${year}`;
+
+const [totals, weeks, channels, servers, counted, kinds, members, ticks, past, upcoming] = access.ok
+  ? await Promise.all([
+      seasonTotals(env.DB, year, now),
+      weeklyStats(env.DB, year, now),
+      channelSeason(env.DB, now, year),
+      serverStats(env.DB, year, now),
+      activityChannels(env.DB),
+      listTickKinds(env.DB, true),
+      listTickableMembers(env.DB),
+      listTicks(env.DB, year),
+      listPastEvents(env.DB, now, 12),
+      listUpcomingEvents(env.DB, now, true),
+    ])
+  : [null, [], [], [], [], [], [], [], [], []];
+const activeKinds = kinds.filter((k) => k.retired_at === null);
+// Voice channels have no #; the listener's channel list says which is which.
+const voiceIds = new Set(counted.filter((c) => c.kind === 'voice').map((c) => c.id));
+const channelName = (c: { channel_id: string; name: string; messages: number; voice_minutes: number }) =>
+  voiceIds.has(c.channel_id) || (c.messages === 0 && c.voice_minutes > 0) ? `🔊 ${c.name}` : `#${c.name}`;
+// The event picker: what is coming, then what just was, newest first.
+const eventChoices = [...upcoming, ...past].filter((e, i, all) => all.findIndex((o) => o.id === e.id) === i);
+const hours = (minutes: number) => (minutes === 0 ? '0' : minutes < 60 ? `${minutes} min` : `${(minutes / 60).toFixed(minutes >= 600 ? 0 : 1)} h`);
+
+const FLASH: Record<string, string> = {
+  tick_given: 'Tick given. The board channel has a line about it.',
+  tick_removed: 'Tick removed.',
+  kind_added: 'Added to the list of ticks.',
+  kind_saved: 'Tick saved.',
+  kind_retired: 'Retired: it leaves the give list; ticks already given under it stay.',
+  kind_restored: 'Back on the list.',
+  tick_duplicate: 'That is already there: the same tick for the same event, or a tick with that name.',
+  tick_not_member: 'Ticks go to current members only.',
+  tick_missing: 'That tick, member or event is no longer on the list.',
+  tick_bad_input: "That didn't save. A tick needs a name of 2 to 60 characters.",
+  csrf: 'The form was stale. Try again.',
+  unauthenticated: 'Sign in first.',
+  forbidden: 'The Board role is needed for that.',
+  discord_down: "Discord didn't answer while checking your role. Try again in a moment.",
+};
+const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
+---
+<Base title={`Season ${seasonName(year)}`} description="The board's season page: activity counts and ticks." wide>
+  {!access.ok ? (
+    <article class="prose">
+      <h1>Season</h1>
+      {access.reason === 'discord_down' ? (
+        <p>Discord didn't answer while checking your role. Wait a moment and reload.</p>
+      ) : (
+        <>
+          <p>The season page is for the board: sign in with Discord with the Board role, or with the register's Google sign-in.</p>
+          <p class="entry-actions">
+            <a class="btn btn-primary" href="/login?next=/board/season">Sign in with Discord</a>
+            <a class="btn btn-ghost" href="/auth/google">Register sign-in with Google</a>
+          </p>
+        </>
+      )}
+    </article>
+  ) : (
+    <>
+      <p class="queue-intro">Signed in as <strong>{access.who}</strong> (board). <a href="/board">Board tools</a></p>
+      <article class="prose">
+        <h1>Season {seasonName(year)}</h1>
+        <p>
+          What the site has counted {current ? 'so far this season' : 'that season'}, with nobody named, and the ticks the board has given.
+          The academic year runs from 1 September; last season stays on its own page.
+        </p>
+      </article>
+      {seasons.length > 1 && (
+        <nav class="segmented season-picker" aria-label="Season">
+          {seasons.map((y) => (
+            <a href={y === seasonStartYear(now) ? '/board/season' : `/board/season?season=${y}`} aria-current={y === year ? 'page' : undefined}>{seasonName(y)}</a>
+          ))}
+        </nav>
+      )}
+      {flash && <p class="flash">{flash}</p>}
+
+      <ul class="stat-tiles">
+        <li><a href="#weeks"><strong>{totals!.messages}</strong><span>Messages</span></a></li>
+        <li><a href="#weeks"><strong>{hours(totals!.voice_minutes)}</strong><span>In voice</span></a></li>
+        <li><a href="#servers"><strong>{hours(totals!.minecraft_minutes)}</strong><span>Minecraft</span></a></li>
+        <li><a href="#weeks"><strong>{totals!.people}</strong><span>People counted</span></a></li>
+      </ul>
+      <p class="queue-meta">
+        Of the {totals!.people} Discord accounts with something counted, {totals!.members} {totals!.members === 1 ? 'is a' : 'are'} linked current member{totals!.members === 1 ? '' : 's'}.
+        {' '}Of the {totals!.players} Minecraft player{totals!.players === 1 ? '' : 's'} with play time, {totals!.linked_players} {totals!.linked_players === 1 ? 'plays' : 'play'} under a member's own linked name; the rest counts for nobody until the name is linked.
+      </p>
+
+      <section class="numbers season-section" id="weeks">
+        <h2 class="section-label">By week</h2>
+        <p class="queue-intro">Weeks start on Monday. People and players are how many had anything counted that week.</p>
+        <div class="table-scroll">
+          <table class="register-table stats-table">
+            <thead>
+              <tr><th>Week of</th><th>Messages</th><th>In voice</th><th>People</th><th>Minecraft</th><th>Players</th></tr>
+            </thead>
+            <tbody>
+              {weeks.map((w) => (
+                <tr>
+                  <td>{weekLabel(w.week)}</td>
+                  <td>{w.messages}</td>
+                  <td>{w.voice_minutes === 0 ? '' : voiceLabel(w.voice_minutes)}</td>
+                  <td>{w.people}</td>
+                  <td>{w.minecraft_minutes === 0 ? '' : voiceLabel(w.minecraft_minutes)}</td>
+                  <td>{w.players}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="numbers season-section" id="channels">
+        <h2 class="section-label">By channel</h2>
+        {channels.length === 0 ? (
+          <p class="queue-intro">Nothing counted yet. The listener on auraserver posts its counts every minute; see the technical handbook if this stays empty.</p>
+        ) : (
+          <div class="table-scroll">
+            <table class="register-table stats-table">
+              <thead>
+                <tr><th>Channel</th><th>Messages</th><th>In voice</th><th>Active days</th></tr>
+              </thead>
+              <tbody>
+                {channels.map((c) => (
+                  <tr>
+                    <td>{channelName(c)}</td>
+                    <td>{c.messages}</td>
+                    <td>{c.voice_minutes === 0 ? '' : voiceLabel(c.voice_minutes)}</td>
+                    <td>{c.days}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {counted.length > 0 && (
+          <p class="queue-meta">
+            Counted only where every member can see, as the listener last reported:
+            {' '}{counted.filter((c) => c.kind === 'text').map((c) => `#${c.name}`).join(', ')}
+            {counted.some((c) => c.kind === 'voice') && <> · voice: {counted.filter((c) => c.kind === 'voice').map((c) => c.name).join(', ')}</>}.
+          </p>
+        )}
+      </section>
+
+      <section class="numbers season-section" id="servers">
+        <h2 class="section-label">Minecraft by server</h2>
+        <div class="table-scroll">
+          <table class="register-table stats-table">
+            <thead>
+              <tr><th>Server</th><th>Play time</th><th>Players</th><th>Under a member's name</th></tr>
+            </thead>
+            <tbody>
+              {servers.map((s) => (
+                <tr>
+                  <td>{s.label}</td>
+                  <td>{s.minutes === 0 ? '' : voiceLabel(s.minutes)}</td>
+                  <td>{s.players}</td>
+                  <td>{s.linked}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="numbers season-section" id="ticks">
+        <h2 class="section-label">Ticks</h2>
+        <p class="queue-intro">
+          What the board notes by hand for the season pass, because nothing can count it: helping at an event, and whatever
+          the board adds to the list below. A member sees their own ticks under <code>/season</code> and on the membership page.
+          Ticks for an event can also be given from the event's Manage participants.
+        </p>
+        {current && activeKinds.length > 0 && members.length > 0 && (
+          <form method="post" action="/board/ticks" class="participant-row tick-form">
+            <input type="hidden" name="csrf" value={csrf} />
+            <input type="hidden" name="action" value="give" />
+            <input type="hidden" name="back" value={here} />
+            <label>Tick
+              <select name="kind_id" required>
+                {activeKinds.map((k) => <option value={k.id}>{k.name}</option>)}
+              </select>
+            </label>
+            <label>To
+              <select name="register_id" required>
+                {members.map((m) => <option value={m.register_id}>{m.full_name}{m.discord_name ? ` (${m.discord_name})` : ''}</option>)}
+              </select>
+            </label>
+            <label>For
+              <select name="event_id">
+                <option value="">no particular event</option>
+                {eventChoices.map((e) => <option value={e.id}>{e.title} · {formatHelsinkiDate(e.starts_at)}</option>)}
+              </select>
+            </label>
+            <label>Note <input name="note" maxlength={TICK_LIMITS.note} placeholder="optional" /></label>
+            <button class="btn btn-primary" type="submit">Give tick</button>
+          </form>
+        )}
+        {ticks.length === 0 ? (
+          <p class="queue-meta">No ticks given {current ? 'yet this season' : 'that season'}.</p>
+        ) : (
+          <div class="table-scroll">
+            <table class="register-table stats-table tick-table">
+              <thead>
+                <tr><th>Member</th><th>Tick</th><th>Event</th><th>Note</th><th>Given</th><th></th></tr>
+              </thead>
+              <tbody>
+                {ticks.map((t) => (
+                  <tr>
+                    <td>{t.member}</td>
+                    <td>{t.kind}</td>
+                    <td>{t.event_id === null ? '' : t.event ? <a href={`/events/${t.event_id}`}>{t.event}</a> : 'deleted event'}</td>
+                    <td>{t.note ?? ''}</td>
+                    <td>{formatHelsinkiDate(t.given_at)} by {t.given_by}</td>
+                    <td>
+                      <form method="post" action="/board/ticks" class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="remove" />
+                        <input type="hidden" name="tick_id" value={t.id} />
+                        <input type="hidden" name="back" value={here} />
+                        <button class="btn btn-ghost btn-sm" type="submit" data-confirm={`Remove ${t.member}'s tick "${t.kind}"?`}>Remove</button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <h3 class="section-label">The list of ticks</h3>
+        <p class="queue-intro">Add a kind here and it is on the give list at once. Retiring one keeps what was given under it.</p>
+        <ul class="kind-list">
+          {kinds.map((k) => (
+            <li class={k.retired_at !== null ? 'kind-retired' : undefined}>
+              <form method="post" action="/board/ticks" class="participant-row">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="kind_id" value={k.id} />
+                <input type="hidden" name="back" value={here} />
+                <label>Name <input name="name" required maxlength={TICK_LIMITS.name} value={k.name} /></label>
+                <label>Description <input name="description" maxlength={TICK_LIMITS.description} value={k.description ?? ''} placeholder="optional" /></label>
+                <span class="queue-meta">{k.given} given{k.retired_at !== null ? ' · retired' : ''}</span>
+                <button class="btn btn-ghost btn-sm" name="action" value="kind_save" type="submit">Save</button>
+                {k.retired_at === null ? (
+                  <button class="btn btn-ghost btn-sm" name="action" value="kind_retire" type="submit" data-confirm={`Retire "${k.name}"? It leaves the give list; ticks already given stay.`}>Retire</button>
+                ) : (
+                  <button class="btn btn-ghost btn-sm" name="action" value="kind_restore" type="submit">Restore</button>
+                )}
+              </form>
+            </li>
+          ))}
+          <li>
+            <form method="post" action="/board/ticks" class="participant-row">
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="action" value="kind_add" />
+              <input type="hidden" name="back" value={here} />
+              <label>New tick <input name="name" required maxlength={TICK_LIMITS.name} placeholder="Brought equipment" /></label>
+              <label>Description <input name="description" maxlength={TICK_LIMITS.description} placeholder="optional" /></label>
+              <button class="btn btn-primary btn-sm" type="submit">Add to the list</button>
+            </form>
+          </li>
+        </ul>
+      </section>
+    </>
+  )}
+</Base>

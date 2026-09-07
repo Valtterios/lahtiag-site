@@ -31,6 +31,8 @@ import { purchaseOffer, pendingPurchaseFor, resumablePurchase } from '../../../l
 import { readBasket, basketCount } from '../../../lib/basket';
 import { stripeConfigured } from '../../../lib/stripe';
 import { formatHelsinkiRange, unixToHelsinkiInputs, formatHelsinki } from '../../../lib/time';
+import { listTickKinds, listTickableMembers, listTicks } from '../../../lib/ticks';
+import { seasonStartYear } from '../../../lib/activity';
 
 const nowSeconds = Math.floor(Date.now() / 1000);
 
@@ -95,6 +97,10 @@ const questions = event ? await listEventQuestions(env.DB, event.id) : [];
 const myAnswers = event && session ? await getAnswers(env.DB, event.id, { discordId: session.discordId }) : new Map<number, string>();
 const answersOk = answersComplete(questions, myAnswers);
 const allAnswers = event && session?.isAdmin && questions.length > 0 ? await listAllAnswers(env.DB, event.id) : new Map<string, Map<number, string>>();
+// Ticks (src/lib/ticks.ts): what the board notes by hand for the season pass, given here for this event.
+const [tickKinds, tickMembers, eventTicks] = event && session?.isAdmin
+  ? await Promise.all([listTickKinds(env.DB), listTickableMembers(env.DB), listTicks(env.DB, seasonStartYear(nowSeconds), { eventId: event.id })])
+  : [[], [], []];
 const answerLine = (discordId: string) =>
   questions
     .map((q) => ({ label: q.label, value: allAnswers.get(`u:${discordId}`)?.get(q.id) ?? '' }))
@@ -130,7 +136,8 @@ if (event && !draft && event.cancelled_at === null) syncInterestInBackground(Ast
 
 // Flashes from board actions open the (otherwise folded) board tools.
 const DISCORD_OPEN = new Set(['discord_reannounced', 'discord_created', 'discord_synced', 'discord_removed', 'discord_upgraded', 'discord_archived', 'discord_team_voice', 'discord_needs_category', 'discord_no_teams', 'discord_event_created', 'discord_event_removed', 'discord_event_skipped', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
-const ADMIN_OPEN = new Set(['team_size', 'cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'photos_added', 'photo_removed', 'credit_saved', 'photo_missing', 'photo_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
+const TICK_KEYS = new Set(['tick_given', 'tick_removed', 'tick_duplicate', 'tick_not_member', 'tick_missing', 'tick_bad_input']);
+const ADMIN_OPEN = new Set(['team_size', ...TICK_KEYS, 'cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'photos_added', 'photo_removed', 'credit_saved', 'photo_missing', 'photo_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
 const okKey = Astro.url.searchParams.get('ok') ?? '';
 const errKey = Astro.url.searchParams.get('err') ?? '';
 const FLASH: Record<string, string> = {
@@ -169,6 +176,10 @@ const FLASH: Record<string, string> = {
   not_full: 'A seat is free: sign up instead of waiting.',
   no_waitlist: 'This event has no waitlist.',
   duplicate: 'You are already going.',
+  tick_duplicate: 'They already have that tick for this event.',
+  tick_not_member: 'Ticks go to current members only.',
+  tick_missing: 'That tick or member is no longer on the list.',
+  tick_bad_input: "The tick didn't save. Pick a tick and a member.",
   discord_unconfigured: 'The Discord bot is not set up (no bot token). The technical handbook, "Discord roles", has the steps.',
   discord_forbidden: "Discord refused. The bot's role needs Manage Roles, Manage Channels, Create Events and Manage Events, and must sit above the roles it creates.",
   discord_event_skipped: 'Discord events are made for published, upcoming events only.',
@@ -210,6 +221,8 @@ const OK: Record<string, string> = {
   photos_added: 'Photos added.',
   photo_removed: 'Photo removed.',
   credit_saved: 'Photo credit saved.',
+  tick_given: 'Tick given. The board channel has a line about it.',
+  tick_removed: 'Tick removed.',
   interested: "Marked as interested. You'll see it under My events.",
   waitlisted: "You're on the waitlist. When a seat frees you're moved to Going, the event's Discord channel tells you, and it shows under My events.",
   left_waitlist: 'Taken off the waitlist.',
@@ -1067,7 +1080,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             </form>
             {questions.length > 0 && <p><a class="btn btn-ghost btn-sm" href={`/events/${event.id}/roster.csv`}>Export roster with answers</a></p>}
           </details>
-          <details class="admin-edit">
+          <details class="admin-edit" id="participants" open={TICK_KEYS.has(okKey) || TICK_KEYS.has(errKey)}>
             <summary>Manage participants · {going.length} going{maybe.length > 0 ? `, ${maybe.length} maybe` : ''}{waitlist.length > 0 ? `, ${waitlist.length} waiting` : ''}</summary>
             <p class="event-meta">
               Changes here skip the signup rules: closed signups and capacity
@@ -1142,6 +1155,61 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               )}
               <button class="btn btn-primary" type="submit">Add participant</button>
             </form>
+            <div class="ticks-box" id="ticks">
+              <h3 class="section-label">Ticks</h3>
+              <p class="event-meta">
+                A tick is what the board notes by hand for the season pass: helping at this event, for one. Members only, each tick once per event.
+                The whole season's ticks and the list of kinds are on the <a href="/board/season#ticks">season page</a>.
+              </p>
+              {eventTicks.length > 0 && (
+                <ul class="tick-list">
+                  {eventTicks.map((t) => (
+                    <li>
+                      <span><strong>{t.member}</strong> · {t.kind}{t.note ? ` · ${t.note}` : ''} <small class="queue-meta">by {t.given_by}</small></span>
+                      <form method="post" action="/board/ticks" class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="remove" />
+                        <input type="hidden" name="tick_id" value={t.id} />
+                        <input type="hidden" name="back" value={`/events/${event.id}`} />
+                        <button class="btn btn-ghost btn-sm" type="submit" data-confirm={`Remove ${t.member}'s tick "${t.kind}"?`}>Remove</button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {tickKinds.length > 0 && tickMembers.length > 0 && (() => {
+                const here = new Set(signups.map((s) => s.discord_id));
+                const atEvent = tickMembers.filter((m) => m.discord_id !== null && here.has(m.discord_id));
+                const others = tickMembers.filter((m) => !atEvent.includes(m));
+                return (
+                  <form method="post" action="/board/ticks" class="participant-row tick-form">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="give" />
+                    <input type="hidden" name="event_id" value={event.id} />
+                    <input type="hidden" name="back" value={`/events/${event.id}`} />
+                    <label>Tick
+                      <select name="kind_id" required>
+                        {tickKinds.map((k) => <option value={k.id}>{k.name}</option>)}
+                      </select>
+                    </label>
+                    <label>To
+                      <select name="register_id" required>
+                        {atEvent.length > 0 && (
+                          <optgroup label="At this event">
+                            {atEvent.map((m) => <option value={m.register_id}>{m.full_name}{m.discord_name ? ` (${m.discord_name})` : ''}</option>)}
+                          </optgroup>
+                        )}
+                        <optgroup label={atEvent.length > 0 ? 'Other members' : 'Members'}>
+                          {others.map((m) => <option value={m.register_id}>{m.full_name}{m.discord_name ? ` (${m.discord_name})` : ''}</option>)}
+                        </optgroup>
+                      </select>
+                    </label>
+                    <label>Note <input name="note" maxlength="200" placeholder="optional" /></label>
+                    <button class="btn btn-primary btn-sm" type="submit">Give tick</button>
+                  </form>
+                );
+              })()}
+            </div>
           </details>
           <details class="admin-edit" id="photos-admin" open={['photos_added', 'photo_removed', 'credit_saved'].includes(okKey) || ['photo_missing', 'photo_bad'].includes(errKey)}>
             <summary>Photos · {photos.length === 0 ? 'none' : photos.length}</summary>

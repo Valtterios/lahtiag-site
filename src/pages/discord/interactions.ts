@@ -657,6 +657,7 @@ function controlPanel(origin: string): { content: string; components: unknown[] 
         type: 1,
         components: [
           { type: 2, style: 5, label: 'Whitelist', url: `${origin}/whitelist`, emoji: { name: '⛏️' } },
+          { type: 2, style: 5, label: 'Season', url: `${origin}/board/season`, emoji: { name: '📈' } },
           { type: 2, style: 5, label: 'Register', url: `${origin}/register` },
           { type: 2, style: 5, label: 'News', url: `${origin}/announcements` },
         ],

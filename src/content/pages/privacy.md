@@ -80,6 +80,10 @@ each whitelisted name was online. Your own counts show on your
 membership page, and the current season's totals on your profile card,
 which any member can post in Discord with `/profile`; hiding yourself
 from the leaderboard on your membership page keeps them off the card.
+The board can also note by hand, for the same rewards, that you helped
+at an event or did something else on its short list; you see these notes
+on your membership page, and they go with your register entry when it is
+erased.
 
 Event announcements are also posted to the association's Discord server;
 what happens to data inside Discord is governed by

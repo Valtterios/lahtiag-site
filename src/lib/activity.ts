@@ -188,7 +188,25 @@ export function helsinkiDay(unixSeconds: number): string {
 
 // The season's first and last stored day so far: 1 September to today.
 export function seasonDays(unixSeconds: number): { from: string; to: string } {
-  return { from: `${seasonStartYear(unixSeconds)}-09-01`, to: helsinkiDay(unixSeconds) };
+  return seasonBounds(seasonStartYear(unixSeconds), unixSeconds);
+}
+
+// Any season's days: 1 September of its first year to 31 August of the
+// next, or to today while the season is still running. Past seasons stay
+// readable this way, which is what keeps the season page useful next year.
+export function seasonBounds(startYear: number, unixSeconds: number): { from: string; to: string } {
+  const today = helsinkiDay(unixSeconds);
+  const last = `${startYear + 1}-08-31`;
+  return { from: `${startYear}-09-01`, to: today < last ? today : last };
+}
+
+// Every season with a day in [firstDay, now], newest first, by start year.
+export function seasonYears(firstDay: string | null, unixSeconds: number): number[] {
+  const current = seasonStartYear(unixSeconds);
+  const firstYear = firstDay ? Number(firstDay.slice(0, 4)) - (Number(firstDay.slice(5, 7)) >= 9 ? 0 : 1) : current;
+  const out: number[] = [];
+  for (let y = current; y >= Math.min(firstYear, current); y--) out.push(y);
+  return out;
 }
 
 // The academic year the moment belongs to, named by the year it started in.
@@ -198,8 +216,12 @@ export function seasonStartYear(unixSeconds: number): number {
 }
 
 export function seasonLabel(unixSeconds: number): string {
-  const start = seasonStartYear(unixSeconds);
-  return `${start}–${String(start + 1).slice(-2)}`;
+  return seasonName(seasonStartYear(unixSeconds));
+}
+
+// '2026–27' for the season that started in 2026.
+export function seasonName(startYear: number): string {
+  return `${startYear}–${String(startYear + 1).slice(-2)}`;
 }
 
 // Every month of the season so far, September first.
@@ -246,8 +268,12 @@ export async function monthlyActivity(db: D1Database, discordId: string, unixSec
 }
 
 // The season per channel, busiest first: the statistics side, no member in it.
-export async function channelSeason(db: D1Database, unixSeconds: number): Promise<{ channel_id: string; name: string; messages: number; voice_minutes: number; days: number }[]> {
-  const { from, to } = seasonDays(unixSeconds);
+export async function channelSeason(
+  db: D1Database,
+  unixSeconds: number,
+  startYear = seasonStartYear(unixSeconds),
+): Promise<{ channel_id: string; name: string; messages: number; voice_minutes: number; days: number }[]> {
+  const { from, to } = seasonBounds(startYear, unixSeconds);
   const { results } = await db
     .prepare(
       `SELECT channel_id, name, SUM(messages) AS messages, SUM(voice_minutes) AS voice_minutes, COUNT(*) AS days

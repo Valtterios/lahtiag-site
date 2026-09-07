@@ -47,6 +47,10 @@ There are two logins.
 | Check whether someone is a member (name and status) | | yes | yes |
 | Open the full register, approve members, export | | | yes |
 
+![Board tools](images/site/board-hub.png)
+
+*lahtiag.fi/board: every board page one click away. Board login shows the same to a board member without register access.*
+
 Board tools sit at the bottom of a page in a folded "Board tools" block,
 so nothing sensitive shows when a page is on a projector. A small pill at
 the bottom right lets you view a page as a member or a visitor would.
@@ -224,7 +228,7 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ![The /board panel in Discord](images/discord/board-panel.png)
 
-*`/board` in Discord: Event, Bracket and Announce & screen open the buttons; Whitelist, Register and News link to the site. Only the person who typed it sees the panel.*
+*`/board` in Discord: Event, Bracket and Announce & screen open the buttons; Whitelist, Season, Register and News link to the site. Only the person who typed it sees the panel.*
 
 
 ![The Hall of Fame](images/site/history-hall.png)
@@ -392,6 +396,33 @@ puts it on the page and on Discord.
   page shows a member their counts, and `/season` in Discord shows their
   season so far: events, Discord activity, Minecraft play time. Both
   warn when no Minecraft name is linked to them.
+- **The season page.** Board tools → Season (lahtiag.fi/board/season,
+  any board member) shows what has been counted, with nobody named: the
+  totals, the same by week, by channel, and Minecraft by server, plus how
+  many of the people counted are linked members. Look at it now and
+  then: if a channel that should count is missing, or the numbers look
+  wrong, say so before the season pass rules hang on them. The current
+  season shows; a past season is a click away and never mixes into this
+  one.
+
+![The season page](images/site/season-top.png)
+
+*The season page: the totals, then the same by week; by channel and by server follow below.*
+
+- **Ticks.** Some things for the season pass can't be counted, like
+  helping at an event: the board ticks them by hand. Give tick on the
+  season page (pick the tick, the member, and the event if there is
+  one), or under an event's Manage participants, where the people at the
+  event are listed first. Each tick once per event; the board channel
+  gets a line. The list of ticks is the board's to keep: Add to the list
+  makes a new kind, Retire hides one without losing what was given.
+  Members see their own ticks under `/season` and on the membership page.
+
+| | |
+|---|---|
+| ![season-ticks](images/site/season-ticks.png) | ![event-ticks](images/site/event-ticks.png) |
+| Ticks on the season page: 1 Give tick, the ticks given this season, and 2 the list of kinds. | The same under an event's Manage participants, with the people at the event first. |
+
 - **Your stats.** The membership page shows your events, tournaments and
   wins, with a card; `/profile` in Discord posts the card for everyone.
   The card carries the season so far too (events, messages, voice,
@@ -455,6 +486,8 @@ puts it on the page and on Discord.
 |---|---|
 | Register, applications, exports | lahtiag.fi/register (register login) |
 | Member check | lahtiag.fi/register/lookup (Board role) |
+| Every board page, one click away | lahtiag.fi/board (Board role) |
+| Season: activity counts and ticks | lahtiag.fi/board/season (Board role) |
 | Events and the door | lahtiag.fi/events → event → Board tools |
 | Shop and items to hand over | lahtiag.fi/shop, lahtiag.fi/shop/orders |
 | News | lahtiag.fi/announcements |

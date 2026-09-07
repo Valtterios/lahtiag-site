@@ -1,0 +1,42 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import BoardHub from '../../components/BoardHub.astro';
+import { requireAnyBoard } from '../../lib/board-access';
+import { listUpcomingEvents } from '../../lib/db';
+
+// The board's front page: every board page one click away, for the
+// Discord Board role and the register accounts alike. The same hub shows
+// on /register for a board member without register access.
+
+const access = await requireAnyBoard(Astro.request, env);
+Astro.response.status = access.ok ? 200 : access.status;
+const events = access.ok ? (await listUpcomingEvents(env.DB, Math.floor(Date.now() / 1000), true)).slice(0, 6) : [];
+---
+<Base title="Board tools" description="The board's pages on lahtiag.fi, one click away." wide>
+  <article class="prose">
+    <h1>Board tools</h1>
+    {!access.ok ? (
+      access.reason === 'discord_down' ? (
+        <p>Discord didn't answer while checking your role. Wait a moment and reload.</p>
+      ) : (
+        <>
+          <p>Board members sign in with Discord with the Board role. The register accounts (the chair and the treasurer) can use their Google sign-in as well.</p>
+          <p class="entry-actions">
+            <a class="btn btn-primary" href="/login?next=/board">Sign in with Discord</a>
+            <a class="btn btn-ghost" href="/auth/google">Register sign-in with Google</a>
+          </p>
+        </>
+      )
+    ) : (
+      <>
+        <p>
+          Signed in as <strong>{access.who}</strong>{access.full ? ' with register access' : ' with the Board role'}.
+          {access.full ? ' The full register is under Register.' : ' The full register, with members\' personal data, opens only for the accounts with register access.'}
+        </p>
+        <BoardHub events={events} />
+        {access.full && <p class="queue-meta"><a href="/register">Open the register</a></p>}
+      </>
+    )}
+  </article>
+</Base>

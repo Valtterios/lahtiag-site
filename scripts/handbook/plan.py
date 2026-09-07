@@ -42,6 +42,11 @@ shot('membership-top', '/membership', 'admin', clip='h1', skip=-10, extend=670, 
 shot('membership-actives', '/membership', 'admin', clip={'sel': '#membership .self-panel', 'i': 0}, hl=['text=I want to be an active'], pad=8)
 shot('membership-minecraft', '/membership#minecraft', 'admin', clip='.mc-card', hl=['text=Change', 'text=Ask the board'], pad=8, nums=True)
 shot('join', '/join', clip='h1', skip=-10, extend=470, hl=['text=Sign in, then apply'])
+# The board's own pages
+shot('board-hub', '/board', 'admin', clip='.board-links', pad=16, hl=['text=Season'])
+shot('season-top', '/board/season', 'admin', clip='h1', skip=0, extend=700, hl=['.stat-tiles'])
+shot('season-ticks', '/board/season', 'admin', clip='#ticks', pad=12, hl=['text=Give tick', 'text=Add to the list'], nums=True)
+shot('event-ticks', '/events/2', 'admin', open=['details.admin-panel'], openText=['Manage participants'], clip='.ticks-box', pad=12, hl=['text=Give tick'])
 # Events
 shot('events-list', '/events', top=790, pad=0)
 shot('events-board-tools', '/events', 'admin', open=['details.admin-panel'], clip='details.admin-panel', top=330, hl=['text=Member check', 'text=Minecraft whitelist', 'text=News', 'text^=Create an event'])

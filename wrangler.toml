@@ -72,6 +72,8 @@ run_worker_first = [
   "/stripe/*",
   "/register",
   "/register/*",
+  "/board",
+  "/board/*",
   "/history",
   "/sitemap.xml",
 ]
@@ -156,6 +158,8 @@ run_worker_first = [
   "/stripe/*",
   "/register",
   "/register/*",
+  "/board",
+  "/board/*",
   "/history",
   "/sitemap.xml",
 ]

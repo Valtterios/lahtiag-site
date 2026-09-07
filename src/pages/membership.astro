@@ -22,6 +22,7 @@ import { formatHelsinkiDate, formatHelsinkiRange } from '../lib/time';
 import { listMinecraftNames, serversLabel, narrowed, SERVERS, FRIENDS_PER_MEMBER } from '../lib/minecraft';
 import { seasonLabel, voiceLabel } from '../lib/activity';
 import { seasonSummary, minecraftLine } from '../lib/season';
+import { tickList } from '../lib/ticks';
 
 // A member's own page: their status, the actives request, and every
 // detail they gave on the application, editable by them. Needs a Discord
@@ -215,6 +216,11 @@ const MESSAGES: Record<FieldError, string> = {
           {season && isMember && (
             <p class="queue-meta">
               Minecraft this season: {minecraftLine(season, 'Put it in under Minecraft below.')} <code>/season</code> in Discord shows the same.
+            </p>
+          )}
+          {season && season.ticks.length > 0 && (
+            <p class="queue-meta">
+              Ticks from the board this season: {tickList(season.ticks)}.
             </p>
           )}
           <form method="post" action="/membership/leaderboard" class="app-form-row leaderboard-optin">

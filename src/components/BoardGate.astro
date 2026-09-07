@@ -5,7 +5,7 @@
 // sign in with Google. Renders no data whatsoever.
 import type { BoardCheck } from '../lib/board';
 import type { Session } from '../lib/auth';
-import { formatHelsinki } from '../lib/time';
+import BoardHub from './BoardHub.astro';
 
 interface Props {
   check: Exclude<BoardCheck, { ok: true }>;
@@ -29,39 +29,7 @@ const { check, session = null, events = [] } = Astro.props;
             with members' personal data, opens only for the accounts with register access (the chair
             and the treasurer). Everything else the board does is a click away:
           </p>
-          <div class="paths board-links">
-            <section class="path-card">
-              <h2>At the door</h2>
-              {events.length === 0 ? (
-                <p>No upcoming events. Create one on the events page; its door page appears here.</p>
-              ) : (
-                <ul class="board-doors">
-                  {events.map((e) => (
-                    <li><a href={`/events/${e.id}/door`}>{e.title}</a> <span class="queue-meta">{formatHelsinki(e.starts_at)}</span></li>
-                  ))}
-                </ul>
-              )}
-              <p class="entry-actions"><a class="btn btn-ghost btn-sm" href="/shop/orders">Items to hand over</a></p>
-            </section>
-            <section class="path-card">
-              <h2>Members</h2>
-              <p>Is someone a member? Name and status only.</p>
-              <p class="entry-actions"><a class="btn btn-primary" href="/register/lookup">Member check</a></p>
-            </section>
-            <section class="path-card">
-              <h2>Run things</h2>
-              <ul class="board-doors">
-                <li><a href="/events">Events</a> <span class="queue-meta">create, tickets, questions</span></li>
-                <li><a href="/shop">Shop</a> <span class="queue-meta">products and pictures</span></li>
-                <li><a href="/announcements">News</a> <span class="queue-meta">write and publish</span></li>
-              </ul>
-            </section>
-            <section class="path-card">
-              <h2>How it all works</h2>
-              <p>The board guide is the short version; the technical handbook has the settings and the fixes.</p>
-              <p class="entry-actions"><a class="btn btn-primary" href="/handbook">Board guide</a> <a class="btn btn-ghost" href="/handbook/technical">Technical handbook</a></p>
-            </section>
-          </div>
+          <BoardHub events={events} />
           <p class="queue-meta">Register access: <a href="/auth/google">sign in with the lahtiag.fi Google account</a>.</p>
         </>
       ) : (
