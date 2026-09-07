@@ -1,6 +1,7 @@
 ---
 import { env } from 'cloudflare:workers';
-import { getEntry, render } from 'astro:content';
+import { getEntry } from 'astro:content';
+import { Marked } from 'marked';
 import Base from '../layouts/Base.astro';
 import DiscordWidget from '../components/DiscordWidget.astro';
 import { listUpcomingEvents, listAnnouncements, listPhotoAlbums, coverVersions, type EventWithCounts, type AnnouncementRow, type PhotoAlbum } from '../lib/db';
@@ -16,7 +17,22 @@ const entry = await getEntry('pages', 'home');
 if (!entry) {
   throw new Error('src/content/pages/home.md is required: it is the site root.');
 }
-const { Content } = await render(entry);
+// The page's own words are one Markdown file the board edits, but they
+// belong in two places: what the association is, high up, and what it does,
+// beside the way in. Each "## " heading starts a piece; the first piece is
+// the first slot and everything after it the second, so an edited file with
+// one heading or three still renders whole.
+const escapeHtml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const markdown = new Marked({ renderer: { html: ({ text }) => escapeHtml(text) } });
+const pieces = entry.body
+  ? entry.body
+      .split(/^(?=## )/m)
+      .map((piece) => piece.trim())
+      .filter(Boolean)
+      .map((piece) => markdown.parse(piece, { async: false }) as string)
+  : [];
+const aboutHtml = pieces[0] ?? '';
+const doesHtml = pieces.slice(1).join('\n');
 
 const now = Math.floor(Date.now() / 1000);
 let upcoming: EventWithCounts[] = [];
@@ -95,6 +111,12 @@ try {
     </section>
   )}
 
+  {aboutHtml && (
+    <section class="home-section home-words">
+      <div class="prose home-prose" set:html={aboutHtml} />
+    </section>
+  )}
+
   {news.length > 0 && (
     <section class="home-section">
       <div class="home-head">
@@ -122,6 +144,23 @@ try {
     </section>
   )}
 
+  {doesHtml && (
+    <section class="home-about">
+      <div class="prose home-prose" set:html={doesHtml} />
+      <aside class="home-join">
+        <h2>Membership is free</h2>
+        <p>
+          Open to every student at Lahti's higher education institutions, and to anyone else as a supporting member.
+          Members pay less for tickets, get the member channels on Discord, and count towards the season.
+        </p>
+        <p class="entry-actions">
+          <a class="btn btn-cta" href="/join">Become a member</a>
+          <a class="btn btn-ghost" href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Say hi on Discord</a>
+        </p>
+      </aside>
+    </section>
+  )}
+
   {albums.length > 0 && (
     <section class="home-section">
       <div class="home-head">
@@ -141,20 +180,4 @@ try {
     </section>
   )}
 
-  <section class="home-about">
-    <article class="prose">
-      <Content />
-    </article>
-    <aside class="home-join">
-      <h2>Membership is free</h2>
-      <p>
-        Open to every student at Lahti's higher education institutions, and to anyone else as a supporting member.
-        Members pay less for tickets, get the member channels on Discord, and count towards the season.
-      </p>
-      <p class="entry-actions">
-        <a class="btn btn-cta" href="/join">Become a member</a>
-        <a class="btn btn-ghost" href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Say hi on Discord</a>
-      </p>
-    </aside>
-  </section>
 </Base>

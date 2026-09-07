@@ -20,13 +20,15 @@ has the details, the settings and the fixes.
 
 ## The front page
 
-lahtiag.fi opens with the hero and the Discord widget, and under it three
-strips that keep themselves up to date: **Coming up** (the next three
-events with their covers, what a seat costs and how much room is left),
-**Latest news** (the three newest posts) and **From our events** (a
-picture from each event that has an album). Nothing there is written by
-hand: publish an event, post news or upload photos and the front page
-follows.
+lahtiag.fi opens with the hero and the Discord widget, then alternates
+what is happening with what the association is: **Coming up** (the next
+three events with their covers, what a seat costs and how much room is
+left), **About us**, **Latest news** (the three newest posts), **What we
+do** with the membership box beside it, and **From our events** (a picture
+from each event that has an album). The events, news and photos are not
+written by hand: publish an event, post news or upload photos and the front
+page follows. The words are `src/content/pages/home.md`, split where its
+headings are — edit that file and both halves follow.
 
 ![The front page](images/site/home-strips.png)
 

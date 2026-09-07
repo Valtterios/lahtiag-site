@@ -2045,7 +2045,36 @@ a:hover {
   object-fit: contain;
 }
 
-/* The association's own words, with the way in beside them. */
+/* The page's own words: the heading full width, the text in two columns
+   so a paragraph does not run the width of the screen. */
+.home-words {
+  margin-bottom: 2.4rem;
+}
+
+.home-prose {
+  columns: 2;
+  column-gap: 2.8rem;
+}
+
+.home-prose > :first-child {
+  margin-top: 0;
+}
+
+.home-prose h2 {
+  column-span: all;
+}
+
+.home-prose li {
+  break-inside: avoid;
+}
+
+@media (max-width: 800px) {
+  .home-prose {
+    columns: 1;
+  }
+}
+
+/* What the association does, with the way in beside it. */
 .home-about {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(17rem, 1fr);
@@ -2058,8 +2087,9 @@ a:hover {
   margin: 0;
 }
 
-.home-about .prose h2:first-child {
-  margin-top: 0;
+/* beside the join box there is no room for two columns of text */
+.home-about .home-prose {
+  columns: 1;
 }
 
 .home-join {

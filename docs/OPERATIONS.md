@@ -47,16 +47,18 @@ Cloudflare's free tier.
 ## The front page
 
 `src/pages/index.astro` is server-rendered: the hero and the Discord
-widget, then three strips from D1 — the next three events (the same tiles
-as the events page, `src/lib/price.ts` for what a seat costs), the three
-newest published posts with their first line (`newsExcerpt` in
-`src/lib/news.ts`), and one picture from each of the six newest events
-with photos (`listPhotoAlbums`). The prose under them is
-`src/content/pages/home.md`, with the join box beside it rather than
-under it, so the association's own words do not trail off the bottom of
-the page. A post with no cover shows the mark on a band, the way an event
-without one does. Every query sits in one `try`: a database hiccup empties
-the strips, it never takes the front page down.
+widget, then strips from D1 with the page's own words between them — the
+next three events (the same tiles as the events page, `src/lib/price.ts`
+for what a seat costs), **About us**, the three newest published posts with
+their first line (`newsExcerpt` in `src/lib/news.ts`), **What we do** with
+the membership box beside it, and one picture from each of the six newest
+events with photos (`listPhotoAlbums`). The words are
+`src/content/pages/home.md`, rendered here with `marked` and split at its
+`## ` headings: the first heading's piece goes in the first slot, the rest
+in the second, so a file with one heading or three still renders whole. A
+post with no cover shows the mark on a band, the way an event without one
+does. Every query sits in one `try`: a database hiccup empties the strips,
+it never takes the front page down.
 
 ## Who can do what
 
