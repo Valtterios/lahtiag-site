@@ -902,13 +902,17 @@ membership with the Discord account linked; `/season` and the membership
 page say how many of the member's claims are waiting.
 
 **The XP leaderboard.** `/leaderboard` posts the season's top ten by XP
-for everyone to see (`src/lib/xp.ts`: `xpStandings` adds every linked
-member's ticks up with the caps, `leaderboardText` prints it with the
-reader's own rank under the list when they are not in it). XP is the
-ticks until the board sets the rules; events, Discord activity and
-Minecraft play join in the same function then. Members hidden from the
-history page's leaderboard are hidden here too, and see only their own
-rank. The message carries buttons that answer privately to whoever
+for everyone to see, as an embed in the brand blue with a monospace
+table in it (`src/lib/xp.ts`: `xpStandings` adds every linked member's
+ticks up with the caps, `leaderboardEmbed` draws it, with the reader's
+own rank under the table when they are not in it). Names in the table
+are the cached Discord names (`members.username`, refreshed whenever
+someone uses the season commands), else the handle on the register
+entry, since mentions don't render inside a code block. XP is the ticks
+until the board sets the rules; events, Discord activity and Minecraft
+play join in the same function then. Members hidden from the history
+page's leaderboard are hidden here too, and their numbers never appear
+in the public message. The message carries buttons that answer privately to whoever
 presses them, on the public message as well: My season (the `/season`
 reply), Claim a tick, Link my Minecraft name (a modal that does what
 `/whitelist me` does), and a link to the membership page; the same

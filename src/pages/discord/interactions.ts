@@ -71,7 +71,7 @@ import { editChannelMessage as editBoardMessage, dmUser as dmMember, SUPPRESS_EM
 import { seasonSummary, seasonLines } from '../../lib/season';
 import { listClaimableKinds, createClaim, decideClaim, claimLine, claimDecisionDm, CLAIM_NOTE_MAX } from '../../lib/claims';
 import { getTickKind, kindWorth } from '../../lib/ticks';
-import { xpStandings, leaderboardText } from '../../lib/xp';
+import { xpStandings, leaderboardEmbed } from '../../lib/xp';
 import { NO_MENTIONS } from '../../lib/discord';
 
 // The Discord bot: an HTTP Interactions endpoint inside the same Worker
@@ -398,6 +398,7 @@ async function handleSeason(env: WorkerEnv, interaction: Interaction, origin: st
   const userId = interaction.member?.user?.id;
   if (!userId) return;
   const now = Math.floor(Date.now() / 1000);
+  await rememberInvoker(env, interaction, now);
   const [summary, claimable] = await Promise.all([seasonSummary(env.DB, userId, now), listClaimableKinds(env.DB)]);
   await editInteractionReply(interaction.application_id, interaction.token, seasonLines(summary, origin), seasonButtons(origin, claimable.length > 0, false));
   return 'keep';
@@ -405,16 +406,25 @@ async function handleSeason(env: WorkerEnv, interaction: Interaction, origin: st
 
 async function handleLeaderboard(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
   const now = Math.floor(Date.now() / 1000);
+  await rememberInvoker(env, interaction, now);
   const [standings, claimable] = await Promise.all([xpStandings(env.DB, now), listClaimableKinds(env.DB)]);
   await editInteractionReply(
     interaction.application_id,
     interaction.token,
-    leaderboardText(standings, interaction.member?.user?.id ?? null, now),
+    '',
     seasonButtons(origin, claimable.length > 0, true),
-    [],
+    [leaderboardEmbed(standings, interaction.member?.user?.id ?? null, now)],
     NO_MENTIONS,
   );
   return 'keep';
+}
+
+// The table prints cached Discord names, so anyone who uses the season
+// commands gets theirs cached, like the event buttons do.
+async function rememberInvoker(env: WorkerEnv, interaction: Interaction, now: number): Promise<void> {
+  const user = interaction.member?.user;
+  if (!user) return;
+  await upsertMember(env.DB, { discord_id: user.id, username: interaction.member?.nick ?? user.global_name ?? user.username, avatar_hash: user.avatar }, now);
 }
 
 // A button pressed under /season or the leaderboard: a fresh private reply.

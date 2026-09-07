@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { env } from 'cloudflare:test';
-import { xpStandings, leaderboardText, XP_NOTE } from '../src/lib/xp';
+import { xpStandings, leaderboardEmbed, leaderboardTable, ownLine, shownName, XP_NOTE } from '../src/lib/xp';
 import { addTickKind, giveTick, listTickKinds } from '../src/lib/ticks';
 
 const NOW = Date.UTC(2026, 8, 7, 12) / 1000;
@@ -21,11 +21,11 @@ async function member(name: string, discordId: string | null, status = 'member')
 describe('the XP leaderboard', () => {
   it('is empty until the first tick', async () => {
     expect(await xpStandings(env.DB, NOW)).toEqual([]);
-    const text = leaderboardText([], IDS[0], NOW);
-    expect(text).toContain('🏆 **Season 2026–27 leaderboard**');
-    expect(text).toContain('No XP yet this season.');
-    expect(text).toContain('You: no XP yet.');
-    expect(text).toContain(XP_NOTE);
+    const embed = leaderboardEmbed([], IDS[0], NOW) as { title: string; description: string; footer: { text: string } };
+    expect(embed.title).toBe('🏆 Season 2026–27 leaderboard');
+    expect(embed.description).toContain('No XP yet this season.');
+    expect(embed.description).toContain('You: no XP yet.');
+    expect(embed.footer.text).toBe(XP_NOTE);
   });
 
   it('ranks members by this season, caps applied, hidden ones kept off the list', async () => {
@@ -53,27 +53,26 @@ describe('the XP leaderboard', () => {
 
     const standings = await xpStandings(env.DB, NOW);
     expect(standings).toEqual([
-      { discord_id: IDS[0], username: 'Aino', xp: 130, hidden: false, rank: 1 },
-      { discord_id: IDS[1], username: null, xp: 130, hidden: false, rank: 1 },
-      { discord_id: IDS[2], username: 'Cecilia', xp: 100, hidden: true, rank: 3 },
+      { discord_id: IDS[0], username: 'Aino', handle: null, xp: 130, hidden: false, rank: 1 },
+      { discord_id: IDS[1], username: null, handle: null, xp: 130, hidden: false, rank: 1 },
+      { discord_id: IDS[2], username: 'Cecilia', handle: null, xp: 100, hidden: true, rank: 3 },
     ]);
+    // The name in the table: the cached Discord name, else the register's handle, else a stub.
+    expect(shownName(standings[0])).toBe('Aino');
+    expect(shownName(standings[1])).toBe('member …0002');
+    expect(shownName({ ...standings[1], handle: 'bo_b' })).toBe('bo_b');
 
-    const asBo = leaderboardText(standings, IDS[1], NOW);
-    expect(asBo).toContain('1. **Aino** · 130 XP');
-    expect(asBo).toContain(`1. <@${IDS[1]}> · 130 XP`);
-    expect(asBo).not.toContain('Cecilia');
-    expect(asBo).not.toContain('You:');
-
-    const asCecilia = leaderboardText(standings, IDS[2], NOW);
-    expect(asCecilia).toContain('You: hidden from the list, as you chose on your membership page.');
-    expect(asCecilia).not.toContain('100 XP');
-
-    const asStranger = leaderboardText(standings, IDS[3], NOW);
-    expect(asStranger).toContain('You: no XP yet.');
-
+    const table = leaderboardTable(standings);
+    expect(table).toBe('```\n 1  Aino              130 XP\n 1  member …0002      130 XP\n```');
+    expect(table).not.toContain('Cecilia');
+    expect(ownLine(standings, IDS[1])).toBeNull();
+    expect(ownLine(standings, IDS[2])).toBe('You: hidden from the list, as you chose on your membership page. `/season` shows your XP.');
+    expect(ownLine(standings, IDS[3])).toBe('You: no XP yet. `/season` shows what counts.');
+    expect(ownLine(standings, null)).toBeNull();
     // A short list shows the caller's own rank below it.
-    const asAinoShort = leaderboardText(standings, IDS[1], NOW, 1);
-    expect(asAinoShort).toContain('1. **Aino** · 130 XP');
-    expect(asAinoShort).toContain('You: #1 with 130 XP.');
+    expect(ownLine(standings, IDS[1], 1)).toBe('You: #1 with 130 XP.');
+    const embed = leaderboardEmbed(standings, IDS[1], NOW, 1) as { description: string; color: number };
+    expect(embed.color).toBe(0x2b5cff);
+    expect(embed.description).toBe('```\n 1  Aino              130 XP\n```\nYou: #1 with 130 XP.');
   });
 });
