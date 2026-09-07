@@ -38,8 +38,8 @@ shot('register-entry', '/register/11', 'admin', clip='h1', pad=20, extend=170, h
 shot('register-member-entry', '/register/2', 'admin', clip='h1', pad=20, extend=170, hl=['text=Mark as former member'])
 shot('register-access', '/register/access', 'admin', clip='h1', skip=-10, extend=400, hl=['text=Grant access'])
 shot('lookup', '/register/lookup?q=mikko', 'admin', device='mobile', clip='h1', skip=-10, extend=560)
-shot('membership-top', '/membership', 'admin', clip='h1', skip=-10, extend=670, hl=['nav.tabs', '.leaderboard-optin'], nums=True)
-shot('membership-actives', '/membership', 'admin', clip={'sel': '#membership .self-panel', 'i': 0}, hl=['text=I want to be an active'], pad=8)
+shot('membership-top', '/membership', 'admin', clip='.page-head', skip=-10, extend=560, hl=['.leaderboard-optin', 'nav.tabs'], nums=True)
+shot('membership-actives', '/membership', 'admin', clip={'sel': '#membership .panel-card', 'i': 0}, hl=['text=I want to be an active'], pad=8)
 shot('membership-minecraft', '/membership#minecraft', 'admin', clip='.mc-card', hl=['text=Change', 'text=Ask the board'], pad=8, nums=True)
 shot('join', '/join', clip='h1', skip=-10, extend=470, hl=['text=Sign in, then apply'])
 # The board's own pages

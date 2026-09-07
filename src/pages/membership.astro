@@ -20,7 +20,7 @@ import { postBoardLine, approveButtons } from '../lib/board-channel';
 import { applyRoles, loadRoleConfig } from '../lib/roles';
 import { formatHelsinkiDate, formatHelsinkiRange } from '../lib/time';
 import { listMinecraftNames, serversLabel, narrowed, SERVERS, FRIENDS_PER_MEMBER } from '../lib/minecraft';
-import { seasonLabel, voiceLabel } from '../lib/activity';
+import { voiceLabel } from '../lib/activity';
 import { seasonSummary, minecraftLine } from '../lib/season';
 import { tickList } from '../lib/ticks';
 
@@ -42,6 +42,9 @@ const onLeaderboard = session ? await isLeaderboardOptIn(env.DB, session.discord
 const mcNames = session ? await listMinecraftNames(env.DB, session.discordId) : [];
 const mcOwn = mcNames.find((n) => n.kind === 'own') ?? null;
 const mcFriends = mcNames.filter((n) => n.kind === 'friend');
+// The badge on the status panel: the class for members, otherwise where the entry stands.
+const STATUS_CLASS: Record<string, string> = { member: 'status-member', pending: 'status-pending', former: 'status-former' };
+const statusLabel = entry ? (entry.status === 'member' ? MEMBER_TYPE_LABELS[entry.member_type] : entry.status === 'pending' ? 'Application pending' : 'Former member') : '';
 const RELATION: Record<string, string> = { ticket: 'Ticket', going: 'Going', maybe: 'Maybe', waitlist: 'On the waitlist', interested: 'Interested' };
 const pendingLink = session && !entry ? await getPendingLinkByDiscord(env.DB, session.discordId) : null;
 
@@ -144,20 +147,20 @@ const MESSAGES: Record<FieldError, string> = {
 };
 ---
 <Base title="Your membership" description="Your LahtiAG membership: status, actives, and your details.">
-  <article class="prose">
+  <header class="page-head">
     <h1>Your membership</h1>
-  </article>
-  {session && (
-    <p class="account-bar">
-      <span>Signed in as <strong>{session.username}</strong> on Discord.</span>
-      <a href="/tickets">My tickets</a>
-      <a href="/purchases">My purchases</a>
-      <form method="post" action="/logout" class="inline-form">
-        <input type="hidden" name="csrf" value={csrf} />
-        <button class="btn btn-ghost btn-sm" type="submit">Sign out</button>
-      </form>
-    </p>
-  )}
+    {session && (
+      <div class="account-bar">
+        <span class="account-who">Signed in as <strong>{session.username}</strong> on Discord</span>
+        <a class="btn btn-ghost btn-sm" href="/tickets">My tickets</a>
+        <a class="btn btn-ghost btn-sm" href="/purchases">My purchases</a>
+        <form method="post" action="/logout" class="inline-form">
+          <input type="hidden" name="csrf" value={csrf} />
+          <button class="btn btn-ghost btn-sm" type="submit">Sign out</button>
+        </form>
+      </div>
+    )}
+  </header>
 
   {!session && (
     <div class="paths">
@@ -200,38 +203,59 @@ const MESSAGES: Record<FieldError, string> = {
     <>
       {note && <p class="flash">{note}</p>}
 
-      {stats && (
-        <section class="stats-hero" id="my-stats">
-          <img class="profile-card" src="/membership/card.png" alt="Your stats card" width="900" height="536" />
-          <p class="queue-meta">
-            <strong>{stats.attended}</strong> events, <strong>{stats.tournaments}</strong> tournaments, <strong>{stats.wins}</strong> wins
-            {stats.last_win ? <> · last win: {stats.last_win.title}</> : null}. <code>/profile</code> in Discord posts the card for everyone.
+      <section class="member-hero" id="my-stats">
+        {stats && <img class="profile-card" src="/membership/card.png" alt="Your stats card" width="900" height="536" />}
+        <div class="member-status">
+          <p class="member-status-line">
+            <span class={`status-badge ${STATUS_CLASS[entry.status] ?? ''}`}>{statusLabel}</span>
+            {entry.status === 'member' && <span class="member-since">since {formatHelsinkiDate(entry.decided_at ?? entry.applied_at)}</span>}
+            {entry.status === 'pending' && <span class="member-since">applied {formatHelsinkiDate(entry.applied_at)}</span>}
           </p>
-          {season && (season.messages > 0 || season.voice_minutes > 0) && (
-            <p class="queue-meta">
-              On Discord this season ({seasonLabel(Math.floor(Date.now() / 1000))}): <strong>{season.messages}</strong> messages · <strong>{voiceLabel(season.voice_minutes)}</strong> in voice.
-              {' '}Counted only in channels every member can see.
-            </p>
-          )}
+          <h2 class="member-name">{entry.full_name}</h2>
+          <p class="member-meta">
+            Linked to <strong>{session.username}</strong> on Discord.
+            {entry.status === 'pending' && <> The board decides on applications at its next meeting.</>}
+            {entry.status === 'former' && <> You're listed as a former member; email the board to rejoin.</>}
+          </p>
+
           {season && isMember && (
-            <p class="queue-meta">
-              Minecraft this season: {minecraftLine(season, 'Put it in under Minecraft below.')} <code>/season</code> in Discord shows the same.
-            </p>
+            <dl class="season-facts">
+              <div class="season-facts-head">
+                <dt>Season {season.label}</dt>
+                <dd><strong>{season.tick_xp} XP</strong></dd>
+              </div>
+              <div>
+                <dt>Discord</dt>
+                <dd>{season.messages > 0 || season.voice_minutes > 0 ? <><strong>{season.messages}</strong> messages · <strong>{voiceLabel(season.voice_minutes)}</strong> in voice</> : 'Nothing counted yet'}</dd>
+              </div>
+              <div>
+                <dt>Minecraft</dt>
+                <dd>{minecraftLine(season, 'Add it under Minecraft below.')}</dd>
+              </div>
+              <div>
+                <dt>Ticks</dt>
+                <dd>{season.ticks.length > 0 ? tickList(season.ticks) : 'None from the board yet'}</dd>
+              </div>
+              {season.claims_pending > 0 && (
+                <div>
+                  <dt>Claims</dt>
+                  <dd><strong>{season.claims_pending}</strong> waiting for the board. You get a DM when they are decided.</dd>
+                </div>
+              )}
+            </dl>
           )}
-          {season && season.ticks.length > 0 && (
-            <p class="queue-meta">
-              Ticks from the board this season: {tickList(season.ticks)}{season.tick_xp > 0 ? <>, worth <strong>{season.tick_xp} XP</strong></> : ''}.
-            </p>
-          )}
-          {season && season.claims_pending > 0 && (
-            <p class="queue-meta">Claims waiting for the board: {season.claims_pending}. You get a DM when they are decided.</p>
-          )}
-          <form method="post" action="/membership/leaderboard" class="app-form-row leaderboard-optin">
-            <input type="hidden" name="csrf" value={csrf} />
-            <label class="check"><input type="checkbox" name="hide" checked={!onLeaderboard} /> <span>Hide me from the public leaderboard on the <a href="/history">history page</a>, and keep my season off my profile card (everyone is on both unless hidden)</span></label>
-            <button class="btn btn-ghost btn-sm" type="submit">Save</button>
-          </form>
-        </section>
+          <p class="member-foot">
+            Discord counts only channels every member can see. <code>/profile</code> in Discord posts the card for everyone, <code>/season</code> shows this season to you.
+          </p>
+        </div>
+      </section>
+
+      {stats && (
+        <form method="post" action="/membership/leaderboard" class="leaderboard-optin">
+          <input type="hidden" name="csrf" value={csrf} />
+          <label class="check"><input type="checkbox" name="hide" checked={!onLeaderboard} /> <span>Hide me from the public leaderboard on the <a href="/history">history page</a> and keep my season off my profile card. Everyone is on both unless hidden.</span></label>
+          <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+        </form>
       )}
 
       <nav class="tabs" data-tabs aria-label="Membership sections">
@@ -242,34 +266,19 @@ const MESSAGES: Record<FieldError, string> = {
       <noscript><style>{'.tab-panel[hidden]{display:block} .tabs{display:none}'}</style></noscript>
 
       <section class="tab-panel" id="membership" data-tab-panel>
-        <section class="member-card">
-          <p class="flash">
-            {entry.status === 'member' && (
-              <>{MEMBER_TYPE_LABELS[entry.member_type]} of LahtiAG since {formatHelsinkiDate(entry.decided_at ?? entry.applied_at)}.</>
-            )}
-            {entry.status === 'pending' && (
-              <>Your application from {formatHelsinkiDate(entry.applied_at)} is waiting for the board's decision.</>
-            )}
-            {entry.status === 'former' && <>You're listed as a former member. Email the board if you'd like to rejoin.</>}
-          </p>
-          <p>
-            Registered as <strong>{entry.full_name}</strong>, linked to your Discord account
-            <strong> {session.username}</strong>.
-          </p>
-          <p class="queue-meta">
-            To resign, email <a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a>.
-          </p>
-        </section>
-
-        <section class="self-panel">
-          <h2 class="section-label">Actives</h2>
-          <p class="queue-intro">
-            Actives hear about event ideas, planning and meetings first, in the actives channel on
-            Discord. It commits you to nothing. The board approves actives; once approved you get the
-            Actives role. Untick to leave.
-          </p>
-          {entry.is_active && <p class="match-tag">You're an active.</p>}
-          {!entry.is_active && entry.wants_active && <p class="warn-tag warn-soft">Asked. Waiting for the board to approve.</p>}
+        <section class="panel-card">
+          <div class="card-head">
+            <div>
+              <h2>Actives</h2>
+              <p>
+                Actives hear about event ideas, planning and meetings first, in the actives channel on
+                Discord. It commits you to nothing. The board approves actives; once approved you get the
+                Actives role. Untick to leave.
+              </p>
+            </div>
+            {entry.is_active && <span class="status-badge status-member">You're an active</span>}
+            {!entry.is_active && entry.wants_active && <span class="status-badge status-pending">Waiting for the board</span>}
+          </div>
           <form method="post" action="/membership" class="self-row">
             <input type="hidden" name="csrf" value={csrf} />
             <input type="hidden" name="intent" value="self" />
@@ -285,12 +294,16 @@ const MESSAGES: Record<FieldError, string> = {
           </form>
         </section>
 
-        <section class="self-panel">
-          <h2 class="section-label">Your details</h2>
-          <p class="queue-intro">
-            Keep these current, especially your home municipality: the association must keep it on
-            record. Your membership class and status are the board's to change.
-          </p>
+        <section class="panel-card">
+          <div class="card-head">
+            <div>
+              <h2>Your details</h2>
+              <p>
+                Keep these current, especially your home municipality: the association must keep it on
+                record. Your membership class and status are the board's to change.
+              </p>
+            </div>
+          </div>
           {problem === 'csrf' && <p class="flash">The form was stale. Please send it again.</p>}
           {problem === 'duplicate' && <p class="flash">Another member already uses that email address.</p>}
           {errors.length > 0 && (
@@ -337,34 +350,42 @@ const MESSAGES: Record<FieldError, string> = {
             <button class="btn btn-primary" type="submit">Save details</button>
           </form>
         </section>
+
+        <p class="queue-meta">To resign, email <a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a>.</p>
       </section>
 
       <section class="tab-panel" id="my-events" data-tab-panel hidden>
-        <h2 class="section-label">My events</h2>
-        {myEvents.length === 0 ? (
-          <p class="app-empty">Nothing coming up yet. Sign up, join a waitlist, or press Interested on an <a href="/events">event</a> and it shows here.</p>
-        ) : (
-          <ul class="ticket-list">
-            {myEvents.map((e) => (
-              <li class="ticket-card">
-                <div>
-                  <p class="ticket-event"><a href={`/events/${e.id}`}>{e.title}</a></p>
-                  <p class="queue-meta">{formatHelsinkiRange(e.starts_at, e.ends_at)}{e.location ? ` · ${e.location}` : ''}</p>
-                </div>
-                <span class={`status-badge${e.relation === 'ticket' || e.relation === 'going' ? ' status-member' : e.relation === 'interested' ? ' status-muted' : ''}`}>{RELATION[e.relation]}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p class="queue-meta">Tickets are under <a href="/tickets">My tickets</a>; past events and results on the <a href="/history">history page</a>.</p>
+        <section class="panel-card">
+          <div class="card-head">
+            <div>
+              <h2>My events</h2>
+              <p>Everything you're signed up for, on a waitlist for, or marked as interested in.</p>
+            </div>
+          </div>
+          {myEvents.length === 0 ? (
+            <p class="app-empty">Nothing coming up yet. Sign up, join a waitlist, or press Interested on an <a href="/events">event</a> and it shows here.</p>
+          ) : (
+            <ul class="ticket-list">
+              {myEvents.map((e) => (
+                <li class="ticket-card">
+                  <div>
+                    <p class="ticket-event"><a href={`/events/${e.id}`}>{e.title}</a></p>
+                    <p class="queue-meta">{formatHelsinkiRange(e.starts_at, e.ends_at)}{e.location ? ` · ${e.location}` : ''}</p>
+                  </div>
+                  <span class={`status-badge${e.relation === 'ticket' || e.relation === 'going' ? ' status-member' : e.relation === 'interested' ? ' status-muted' : ''}`}>{RELATION[e.relation]}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p class="queue-meta card-foot">Tickets are under <a href="/tickets">My tickets</a>; past events and results on the <a href="/history">history page</a>.</p>
+        </section>
       </section>
 
       <section class="tab-panel" id="minecraft" data-tab-panel hidden>
-        <h2 class="section-label">Minecraft servers</h2>
         <div class="mc-card">
           <div class="mc-head">
             <div>
-              <h3>Whitelist</h3>
+              <h2>Whitelist</h2>
               <p>
                 Your Java edition name goes on every LahtiAG server within five minutes. Up to {FRIENDS_PER_MEMBER} friends can come along on your
                 membership once the board says yes. Every name is checked with Mojang and shown with its skin, so you can see it's the right account.
@@ -426,7 +447,7 @@ const MESSAGES: Record<FieldError, string> = {
                   </form>
                 )}
               </div>
-              <p class="queue-meta">
+              <p class="queue-meta card-foot">
                 In Discord, <code>/whitelist</code> does all of this too.{session.isAdmin && <> Board: <a href="/whitelist">the whitelist table</a>.</>}
               </p>
             </>

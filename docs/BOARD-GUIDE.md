@@ -102,7 +102,7 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ![The membership page](images/site/membership-top.png)
 
-*What a member sees: the card with their stats, 1 the tabs Membership, My events and Minecraft, 2 the leaderboard opt-out.*
+*What a member sees: the card with their stats next to their status and season, 1 the leaderboard opt-out, 2 the tabs Membership, My events and Minecraft.*
 
 ![Actives on the membership page](images/site/membership-actives.png)
 
