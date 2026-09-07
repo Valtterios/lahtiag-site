@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { upsertMember, createAnnouncement, listAnnouncements, deleteAnnouncement, getAnnouncement, updateAnnouncement, getAnnouncementCover, setAnnouncementCover, deleteAnnouncementCover, COVER_MAX_BYTES } from '../src/lib/db';
 import { newsCoverFile, newsText, newsParts, newsMessages, pingMentions, parsePing, pingLabel } from '../src/lib/news';
+import { publishAnnouncement, unpublishAnnouncement, setAnnouncementMessages } from '../src/lib/db';
 
 // A news post's cover: saved, listed as a version, attached for Discord,
 // gone with the post.
@@ -91,5 +92,20 @@ describe('news covers', () => {
     expect((await deleteAnnouncement(db(), id))?.id).toBe(id);
     expect(await getAnnouncement(db(), id)).toBeNull();
     expect(await getAnnouncementCover(db(), id)).toBeNull();
+  });
+});
+
+describe('unpublishing', () => {
+  it('makes a published post a draft again and forgets its Discord messages', async () => {
+    await env.DB.prepare("INSERT OR IGNORE INTO members (discord_id, username, last_seen) VALUES ('100000000000000009', 'Aino', 1)").run();
+    const id = await createAnnouncement(env.DB, { title: 'Hello', body_md: 'World', author_id: '100000000000000009', source: 'web', draft: true, ping: 'everyone' }, 10);
+    expect(await unpublishAnnouncement(env.DB, id)).toBeNull(); // a draft already
+    await publishAnnouncement(env.DB, id, 20);
+    await setAnnouncementMessages(env.DB, id, { image: '9', parts: ['1', '2'] });
+    const was = await unpublishAnnouncement(env.DB, id);
+    expect(newsMessages(was!)).toEqual({ image: '9', parts: ['1', '2'], legacy: false });
+    const after = await getAnnouncement(env.DB, id);
+    expect(after).toMatchObject({ draft: 1, publish_at: null, discord_message_id: null, discord_messages: null, ping: 'everyone' });
+    expect(await unpublishAnnouncement(env.DB, id)).toBeNull();
   });
 });

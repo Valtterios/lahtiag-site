@@ -1371,6 +1371,18 @@ export async function setAnnouncementMessages(db: D1Database, id: number, messag
     .run();
 }
 
+// Back to a draft: off the page, its Discord messages forgotten (the
+// caller deletes them), the ping kept so Publish can send it again.
+export async function unpublishAnnouncement(db: D1Database, id: number): Promise<AnnouncementRow | null> {
+  const row = await getAnnouncement(db, id);
+  if (!row || row.draft === 1) return null;
+  await db
+    .prepare('UPDATE announcements SET draft = 1, publish_at = NULL, discord_message_id = NULL, discord_messages = NULL WHERE id = ?1')
+    .bind(id)
+    .run();
+  return row;
+}
+
 export async function setAnnouncementMessageId(
   db: D1Database,
   id: number,

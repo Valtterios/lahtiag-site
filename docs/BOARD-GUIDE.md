@@ -350,9 +350,11 @@ On a phone it does everything:
 Board tools on the news page. A post is saved as a draft; **Publish**
 puts it on the page and on Discord, where the cover comes first as its
 own message and the text follows in as many messages as it needs, the
-ping on the first. Edits and deletes follow every part. If the page says
-Discord didn't take a post, **Post to Discord** under the post sends it
-again.
+ping on the first. Edits and deletes follow every part. **Unpublish**
+takes a post back to a draft, off the page and off Discord, and Publish
+sends it again; mind that it pings again too, so change the ping on the
+draft first if it shouldn't. If the page says Discord didn't take a
+post, **Post to Discord** under the post sends it again.
 
 ![Writing a post](images/site/news-board-tools.png)
 

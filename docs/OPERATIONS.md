@@ -205,7 +205,10 @@ changes, a new cover replaces the cover message, and a delete takes all
 of them. If Discord refuses the first part (down, a bad webhook), the
 site keeps the post as published and says so; a **Post to Discord**
 button under the post (`/announcements/discord`) sends it again once the
-post has no Discord message yet.
+post has no Discord message yet. **Unpublish** (`/announcements/unpublish`,
+`unpublishAnnouncement`) makes a published post a draft again and
+deletes its Discord messages; Publish then posts it afresh, ping
+included.
 
 ![The post form](images/site/news-board-tools.png)
 

@@ -55,6 +55,7 @@ const OK: Record<string, string> = {
   discord_posted: 'Posted on Discord.',
   discord_failed: "Discord didn't take the post. Try again in a moment.",
   discord_exists: 'That post is on Discord already.',
+  unpublished: 'Back to a draft: off the page and off Discord. Publish sends it again, pinging whoever the post pings.',
   cover_saved: 'Cover saved.',
   cover_removed: 'Cover removed.',
   edited: 'Post updated.',
@@ -95,6 +96,13 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
                 <input type="hidden" name="csrf" value={csrf} />
                 <input type="hidden" name="id" value={item.id} />
                 <button class="btn btn-cta btn-sm" type="submit" data-confirm="Publish this post? It goes on Discord right away.">Publish</button>
+              </form>
+            )}
+            {item.draft === 0 && (
+              <form method="post" action="/announcements/unpublish" class="inline-form">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="id" value={item.id} />
+                <button class="btn btn-ghost btn-sm" type="submit" data-confirm="Take this post off the site and off Discord? It becomes a draft again.">Unpublish</button>
               </form>
             )}
             {item.draft === 0 && !item.discord_message_id && (
