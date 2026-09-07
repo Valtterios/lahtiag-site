@@ -918,7 +918,11 @@ reply), Claim a tick, Link my Minecraft name (a modal that does what
 `/whitelist me` does), and a link to the membership page; the same
 buttons sit under `/season`. Custom ids start with `s:`; the modals with
 `s:modal:`. Both commands are registered with
-`scripts/register-commands.mjs` like the others.
+`scripts/register-commands.mjs` like the others. The season pass's
+first reward, a participant role, is picked on the register's Discord
+roles section like the champion role (settings key
+`participant_role_id`) and waits there for the rules: nothing gives it
+yet.
 
 **Play time.** For the season pass, `scripts/minecraft/playtime-sync.py`
 (installed as `/usr/local/bin/lahtiag-playtime-sync.py`, run by

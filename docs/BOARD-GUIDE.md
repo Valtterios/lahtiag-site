@@ -441,6 +441,10 @@ puts it on the page and on Discord.
   Minecraft name, and the membership page. A member hidden from the
   history page's leaderboard is hidden here too. Until the rules are
   set the XP is the ticks, so post it once there is something on it.
+- **The participant role.** The pass's first reward is a Discord role.
+  Make it on the server, pick it under Discord roles on the register
+  page (register access), and the pass hands it out once the rules are
+  set.
 
 | | |
 |---|---|
