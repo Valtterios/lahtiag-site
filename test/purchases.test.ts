@@ -409,7 +409,7 @@ describe('a tapped payment for several things', () => {
     // An entry and a patch in one tap: a ticket at its price, a purchase for the rest.
     await recordDoorPayment(db(), 'pi_both', 1300, NOW, 'Pekka K');
     const both = await attach('pi_both', [
-      { kind: 'ticket', typeId, name: '', members: false },
+      { kind: 'ticket', typeId, name: '', members: false, quantity: 1 },
       { kind: 'item', productId: patchId, quantity: 1, members: false },
     ]);
     expect(both.tickets).toHaveLength(1);
@@ -424,8 +424,8 @@ describe('a tapped payment for several things', () => {
     // Two people, one card: a ticket each, the second by name.
     await recordDoorPayment(db(), 'pi_two', 1600, NOW, 'Pekka K');
     const two = await attach('pi_two', [
-      { kind: 'ticket', typeId, name: '', members: false },
-      { kind: 'ticket', typeId, name: ' Sanna  R ', members: false },
+      { kind: 'ticket', typeId, name: '', members: false, quantity: 1 },
+      { kind: 'ticket', typeId, name: ' Sanna  R ', members: false, quantity: 1 },
     ]);
     expect(two.tickets.map((t) => [t.holder_name, t.amount_cents])).toEqual([
       ['Pekka K', 800],
@@ -433,12 +433,25 @@ describe('a tapped payment for several things', () => {
     ]);
     expect(two.purchase).toBeNull();
 
+    // Two of the same, no second name given: the extra is the payer's.
+    await recordDoorPayment(db(), 'pi_pair', 1600, NOW, 'Leo H');
+    const pair = await attach('pi_pair', [{ kind: 'ticket', typeId, name: '', members: false, quantity: 2 }], 'Leo H');
+    expect(pair.tickets.map((t) => [t.holder_name, t.amount_cents])).toEqual([
+      ['Leo H', 800],
+      ['Leo H +1', 800],
+    ]);
+
+    // Two at the members' price, and the money still decides the total.
+    await recordDoorPayment(db(), 'pi_pair_m', 1000, NOW, 'Iida J');
+    const members = await attach('pi_pair_m', [{ kind: 'ticket', typeId, name: '', members: true, quantity: 2 }], 'Iida J');
+    expect(members.tickets.map((t) => t.amount_cents)).toEqual([500, 500]);
+
     // A members' price picked per line, and a total the list does not
     // reach: the difference lands on the first line, so the books match
     // the money Stripe took.
     await recordDoorPayment(db(), 'pi_member', 800, NOW, 'Iida J');
     const mixed = await attach('pi_member', [
-      { kind: 'ticket', typeId, name: '', members: true },
+      { kind: 'ticket', typeId, name: '', members: true, quantity: 1 },
       { kind: 'item', productId: patchId, quantity: 1, members: true },
     ], 'Iida J');
     expect(mixed.tickets[0].amount_cents).toBe(400); // 500 + 400 charged as 800
@@ -450,7 +463,7 @@ describe('a tapped payment for several things', () => {
     await expect(attach('pi_empty', [])).rejects.toMatchObject({ code: 'bad_input' });
     // A ticket type from another event is not this event's to sell.
     const other = await createTicketType(db(), await event(), { name: 'Elsewhere', price_cents: 500, member_price_cents: null, members_only: false, quantity: null, sales_close_at: null });
-    await expect(attach('pi_empty', [{ kind: 'ticket', typeId: other, name: '', members: false }])).rejects.toMatchObject({ code: 'missing' });
+    await expect(attach('pi_empty', [{ kind: 'ticket', typeId: other, name: '', members: false, quantity: 1 }])).rejects.toMatchObject({ code: 'missing' });
     expect((await listUnattachedDoorPayments(db(), NOW - 3600)).map((p) => p.stripe_payment_intent)).toEqual(['pi_empty']);
   });
 });

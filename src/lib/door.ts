@@ -1,8 +1,8 @@
 // The door's attach form, read and reported. One payment can pay for
 // several things, so the form posts a line per thing: what it was
 // (`ticket:<id>`, `ticket:<id>:m` for the members' price, `item:<id>`,
-// `item:<id>:m`), a name for a ticket and a quantity for an item. The
-// shop's own page posts item lines only.
+// `item:<id>:m`), how many, and a name for the tickets. The shop's own
+// page posts item lines only.
 import type { DoorLine, DoorAttachment } from './purchases';
 
 export const MAX_DOOR_LINES = 8;
@@ -17,10 +17,10 @@ export function doorLines(form: FormData, buyerName: string, itemsOnly = false):
     const id = Number(idText);
     if (!Number.isInteger(id) || id < 1 || lines.length >= MAX_DOOR_LINES) return;
     const members = variant === 'm';
+    const quantity = Math.min(10, Math.max(1, Math.floor(Number(quantities[i])) || 1));
     if (kind === 'ticket' && !itemsOnly) {
-      lines.push({ kind: 'ticket', typeId: id, name: (names[i] ?? '').replace(/\s+/g, ' ').trim() || buyerName, members });
+      lines.push({ kind: 'ticket', typeId: id, name: (names[i] ?? '').replace(/\s+/g, ' ').trim() || buyerName, members, quantity });
     } else if (kind === 'item') {
-      const quantity = Math.min(10, Math.max(1, Math.floor(Number(quantities[i])) || 1));
       lines.push({ kind: 'item', productId: id, quantity, members });
     }
   });

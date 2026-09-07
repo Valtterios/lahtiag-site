@@ -64,7 +64,8 @@ const ref = (intent: string) => intent.slice(-6).toUpperCase();
       <p>
         Take the payment in the <strong>Stripe Dashboard</strong> app and attach it here:
         {mode === 'door' ? ' the buyer gets a door ticket for this event and is checked in on the spot.' : ' the item is sold and marked handed over in one go.'}
-        {' '}One payment can cover several things — add a line for each.
+        {' '}One payment can cover several things — add a line for each, or raise the count for two of the same.
+        {mode === 'door' && ' Two entries make two tickets, the second in the payer\'s name.'}
       </p>
     </div>
     {payments.length > 0 ? (
@@ -144,9 +145,9 @@ const ref = (intent: string) => intent.slice(-6).toUpperCase();
                     <span>Name</span>
                     <input name="line_name" maxlength="60" placeholder="On the ticket" />
                   </label>
-                  <label class="tap-field tap-qty" data-tap-qty>
+                  <label class="tap-field tap-qty">
                     <span>Qty</span>
-                    <input name="line_qty" type="number" min="1" max="10" value="1" />
+                    <input name="line_qty" type="number" min="1" max="10" value="1" data-tap-pieces />
                   </label>
                   <button class="tap-remove" type="button" data-tap-remove hidden aria-label="Take this line off">×</button>
                 </div>
@@ -183,15 +184,14 @@ const ref = (intent: string) => intent.slice(-6).toUpperCase();
       lines().forEach((line, i) => {
         const what = line.querySelector<HTMLSelectElement>('[data-tap-what]');
         const name = line.querySelector<HTMLElement>('[data-tap-name]');
-        const qty = line.querySelector<HTMLElement>('[data-tap-qty]');
+        const qty = line.querySelector<HTMLInputElement>('[data-tap-pieces]');
         const remove = line.querySelector<HTMLButtonElement>('[data-tap-remove]');
         if (!what || !name || !qty || !remove) return;
         const isTicket = what.value.startsWith('ticket:');
         // The first line's holder is whoever paid; a further ticket is somebody else.
         name.hidden = !isTicket || i === 0;
-        qty.hidden = isTicket;
         remove.hidden = i === 0;
-        const pieces = isTicket ? 1 : Math.max(1, Number(qty.querySelector('input')?.value) || 1);
+        const pieces = Math.max(1, Number(qty.value) || 1);
         total += Number(what.selectedOptions[0]?.dataset.cents ?? 0) * pieces;
       });
       count.hidden = lines().length < 2 && total === charged;

@@ -720,17 +720,21 @@ appears for a shop item.
 
 **One tap, several things.** A payment can pay for more than one thing —
 an entry and a patch, two entries for two people, three sticker sheets and
-a hoodie. **Add a line** gives the payment another line: what it was (every
-price is its own choice in the list, the members' price included), a name
-for a ticket line beyond the first, a quantity for an item line. The line
-total is shown against what was charged, so a mistyped quantity is visible
-before anything is attached. Attaching then makes a door ticket per ticket
-line (each checked in, named) and one paid purchase holding the item lines,
+a hoodie. Every line has what it was and how many: **every price is its own
+choice in the list**, the members' price included, so a member's entry at
+the door is picked, not typed. **Add a line** gives the payment another
+line, and a further ticket line asks for that person's name. A count of two
+on one ticket line is two tickets, the extras named after the payer (`Leo
+H`, `Leo H +1`), for the friend whose name nobody wrote down. The line
+total is shown against what was charged, so a mistyped count is visible
+before anything is attached. Attaching makes a door ticket per ticket
+(each checked in, named) and one paid purchase holding the item lines,
 handed over on the spot; both hang off the same payment. Without
 JavaScript the form keeps its single line, which is the everyday case.
 
-The money is the last word: with one line, that line is worth the whole
-payment (a member's price the board typed by hand included). With several,
+The money is the last word: a payment for a single ticket or piece is
+worth the whole payment, whatever the list says (an odd amount the board
+typed by hand included). With several,
 each line is worth the price picked, and whatever they miss the payment by
 lands on the first line — so tickets plus items always add up to what
 Stripe took (`attachDoorPayment` in `src/lib/purchases.ts`, the form read

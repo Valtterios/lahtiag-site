@@ -23,8 +23,14 @@ describe('the lines of an attach form', () => {
       'Pekka K',
     );
     expect(lines).toEqual([
-      { kind: 'ticket', typeId: 3, name: 'Pekka K', members: false },
+      { kind: 'ticket', typeId: 3, name: 'Pekka K', members: false, quantity: 1 },
       { kind: 'item', productId: 7, quantity: 3, members: true },
+    ]);
+  });
+
+  it('counts two of the same on one line', () => {
+    expect(doorLines(form([['line_what', 'ticket:3'], ['line_name', ''], ['line_qty', '2']]), 'Pekka K')).toEqual([
+      { kind: 'ticket', typeId: 3, name: 'Pekka K', members: false, quantity: 2 },
     ]);
   });
 
@@ -47,7 +53,7 @@ describe('the lines of an attach form', () => {
       'Pekka K',
     );
     expect(lines).toEqual([
-      { kind: 'ticket', typeId: 3, name: 'Sanna R', members: true },
+      { kind: 'ticket', typeId: 3, name: 'Sanna R', members: true, quantity: 1 },
       { kind: 'item', productId: 7, quantity: 10, members: false },
     ]);
   });

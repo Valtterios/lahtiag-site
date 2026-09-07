@@ -496,7 +496,7 @@ export async function pendingPurchaseFor(db: D1Database, discordId: string, now:
 // those prices and the money goes on the first line, so the books add up
 // to what Stripe actually took.
 export type DoorLine =
-  | { kind: 'ticket'; typeId: number; name: string; members: boolean }
+  | { kind: 'ticket'; typeId: number; name: string; members: boolean; quantity: number }
   | { kind: 'item'; productId: number; quantity: number; members: boolean };
 
 export interface DoorAttachment {
@@ -518,7 +518,8 @@ export async function attachDoorPayment(
   if (!payment) throw new RuleError('missing', 'No unattached payment with that id.');
   if (input.lines.length === 0) throw new RuleError('bad_input', 'Say what the payment was for.');
   const buyerName = input.buyerName.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Door sale';
-  const single = input.lines.length === 1;
+  const pieces = input.lines.reduce((sum, line) => sum + Math.max(1, line.quantity), 0);
+  const single = pieces === 1;
 
   // Everything is resolved and priced before anything is written.
   const planned: ({ cents: number } & (
@@ -530,8 +531,14 @@ export async function attachDoorPayment(
     if (line.kind === 'ticket') {
       const type = await getTicketType(db, line.typeId);
       if (!type || (input.eventId !== null && type.event_id !== input.eventId)) throw new RuleError('missing', 'No such ticket type on this event.');
+      if (!Number.isInteger(line.quantity) || line.quantity < 1) throw new RuleError('bad_input', 'Quantity is at least 1.');
       const list = line.members && type.member_price_cents !== null ? type.member_price_cents : type.price_cents;
-      planned.push({ kind: 'ticket', type, name: line.name.trim() || buyerName, cents: single ? payment.amount_cents : list });
+      const name = line.name.trim() || buyerName;
+      // Two entries on one card: one ticket each, the extras named after
+      // the person who paid for them, so the door list stays readable.
+      for (let i = 0; i < line.quantity; i++) {
+        planned.push({ kind: 'ticket', type, name: i === 0 ? name : `${name} +${i}`, cents: single ? payment.amount_cents : list });
+      }
       continue;
     }
     const product = await getProduct(db, line.productId, now);
