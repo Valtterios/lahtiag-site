@@ -4058,6 +4058,11 @@ details.admin-panel[open] > summary {
   width: 5.5rem;
 }
 
+.kind-list select:disabled {
+  color: var(--muted);
+  opacity: 0.55;
+}
+
 .kind-list .participant-row label.check {
   display: flex;
   align-items: center;

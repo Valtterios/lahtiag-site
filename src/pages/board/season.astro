@@ -260,7 +260,7 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
         <h3 class="section-label">The list of ticks</h3>
         <p class="queue-intro">
           Add a kind here and it is on the give list at once. XP is what one tick is worth; the cap is how many of them count per member
-          in a season, a month or a week (0 for every one), judged by when the tick was given. Ticks over the cap are noted, not paid,
+          in a season, a month or a week, judged by when the tick was given; a cap of 0 means every tick counts and the period is moot. Ticks over the cap are noted, not paid,
           and show in brackets above. A tick keeps the XP it was given with, so a change applies to ticks given from now on unless
           you also apply it to {current ? 'this' : 'that'} season's ticks. Retiring a kind keeps what was given under it.
         </p>
@@ -276,7 +276,7 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
                 <label>XP <input name="xp" type="number" min="0" max={TICK_LIMITS.xp} step="1" value={k.xp} class="input-short" /></label>
                 <label>Cap <input name="season_cap" type="number" min="0" max={TICK_LIMITS.season_cap} step="1" value={k.season_cap} class="input-short" /></label>
                 <label>Period
-                  <select name="period">
+                  <select name="period" disabled={k.season_cap === 0} title="Matters only with a cap: 0 means every tick counts">
                     {TICK_PERIODS.map((p) => <option value={p} selected={k.period === p}>{TICK_PERIOD_LABELS[p]}</option>)}
                   </select>
                 </label>
@@ -301,7 +301,7 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
               <label>XP <input name="xp" type="number" min="0" max={TICK_LIMITS.xp} step="1" value="0" class="input-short" /></label>
               <label>Cap <input name="season_cap" type="number" min="0" max={TICK_LIMITS.season_cap} step="1" value="0" class="input-short" /></label>
               <label>Period
-                <select name="period">
+                <select name="period" disabled title="Matters only with a cap: 0 means every tick counts">
                   {TICK_PERIODS.map((p) => <option value={p}>{TICK_PERIOD_LABELS[p]}</option>)}
                 </select>
               </label>
@@ -313,3 +313,18 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
     </>
   )}
 </Base>
+
+<script>
+  // The period matters only with a cap: at 0 every tick counts, so the
+  // select greys out until a cap is typed. A disabled select is not
+  // submitted, and the route then keeps "per season".
+  document.querySelectorAll<HTMLInputElement>('.kind-list input[name="season_cap"]').forEach((cap) => {
+    const period = cap.form?.querySelector<HTMLSelectElement>('select[name="period"]');
+    if (!period) return;
+    const sync = () => {
+      period.disabled = Number(cap.value) === 0;
+    };
+    cap.addEventListener('input', sync);
+    sync();
+  });
+</script>
