@@ -4,6 +4,7 @@ import { checkCsrf } from '../../lib/guard';
 import { requireAnyBoard } from '../../lib/board-access';
 import { RuleError } from '../../lib/db';
 import { addTickKind, giveTick, removeTick, saveTickKind, setTickKindRetired } from '../../lib/ticks';
+import { seasonStartYear } from '../../lib/activity';
 import { postBoardLine } from '../../lib/board-channel';
 
 // Every board write about ticks, dispatched on `action`: give | remove |
@@ -61,10 +62,9 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
       case 'kind_save': {
         const id = num('kind_id');
         if (!id) return go('err', 'tick_bad_input');
-        // The season the page showed, so "apply to this season's ticks"
-        // means the one the board was looking at.
-        const season = num('apply_season');
-        await saveTickKind(env.DB, id, kindInput(), season && !Number.isNaN(season) ? season : null);
+        // A changed XP applies to every tick of the current season; past
+        // seasons keep what they were paid.
+        await saveTickKind(env.DB, id, kindInput(), seasonStartYear(now));
         return go('ok', 'kind_saved');
       }
       case 'kind_retire':

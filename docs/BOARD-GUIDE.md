@@ -419,10 +419,10 @@ puts it on the page and on Discord.
   kind says what a tick is worth in XP and how many count per member in
   a season, a month or a week (0 for every one), judged by when the tick
   was given: give as many as you like, the ones over the cap are noted
-  and shown in brackets, not paid. A tick keeps the XP it was given
-  with, so when the numbers change, tick "apply to this season's ticks
-  too" to bring this season along. Members see their own ticks, and what
-  they add up to, under `/season` and on the membership page.
+  and shown in brackets, not paid. Changing a kind's XP changes every
+  tick of this season; past seasons keep what they were paid. Members
+  see their own ticks, and what they add up to, under `/season` and on
+  the membership page.
 
 | | |
 |---|---|

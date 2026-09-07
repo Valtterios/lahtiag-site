@@ -4063,13 +4063,6 @@ details.admin-panel[open] > summary {
   opacity: 0.55;
 }
 
-.kind-list .participant-row label.check {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
 
 .stats-table {
   min-width: 0;

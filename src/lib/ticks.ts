@@ -142,9 +142,10 @@ export async function addTickKind(db: D1Database, input: TickKindInput, by: stri
   return (await getTickKind(db, id))!;
 }
 
-// Saving a kind changes what ticks given from now on are worth; with
-// `applySeason` the ticks of that season already given under it follow,
-// for when the numbers are settled after the ticking began.
+// Saving a kind changes what a tick is worth; with `applySeason` the
+// ticks of that season already given under it follow (the route always
+// passes the current season), while other seasons keep what they were
+// paid.
 export async function saveTickKind(db: D1Database, id: number, input: TickKindInput, applySeason: number | null = null): Promise<TickKind> {
   const { name, description, xp, season_cap, period } = validKind(input);
   if (!(await getTickKind(db, id))) throw new RuleError('missing', 'No such tick.');

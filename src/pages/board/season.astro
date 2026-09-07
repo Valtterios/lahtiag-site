@@ -261,8 +261,8 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
         <p class="queue-intro">
           Add a kind here and it is on the give list at once. XP is what one tick is worth; the cap is how many of them count per member
           in a season, a month or a week, judged by when the tick was given; a cap of 0 means every tick counts and the period is moot. Ticks over the cap are noted, not paid,
-          and show in brackets above. A tick keeps the XP it was given with, so a change applies to ticks given from now on unless
-          you also apply it to {current ? 'this' : 'that'} season's ticks. Retiring a kind keeps what was given under it.
+          and show in brackets above. Changing the XP changes every tick of this season; past seasons keep what they were paid.
+          Retiring a kind keeps what was given under it.
         </p>
         <ul class="kind-list">
           {kinds.map((k) => (
@@ -280,7 +280,6 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
                     {TICK_PERIODS.map((p) => <option value={p} selected={k.period === p}>{TICK_PERIOD_LABELS[p]}</option>)}
                   </select>
                 </label>
-                <label class="check"><input type="checkbox" name="apply_season" value={year} checked /> <span>apply to {current ? 'this' : 'that'} season's ticks too</span></label>
                 <span class="queue-meta">{k.given} given{k.retired_at !== null ? ' · retired' : ''}</span>
                 <button class="btn btn-ghost btn-sm" name="action" value="kind_save" type="submit">Save</button>
                 {k.retired_at === null ? (

@@ -873,10 +873,10 @@ season's ticks never count in this one. A kind carries what a tick is
 worth (`xp`), how many of them count per member (`season_cap`, 0 = every
 one) and the period that cap counts in (`period`: season, month or
 week, judged by when the tick was given, Helsinki time); a tick keeps
-the XP it was given with (`ticks.xp`), so a changed kind moves nothing
-in past seasons, and saving a kind with "apply to this season's ticks"
-brings the current season's along for when the numbers land after the
-ticking began. The counting is on the pass side: giving is never refused
+the XP it was given with (`ticks.xp`), and saving a kind rewrites the
+current season's ticks of that kind to the new XP, so a changed number
+reaches everyone this season while past seasons keep what they were
+paid. The counting is on the pass side: giving is never refused
 for a cap; `applyCaps` walks a member's ticks oldest first, groups them
 by kind and period bucket (`periodKey`), and flags the ones past the cap
 as noted, not paid; `tickXp` adds the rest up, and the season page shows
