@@ -68,7 +68,7 @@ shot('presenter', '/events/4/bracket?display', viewportOnly=True, pad=0, width=1
 # Tickets, shop, door
 shot('shop-tiles', '/shop', clip='section.list', pad=8, hl=['text=Tickets and details'])
 shot('shop-board-tools', '/shop', 'admin', open=['details.admin-panel'], clip='details.admin-panel', top=560, hl=['text=Items to hand over', 'text=Card payment on the spot', 'text=Edit', 'text=Replace picture'], nums=True)
-shot('shop-new-product', '/shop', 'admin', open=['details.admin-panel'], clip='text=New product', skip=-10, extend=470, hl=['text=Add product'])
+shot('shop-new-product', '/shop', 'admin', open=['details.admin-panel', '#product-form'], clip='#product-form', top=520, hl=['text=Add product'])
 shot('orders', '/shop/orders', 'admin', clip='h1', skip=-20, extend=580, hl=['text=Attach', 'text=Handed over'], nums=True)
 shot('door-scan', '/events/1/door', 'admin', device='mobile', clip='h1', skip=-30, extend=360, hl=['#door-form input', 'text=Scan with camera'], nums=True)
 shot('door-sell', '/events/1/door', 'admin', device='mobile', clip='section.door-sell', top=372)
@@ -78,7 +78,7 @@ shot('ticket-page', f'/tickets/{BEN}', 'ben', device='mobile', clip='h1', skip=-
 shot('purchase-page', '/purchase/PSHOPAB12C', 'sara', device='mobile', clip='h1', skip=-20, extend=720, hl=['text=Mark as collected'])
 # News
 shot('news-board-tools', '/announcements', 'admin', open=['details.admin-panel'], clip='details.admin-panel', hl=['details.admin-panel input[type=file]', 'details.admin-panel select', 'details.admin-panel input[type=date]'], nums=True)
-shot('news-draft', '/announcements', 'admin', clip={'sel': 'article.news-card', 'i': 0}, hl=['text=Publish', {'text': 'Edit this post', 'i': 0}], pad=0, nums=True)
+shot('news-draft', '/announcements', 'admin', clip={'sel': 'article.news-card', 'i': 0}, hl=['text=Publish', {'sel': '.news-edit summary', 'i': 0}], pad=0, nums=True)
 shot('news-edit-draft', '/announcements', 'admin', open=['details.news-edit'], clip={'sel': 'details.news-edit', 'i': 0}, hl=['details.news-edit select', {'sel': 'details.news-edit input[type=date]', 'i': 0}], nums=True)
 shot('news-published-cover', '/announcements', 'admin', clip={'sel': 'article.news-card', 'i': 2}, top=700, hl=['text=Remove cover'], pad=0)
 # Minecraft, history

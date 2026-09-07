@@ -123,7 +123,7 @@ regenerate bracket) ask "are you sure" first.
 
 ![Board tools on an event page](images/site/event-board-tools.png)
 
-*Board tools on an event page: 1 the status pills, 2 the door page, 3 the folded sections — each says what it holds now and what is inside (Edit, Discord, Tickets, Questions, Participants, Photos), with the danger zone kept apart in red.*
+*Board tools on an event page: 1 the status pills, 2 the door page, 3 the folded sections — each says what it holds now and what is inside (Edit, Discord, Tickets, Questions, Participants, Photos), with the danger zone kept apart in red. Every board panel on the site is built this way: pills for where things stand, the day's buttons, then folded rows.*
 
 The Admin panel's **Participants** section edits the roster directly,
 skipping the normal signup rules (closed signups, capacity): change anyone's

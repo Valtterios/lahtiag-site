@@ -62,6 +62,9 @@ const OK: Record<string, string> = {
 };
 const scheduleInputs = (at: number | null) => (at ? unixToHelsinkiInputs(at) : { date: '', time: '' });
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
+const published = rendered.filter((p) => p.draft !== 1).length;
+const draftCount = rendered.filter((p) => p.draft === 1 && !p.publish_at).length;
+const scheduled = rendered.filter((p) => p.draft === 1 && p.publish_at).length;
 ---
 <Base title="News" description="LahtiAG announcements, the same news that lands on Discord.">
   <article class="prose">
@@ -127,8 +130,8 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
           </div>
         )}
         {session?.isAdmin && (
-          <details class="news-edit">
-            <summary>Edit this post</summary>
+          <details class="news-edit admin-edit">
+            <summary><b>Edit this post</b><span class="admin-edit-hint">title, body, cover, ping, schedule</span></summary>
             <form method="post" action="/announcements/edit" class="app-form" enctype="multipart/form-data">
               <input type="hidden" name="csrf" value={csrf} />
               <input type="hidden" name="id" value={item.id} />
@@ -162,7 +165,13 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
   {session?.isAdmin && (
     <details class="admin-panel" open={Boolean(Astro.url.searchParams.get('ok') || Astro.url.searchParams.get('err'))}>
       <summary>Board tools · write a post</summary>
-      <h2>Post an announcement</h2>
+      <p class="admin-status">
+        <span class="status-badge">{published} posted</span>
+        {draftCount > 0 && <span class="status-badge status-muted">{draftCount} draft{draftCount === 1 ? '' : 's'}</span>}
+        {scheduled > 0 && <span class="status-badge status-pending">{scheduled} scheduled</span>}
+      </p>
+      <details class="admin-edit" open>
+        <summary><b>Write a post</b><span class="admin-edit-hint">title, body, cover, ping, publish date</span></summary>
       <form method="post" action="/announcements/new" class="app-form" enctype="multipart/form-data">
         <input type="hidden" name="csrf" value={csrf} />
         <label>Title <input name="title" required maxlength="120" /></label>
@@ -180,6 +189,7 @@ const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.sea
         <button class="btn btn-primary" type="submit">Save</button>
         <p class="queue-meta">Without a date it stays a draft until you press Publish. With one it publishes itself within 15 minutes of that time and goes to Discord, for a general meeting notice written ahead.</p>
       </form>
+      </details>
     </details>
   )}
 </Base>

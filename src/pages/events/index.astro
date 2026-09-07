@@ -21,6 +21,7 @@ const [upcoming, past] = await Promise.all([
   listPastEvents(env.DB, now, 10),
 ]);
 const covers = await coverVersions(env.DB, upcoming.map((e) => e.id));
+const drafts = upcoming.filter((e) => e.published_at === null).length;
 
 const FLASH: Record<string, string> = {
   forbidden: 'That needs the admin role in Discord.',
@@ -129,6 +130,11 @@ const flash =
   {session?.isAdmin && (
     <details class="admin-panel" open={Boolean(Astro.url.searchParams.get('ok') || Astro.url.searchParams.get('err'))}>
       <summary>Board tools · door pages, member check, new event</summary>
+      <p class="admin-status">
+        <span class="status-badge">{upcoming.length} upcoming</span>
+        {drafts > 0 && <span class="status-badge status-muted">{drafts} draft{drafts === 1 ? '' : 's'}</span>}
+        <span class="status-badge status-muted">{past.length} recent</span>
+      </p>
       <h2>At the door</h2>
       <p class="event-meta">
         The door page checks tickets in, sells on the spot and attaches the card payments taken with
@@ -149,7 +155,8 @@ const flash =
         <a class="btn btn-ghost" href="/announcements">News</a>
         <a class="btn btn-ghost" href="/board">All board tools</a>
       </p>
-      <h2>Create an event</h2>
+      <details class="admin-edit" open={Boolean(Astro.url.searchParams.get('err'))}>
+        <summary><b>Create an event</b><span class="admin-edit-hint">title, time, place, capacity — tickets after</span></summary>
       <form method="post" action="/events/new" class="app-form">
         <input type="hidden" name="csrf" value={csrf} />
         <label>Title <input name="title" required maxlength="120" /></label>
@@ -188,6 +195,7 @@ const flash =
         <label>Description <textarea name="description" rows="3"></textarea></label>
         <button class="btn btn-primary" type="submit">Create event</button>
       </form>
+      </details>
       <details class="admin-edit admin-danger">
         <summary><b>Remove a member everywhere</b><span class="admin-edit-hint">every signup and team, across all events</span></summary>
         <p class="event-meta">

@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
 import { currentSession, ensureCsrf, viewAs } from '../../lib/guard';
 import ViewAs from '../../components/ViewAs.astro';
-import { listProducts, productOffer, productImageVersions } from '../../lib/purchases';
+import { listProducts, productOffer, productImageVersions, listUndeliveredItems } from '../../lib/purchases';
 import { readBasket, basketCount } from '../../lib/basket';
 import { listUpcomingEvents, coverVersions } from '../../lib/db';
 import { ticketRange, isFull } from '../../lib/price';
@@ -32,6 +32,9 @@ const basket = readBasket(Astro.cookies);
 const inBasket = (id: number) => basket.find((l) => l.kind === 'item' && l.id === id)?.count ?? 0;
 const count = basketCount(basket);
 const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
+const onSale = products.filter((p) => p.active === 1).length;
+// Only the board sees the panel, so only the board pays for the count.
+const waitingItems = isAdmin ? (await listUndeliveredItems(env.DB)).length : 0;
 const editId = Number(Astro.url.searchParams.get('edit'));
 const editing = isAdmin && Number.isInteger(editId) ? products.find((p) => p.id === editId) ?? null : null;
 
@@ -147,9 +150,15 @@ Astro.response.headers.set('cache-control', 'no-store');
   {isAdmin && (
     <details class="admin-panel" open={Boolean(editing || (okKey && okKey !== 'added') || Astro.url.searchParams.get('err'))}>
       <summary>Board tools · products, items to hand over</summary>
-      <h2 class="section-label">Board: products</h2>
-      <p class="entry-actions"><a class="btn btn-primary btn-sm" href="/shop/orders">Items to hand over</a> <a class="btn btn-ghost btn-sm" href="/shop/orders#tap">Card payment on the spot</a></p>
+      <p class="admin-status">
+        <span class="status-badge">{products.length} product{products.length === 1 ? '' : 's'}</span>
+        <span class="status-badge status-muted">{onSale} on sale</span>
+        {waitingItems > 0 && <span class="status-badge status-pending">{waitingItems} to hand over</span>}
+      </p>
+      <p class="entry-actions"><a class="btn btn-primary" href="/shop/orders">Items to hand over</a> <a class="btn btn-ghost" href="/shop/orders#tap">Card payment on the spot</a></p>
       {products.length > 0 && (
+        <details class="admin-edit" open>
+        <summary><b>Products</b><span class="admin-edit-meta">{products.length}, {onSale} on sale</span><span class="admin-edit-hint">price, member price, stock, picture</span></summary>
         <ul class="ticket-types">
           {products.map((p) => (
             <li class="ticket-type admin-product">
@@ -179,12 +188,14 @@ Astro.response.headers.set('cache-control', 'no-store');
           ))}
           <li class="queue-meta">Pictures: JPEG, PNG or WebP up to 1.5 MB, shown as a square, so a square photo is best.</li>
         </ul>
+        </details>
       )}
-      <form method="post" action="/shop/products" class="app-form" id="product-form">
+      <details class="admin-edit" id="product-form" open={Boolean(editing) || products.length === 0}>
+        <summary><b>{editing ? `Edit: ${editing.name}` : 'New product'}</b><span class="admin-edit-hint">name, price, member price, stock, on sale</span></summary>
+      <form method="post" action="/shop/products" class="app-form">
         <input type="hidden" name="csrf" value={csrf} />
         <input type="hidden" name="action" value={editing ? 'update' : 'create'} />
         {editing && <input type="hidden" name="id" value={editing.id} />}
-        <h3>{editing ? `Edit: ${editing.name}` : 'New product'}</h3>
         <label>Name <input name="name" required maxlength="80" value={editing?.name ?? ''} /></label>
         <label>Description <textarea name="description" maxlength="600" rows="2">{editing?.description ?? ''}</textarea></label>
         <label>Price (€) <input name="price" type="number" min="0" step="0.01" required value={editing ? (editing.price_cents / 100).toFixed(2) : ''} /></label>
@@ -196,6 +207,7 @@ Astro.response.headers.set('cache-control', 'no-store');
           {editing && <a class="btn btn-ghost" href="/shop">Cancel</a>}
         </div>
       </form>
+      </details>
     </details>
   )}
 </Base>

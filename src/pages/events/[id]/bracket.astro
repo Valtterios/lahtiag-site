@@ -200,7 +200,11 @@ const benchKeys = poolKeys.filter((k) => !inDraw.has(k));
 
       {session?.isAdmin && matches.length > 0 && (
         <section class="admin-panel">
-          <h2>Admin{draftBracket && <> · <span class="status-badge status-muted">Draft</span></>}</h2>
+          <h2>Board tools</h2>
+          <p class="admin-status">
+            <span class={`status-badge${draftBracket ? ' status-muted' : ' status-member'}`}>{draftBracket ? 'Bracket: draft' : 'Bracket: live'}</span>
+            <span class="status-badge">{matches.length} matches</span>
+          </p>
           {draftBracket ? (
             <>
               <p class="event-meta">

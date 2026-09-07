@@ -140,7 +140,7 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ![Board tools on the events page](images/site/events-board-tools.png)
 
-*Board tools on the events page: 1 the door page of each event coming up, 2 Member check, 3 items and card payments, 4 the Create an event form below.*
+*Board tools on the events page: how many events are upcoming and how many are drafts, 1 the door page of each event coming up, 2 Member check, 3 items and card payments, and 4 Create an event, folded until you need it.*
 
 ![A draft event](images/site/event-draft-page.png)
 
@@ -300,7 +300,7 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ![Board tools on the shop page](images/site/shop-board-tools.png)
 
-*Board tools on the shop page: 1 Items to hand over, 2 the card payments taken on the spot, and per product 3 Edit and Delete, 4 the picture.*
+*Board tools on the shop page: how many products, how many on sale and how many items wait to be handed over, 1 Items to hand over, 2 the card payments taken on the spot, and per product 3 Edit and Delete, 4 the picture.*
 
 | | |
 |---|---|
@@ -378,7 +378,7 @@ post, **Post to Discord** under the post sends it again.
 
 ![Writing a post](images/site/news-board-tools.png)
 
-*Board tools on the news page: the post form with 1 the cover picture, 2 who to ping on Discord, 3 the publish date and time.*
+*Board tools on the news page: how many posts, drafts and scheduled ones, then Write a post with 1 the cover picture, 2 who to ping on Discord, 3 the publish date and time.*
 
 - **Scheduled news.** Save a news post with a publish date and time and
   it goes out by itself, to the site and Discord. Handy for general
