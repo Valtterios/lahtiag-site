@@ -23,6 +23,4 @@ professional networks.
 - Opportunities to develop your gaming skills and take part in activities that promote gaming culture
 - Connections to the gaming industry: companies, professionals, and other student associations
 
-Membership is free and open to every student in Lahti. Read more on the
-[members page](/members), or come say hi on Discord first. The widget above
-shows who's online right now.
+What membership gives you is on the [members page](/members).

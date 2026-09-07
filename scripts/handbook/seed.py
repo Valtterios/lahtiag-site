@@ -186,6 +186,33 @@ c.execute('INSERT INTO event_covers (event_id, content_type, bytes, size, update
 c.execute('INSERT INTO announcement_covers (announcement_id, content_type, bytes, size, updated_at, width, height) VALUES (1,?,?,?,?,?,?)', ('image/jpeg', b, len(b), NOW, w, h))
 b, w, h = poster('WINTER LAN 2027', 'Sat 23 Jan · draft')
 c.execute('INSERT INTO event_covers (event_id, content_type, bytes, size, updated_at, width, height) VALUES (6,?,?,?,?,?,?)', ('image/jpeg', b, len(b), NOW, w, h))
+# Photos from the events that have been: the front page and the history
+# page show them, so the made-up site has a few.
+def snap(top, bottom, w=1400, h=933):
+    im = Image.new('RGB', (w, h), top)
+    d = ImageDraw.Draw(im)
+    for y in range(h):
+        k = y / h
+        d.line([(0, y), (w, y)], fill=tuple(int(top[i] + (bottom[i] - top[i]) * k) for i in range(3)))
+    d.polygon([(0, h), (w * 0.4, h * 0.45), (w * 0.75, h)], fill=tuple(min(255, c + 25) for c in bottom))
+    d.ellipse((w * 0.62, h * 0.12, w * 0.62 + 150, h * 0.12 + 150), fill=(255, 222, 89))
+    buf = io.BytesIO(); im.save(buf, 'JPEG', quality=80); shot = buf.getvalue()
+    thumb = im.resize((400, 267))
+    tbuf = io.BytesIO(); thumb.save(tbuf, 'JPEG', quality=75)
+    return shot, tbuf.getvalue(), w, h
+
+for event_id, credit, shades in [
+    (5, 'Photos: Aino Virtanen', [((28, 34, 66), (65, 105, 225)), ((40, 30, 60), (120, 80, 200)), ((20, 40, 40), (40, 140, 120))]),
+    (7, None, [((45, 35, 30), (200, 140, 60)), ((30, 30, 35), (90, 90, 110))]),
+    (4, 'Photos: Leo Hämäläinen', [((25, 25, 30), (200, 60, 60))]),
+]:
+    for i, (top, bottom) in enumerate(shades):
+        b, t, w, h = snap(top, bottom)
+        c.execute('INSERT INTO event_photos (event_id, content_type, bytes, thumb, size, width, height, sort, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+                  (event_id, 'image/jpeg', b, t, len(b), w, h, i, NOW - 86400))
+    if credit:
+        c.execute('UPDATE events SET photo_credit = ? WHERE id = ?', (credit, event_id))
+
 im = Image.new('RGB', (600, 600), (245, 245, 245)); d = ImageDraw.Draw(im)
 d.ellipse((60, 60, 540, 540), fill=(65, 105, 225), outline=(255, 222, 89), width=18)
 d.text((150, 230), 'LAG', font=ImageFont.truetype(FONT, 130), fill=(255, 222, 89))

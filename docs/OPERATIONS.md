@@ -44,6 +44,18 @@ Cloudflare's free tier.
 - Cloudflare account: lahtiagry@gmail.com
 - Calendar feed: https://lahtiag.fi/events.ics
 
+## The front page
+
+`src/pages/index.astro` is server-rendered: the hero and the Discord
+widget, then three strips from D1 — the next three events (the same tiles
+as the events page, `src/lib/price.ts` for what a seat costs), the three
+newest published posts with their first line (`newsExcerpt` in
+`src/lib/news.ts`), and one picture from each of the six newest events
+with photos (`listPhotoAlbums`). The prose under them is
+`src/content/pages/home.md`, and the join box closes the page. Every
+query sits in one `try`: a database hiccup empties the strips, it never
+takes the front page down.
+
 ## Who can do what
 
 Everyone in the LahtiAG Discord can sign in (Sign in with Discord), sign up

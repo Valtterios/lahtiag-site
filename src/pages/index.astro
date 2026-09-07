@@ -3,12 +3,14 @@ import { env } from 'cloudflare:workers';
 import { getEntry, render } from 'astro:content';
 import Base from '../layouts/Base.astro';
 import DiscordWidget from '../components/DiscordWidget.astro';
-import { listUpcomingEvents, type EventWithCounts } from '../lib/db';
-import { formatHelsinkiRange } from '../lib/time';
+import { listUpcomingEvents, listAnnouncements, listPhotoAlbums, coverVersions, type EventWithCounts, type AnnouncementRow, type PhotoAlbum } from '../lib/db';
+import { ticketPrice, seatsLeft, isFull } from '../lib/price';
+import { newsExcerpt } from '../lib/news';
+import { formatHelsinkiRange, formatHelsinkiDate } from '../lib/time';
 
-// Server-rendered since the "coming up" strip reads D1. A database hiccup
-// must never take the front page down, so the query degrades to an empty
-// strip instead of an error.
+// Server-rendered: what is coming up, what was written and what was played
+// all come from D1. A database hiccup must never take the front page down,
+// so every strip degrades to nothing instead of an error.
 
 const entry = await getEntry('pages', 'home');
 if (!entry) {
@@ -18,10 +20,18 @@ const { Content } = await render(entry);
 
 const now = Math.floor(Date.now() / 1000);
 let upcoming: EventWithCounts[] = [];
+let covers = new Map<number, number>();
+let news: AnnouncementRow[] = [];
+let albums: PhotoAlbum[] = [];
 try {
-  upcoming = (await listUpcomingEvents(env.DB, now)).slice(0, 4);
+  [upcoming, news, albums] = await Promise.all([
+    listUpcomingEvents(env.DB, now).then((all) => all.slice(0, 3)),
+    listAnnouncements(env.DB, 3),
+    listPhotoAlbums(env.DB, 6),
+  ]);
+  covers = await coverVersions(env.DB, upcoming.map((e) => e.id));
 } catch {
-  // strip stays empty; the page stays up
+  // the strips stay empty; the page stays up
 }
 ---
 <Base title={entry.data.title} description={entry.data.description}>
@@ -48,14 +58,81 @@ try {
   </section>
 
   {upcoming.length > 0 && (
-    <section class="upnext">
-      <article class="prose"><h2>Coming up</h2></article>
-      <ul class="upnext-list">
+    <section class="home-section">
+      <div class="home-head">
+        <h2>Coming up</h2>
+        <a class="btn btn-ghost btn-sm" href="/events">All events</a>
+      </div>
+      <ul class="event-grid">
         {upcoming.map((event) => (
+          <li class="event-tile">
+            <a class="event-tile-cover" href={`/events/${event.id}`} tabindex="-1" aria-hidden="true">
+              {covers.has(event.id) ? (
+                <img src={`/events/${event.id}/cover?t=${covers.get(event.id)}`} alt="" loading="lazy" />
+              ) : (
+                <span class="event-tile-empty"><img src="/brand/mark-blue.png" alt="" width="512" height="443" /></span>
+              )}
+            </a>
+            <div class="event-tile-body">
+              <p class="event-when">
+                {event.starts_at <= now && <span class="live-badge">Happening now</span>}
+                {formatHelsinkiRange(event.starts_at, event.ends_at)}
+              </p>
+              <h3><a href={`/events/${event.id}`}>{event.title}</a></h3>
+              {event.location && <p class="event-meta">{event.location}</p>}
+              <p class="event-tags">
+                <span class="event-price">{ticketPrice(event)}</span>
+                {event.members_only === 1 && <span class="status-badge status-member">Members only</span>}
+                {isFull(event) && <span class="status-badge status-muted">{event.ticket_types > 0 ? 'Sold out' : 'Full'}</span>}
+                {!isFull(event) && seatsLeft(event) !== null && seatsLeft(event)! <= 5 && (
+                  <span class="status-badge status-pending">{seatsLeft(event)} left</span>
+                )}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )}
+
+  {news.length > 0 && (
+    <section class="home-section">
+      <div class="home-head">
+        <h2>Latest news</h2>
+        <a class="btn btn-ghost btn-sm" href="/announcements">All news</a>
+      </div>
+      <ul class="news-strip">
+        {news.map((post) => (
+          <li class="news-tile">
+            {post.cover_at && (
+              <a class="news-tile-cover" href={`/announcements#post-${post.id}`} tabindex="-1" aria-hidden="true">
+                <img src={`/announcements/${post.id}/cover?v=${post.cover_at}`} alt="" loading="lazy" />
+              </a>
+            )}
+            <div class="news-tile-body">
+              <p class="event-when">{formatHelsinkiDate(post.published_at)}</p>
+              <h3><a href={`/announcements#post-${post.id}`}>{post.title}</a></h3>
+              <p class="event-meta">{newsExcerpt(post)}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )}
+
+  {albums.length > 0 && (
+    <section class="home-section">
+      <div class="home-head">
+        <h2>From our events</h2>
+        <a class="btn btn-ghost btn-sm" href="/history">The whole history</a>
+      </div>
+      <ul class="photo-strip">
+        {albums.map((album) => (
           <li>
-            {event.starts_at <= now && <span class="live-badge">Happening now</span>}
-            <a href={`/events/${event.id}`}>{event.title}</a>
-            <span class="event-meta">{formatHelsinkiRange(event.starts_at, event.ends_at)}</span>
+            <a href={`/events/${album.event_id}#photos`} title={album.title}>
+              <img src={`/events/${album.event_id}/photos/${album.first_id}?thumb`} alt="" loading="lazy" />
+              <span>{album.title}</span>
+            </a>
           </li>
         ))}
       </ul>
@@ -65,4 +142,18 @@ try {
   <article class="prose">
     <Content />
   </article>
+
+  <section class="home-join">
+    <div>
+      <h2>Membership is free</h2>
+      <p>
+        Open to every student at Lahti's higher education institutions, and to anyone else as a supporting member.
+        Members pay less for tickets, get the member channels on Discord, and count towards the season.
+      </p>
+    </div>
+    <p class="entry-actions">
+      <a class="btn btn-cta" href="/join">Become a member</a>
+      <a class="btn btn-ghost" href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Say hi on Discord</a>
+    </p>
+  </section>
 </Base>

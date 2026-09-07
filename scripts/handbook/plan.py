@@ -21,6 +21,10 @@ def shot(name, url, as_='none', device=None, clip=None, hl=(), pad=12, top=None,
         if v is not None: job[k] = v
     S.append((s, job))
 
+# The front page
+shot('home-page', '/', top=1500, pad=0)
+shot('home-strips', '/', clip='section.home-section', skip=-10, extend=980, hl=['.event-price', '.photo-strip'], nums=True)
+
 # Signing in, who can do what
 shot('header-signin', '/events', clip='header.site-header', hl=['#site-account'], pad=0)
 shot('footer-board-login', '/events', clip='footer.site-footer', hl=['footer a[href="/register"]', 'footer a[href="/handbook"]'], pad=0, nums=True)

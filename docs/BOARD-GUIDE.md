@@ -6,6 +6,7 @@ has the details, the settings and the fixes.
 
 ## Contents
 
+- [The front page](#the-front-page)
 - [Signing in](#signing-in)
 - [Who can do what](#who-can-do-what)
 - [Members](#members)
@@ -16,6 +17,20 @@ has the details, the settings and the fixes.
 - [News](#news)
 - [Minecraft server](#minecraft-server)
 - [Where things are](#where-things-are)
+
+## The front page
+
+lahtiag.fi opens with the hero and the Discord widget, and under it three
+strips that keep themselves up to date: **Coming up** (the next three
+events with their covers, what a seat costs and how much room is left),
+**Latest news** (the three newest posts) and **From our events** (a
+picture from each event that has an album). Nothing there is written by
+hand: publish an event, post news or upload photos and the front page
+follows.
+
+![The front page](images/site/home-strips.png)
+
+*Under the hero: 1 what a seat costs and how much room is left, 2 a picture from each event with an album. Everything links on: All events, All news, the whole history.*
 
 ## Signing in
 

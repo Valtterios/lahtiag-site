@@ -30,6 +30,24 @@ export function newsText(post: Pick<AnnouncementRow, 'title' | 'body_md'>): stri
 }
 
 // The form's ping choice: nobody, everyone, or a role id.
+// The first line or two of a post, without its Markdown, for a card that
+// only teases it (the front page).
+export function newsExcerpt(post: Pick<AnnouncementRow, 'body_md'>, max = 160): string {
+  const plain = post.body_md
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s{0,3}[-*+]\s+/gm, '')
+    .replace(/[*_`>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (plain.length <= max) return plain;
+  const cut = plain.slice(0, max);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > max - 30 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
 export function parsePing(raw: string | null | undefined): string | null {
   const text = (raw ?? '').trim();
   if (text === '' || text === 'none') return null;

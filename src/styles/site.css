@@ -1879,40 +1879,202 @@ a:hover {
 }
 
 /* front-page "coming up" strip */
-.upnext {
-  margin: 0 0 2.5rem;
+/* The front page under the hero: what is coming, what was written, what
+   was played, and the way in (src/pages/index.astro). */
+.home-section {
+  margin: 0 0 2.8rem;
 }
 
-.upnext-list {
+.home-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem 1.2rem;
+  flex-wrap: wrap;
+  margin: 0 0 1rem;
+}
+
+.home-head h2 {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 1.5rem;
+  line-height: 1.1;
+  text-transform: uppercase;
+  margin: 0;
+  color: var(--ink);
+}
+
+.home-head h2::before {
+  content: '';
+  display: block;
+  width: 1.6rem;
+  height: 3px;
+  background: var(--blue);
+  margin-bottom: 0.5rem;
+  transform: skewX(-20deg);
+}
+
+/* A news post as a card: the cover, when it went out, and its first line. */
+.news-strip {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.7rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
 }
 
-.upnext-list li {
+.news-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--line);
-  clip-path: var(--cut-s);
-  padding: 0.65rem 1rem;
-  display: flex;
-  align-items: baseline;
-  gap: 0.8rem;
-  flex-wrap: wrap;
+  clip-path: var(--cut);
 }
 
-.upnext-list a {
+.news-tile:hover {
+  border-color: var(--blue);
+}
+
+.news-tile-cover {
+  display: block;
+  aspect-ratio: 1200 / 630;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.news-tile-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.news-tile-body {
+  padding: 0.9rem 1.2rem 1.1rem;
+}
+
+.news-tile h3 {
   font-family: var(--display);
   font-style: italic;
   font-weight: 700;
+  font-size: 1.1rem;
+  line-height: 1.2;
   text-transform: uppercase;
+  margin: 0.2rem 0 0.4rem;
+}
+
+.news-tile h3 a {
   color: var(--ink);
   text-decoration: none;
 }
 
-.upnext-list a:hover {
+.news-tile h3 a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.news-tile:hover h3 a {
   color: var(--blue);
+}
+
+.news-tile .event-meta {
+  margin: 0;
+}
+
+/* One picture per event that has an album, newest first. */
+.photo-strip {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.6rem;
+}
+
+.photo-strip a {
+  display: block;
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  clip-path: var(--cut-s);
+  background: var(--bg);
+}
+
+.photo-strip img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+
+.photo-strip a:hover img {
+  transform: scale(1.04);
+}
+
+.photo-strip span {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 0.9rem 0.6rem 0.4rem;
+  background: linear-gradient(transparent, rgba(30, 30, 30, 0.75));
+  color: #fff;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+/* The way in, at the end of the page. */
+.home-join {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+  flex-wrap: wrap;
+  margin: 2.5rem 0 1rem;
+  padding: 1.4rem 1.6rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--yellow);
+  clip-path: var(--cut);
+}
+
+.home-join h2 {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 1.4rem;
+  text-transform: uppercase;
+  margin: 0 0 0.3rem;
+}
+
+.home-join p {
+  margin: 0;
+  max-width: 42rem;
+  color: var(--muted);
+}
+
+.home-join .entry-actions {
+  margin: 0;
+  flex: none;
+}
+
+@media (max-width: 900px) {
+  .news-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .news-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .champion {
@@ -4371,7 +4533,8 @@ details.admin-panel[open] > summary {
   flex-direction: column;
   flex: 1 0 auto;
 }
-.event-tile-body h2 {
+.event-tile-body h2,
+.event-tile-body h3 {
   font-family: var(--display);
   font-style: italic;
   font-weight: 700;
@@ -4379,11 +4542,13 @@ details.admin-panel[open] > summary {
   font-size: 1.2rem;
   margin: 0.15rem 0 0.3rem;
 }
-.event-tile-body h2 a {
+.event-tile-body h2 a,
+.event-tile-body h3 a {
   color: var(--ink);
   text-decoration: none;
 }
-.event-tile-body h2 a:hover {
+.event-tile-body h2 a:hover,
+.event-tile-body h3 a:hover {
   color: var(--blue);
 }
 .event-tile-body .event-meta {
@@ -4416,7 +4581,8 @@ details.admin-panel[open] > summary {
   position: relative;
 }
 
-.event-tile-body h2 a::after {
+.event-tile-body h2 a::after,
+.event-tile-body h3 a::after {
   content: '';
   position: absolute;
   inset: 0;
