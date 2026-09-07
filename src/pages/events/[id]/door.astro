@@ -50,8 +50,8 @@ const products = allowed ? await listProducts(env.DB, Math.floor(Date.now() / 10
 const FLASH: Record<string, string> = {
   in: 'Checked in.',
   undone: 'Check-in undone.',
-  attached: 'Payment attached; ticket issued.',
-  attached_item: 'Payment attached; item sold and handed over.',
+  attached: 'Payment attached:',
+  attached_item: 'Payment attached; sold and handed over:',
   sold_out: 'Not that many left in stock.',
   missing: 'No ticket with that code.',
   not_paid: "That ticket isn't paid.",

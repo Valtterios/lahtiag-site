@@ -321,6 +321,13 @@ On a phone it does everything:
   up in it by itself within seconds — the name already filled in.
   lahtiag.fi/board says how many payments are waiting, and the shop's
   **Items to hand over** page attaches the ones that were shop sales.
+- **One card, several things.** Charge the total in the app, then press
+  **Add a line** for each thing it paid for: two entries for two people
+  (the second line asks for their name), an entry and a patch, three
+  sticker sheets. Each line picks its own price, members' price included,
+  and the box says whether the lines add up to what was charged. Everyone
+  gets their ticket, the items are marked handed over, all from the one
+  payment.
 - **No scanner?** The holder presses "Mark as used" on their ticket in
   front of you; the ticket then shows the **mark of the day**, an icon
   that changes daily and is shown on the door page too, so a screenshot

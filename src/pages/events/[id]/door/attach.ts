@@ -2,11 +2,13 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../../lib/guard';
 import { requireBoard } from '../../../../lib/board';
-import { attachDoorPayment, checkInTicket, RuleError } from '../../../../lib/db';
-import { attachDoorPaymentToItem } from '../../../../lib/purchases';
+import { checkInTicket, RuleError } from '../../../../lib/db';
+import { attachDoorPayment, type DoorLine } from '../../../../lib/purchases';
+import { doorLines, attachSummary } from '../../../../lib/door';
 
-// A Tap to Pay payment becomes a paid, checked-in door ticket for the
-// named person, or a shop item sold and handed over on the spot.
+// A Tap to Pay payment becomes what it paid for: door tickets by name,
+// checked in on the spot, and shop items sold and handed over. One payment
+// can hold several of each, so the form posts one line per thing.
 
 export const POST: APIRoute = async ({ request, params, redirect }) => {
   const id = Number(params.id);
@@ -19,23 +21,16 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   const form = await request.formData();
   if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf`, 303);
   const paymentIntent = String(form.get('payment_intent') ?? '').trim();
-  const what = String(form.get('what') ?? `ticket:${String(form.get('ticket_type_id') ?? '')}`);
-  const [kind, idText] = what.split(':');
-  const targetId = Number(idText);
   const holder = String(form.get('holder_name') ?? '').trim();
-  const quantity = Math.max(1, Number(form.get('quantity')) || 1);
-  if (!/^pi_[A-Za-z0-9]+$/.test(paymentIntent) || !Number.isInteger(targetId) || !holder) {
+  const lines: DoorLine[] = doorLines(form, holder);
+  if (!/^pi_[A-Za-z0-9]+$/.test(paymentIntent) || !holder || lines.length === 0) {
     return redirect(`${back}?err=bad_input`, 303);
   }
   const now = Math.floor(Date.now() / 1000);
   try {
-    if (kind === 'item') {
-      const purchase = await attachDoorPaymentToItem(env.DB, paymentIntent, targetId, quantity, holder, who, now);
-      return redirect(`${back}?ok=attached_item&who=${encodeURIComponent(purchase.buyer_name)}`, 303);
-    }
-    const ticket = await attachDoorPayment(env.DB, paymentIntent, id, targetId, holder, now);
-    await checkInTicket(env.DB, ticket.code, who, now);
-    return redirect(`${back}?ok=attached&who=${encodeURIComponent(ticket.holder_name)}`, 303);
+    const made = await attachDoorPayment(env.DB, paymentIntent, { eventId: id, lines, buyerName: holder, by: who }, now);
+    for (const ticket of made.tickets) await checkInTicket(env.DB, ticket.code, who, now);
+    return redirect(`${back}?ok=attached&who=${encodeURIComponent(attachSummary(made))}`, 303);
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
     throw error;

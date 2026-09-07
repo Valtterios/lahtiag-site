@@ -27,7 +27,7 @@ const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
 const mark = allowed && env.SESSION_SECRET ? await dailyMark(env.SESSION_SECRET, Math.floor(Date.now() / 1000)) : null;
 const FLASH: Record<string, string> = {
   delivered: 'Marked as handed over.',
-  attached_item: 'Payment attached; item sold and handed over.',
+  attached_item: 'Payment attached; sold and handed over:',
   sold_out: 'Not that many left in stock.',
   bad_input: "That didn't parse.",
   undone: 'Undone.',
@@ -37,6 +37,7 @@ const FLASH: Record<string, string> = {
 };
 const okKey = Astro.url.searchParams.get('ok');
 const flash = FLASH[okKey ?? Astro.url.searchParams.get('err') ?? ''] ?? null;
+const flashName = (Astro.url.searchParams.get('who') ?? '').slice(0, 120);
 Astro.response.headers.set('cache-control', 'no-store');
 ---
 <Base title="Items to hand over" description="Board-only list of paid shop items." wide>
@@ -53,7 +54,7 @@ Astro.response.headers.set('cache-control', 'no-store');
         <h1>Items to hand over</h1>
         <p class="queue-meta">{waiting.length} waiting. Tick each one off when the buyer collects it; they show this on their purchase page.</p>
       </article>
-      {flash && <p class={`flash${okKey ? ' flash-good' : ''}`}>{flash}</p>}
+      {flash && <p class={`flash${okKey ? ' flash-good' : ''}`}>{flash}{flashName && <> <strong>{flashName}</strong></>}</p>}
       {mark && (
         <p class="daily-mark">
           <span class="daily-mark-icon" aria-hidden="true">{mark.icon}</span>

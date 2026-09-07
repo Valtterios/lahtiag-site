@@ -716,7 +716,25 @@ at the door** until someone says who it was: the amount in full size, how
 long ago it was taken, the last six characters of Stripe's id, and what
 that amount is the price of. The name from the app's description is filled
 in, the ticket or item at that price is pre-picked, and the quantity only
-appears for a shop item. The same unattached payment shows on every event's
+appears for a shop item.
+
+**One tap, several things.** A payment can pay for more than one thing —
+an entry and a patch, two entries for two people, three sticker sheets and
+a hoodie. **Add a line** gives the payment another line: what it was (every
+price is its own choice in the list, the members' price included), a name
+for a ticket line beyond the first, a quantity for an item line. The line
+total is shown against what was charged, so a mistyped quantity is visible
+before anything is attached. Attaching then makes a door ticket per ticket
+line (each checked in, named) and one paid purchase holding the item lines,
+handed over on the spot; both hang off the same payment. Without
+JavaScript the form keeps its single line, which is the everyday case.
+
+The money is the last word: with one line, that line is worth the whole
+payment (a member's price the board typed by hand included). With several,
+each line is worth the price picked, and whatever they miss the payment by
+lands on the first line — so tickets plus items always add up to what
+Stripe took (`attachDoorPayment` in `src/lib/purchases.ts`, the form read
+by `doorLines` in `src/lib/door.ts`). The same unattached payment shows on every event's
 door page opened within twelve hours and under "Selling on the spot" on
 lahtiag.fi/shop/orders — attaching decides what it becomes, so attach a
 ticket on the door page of the event it was taken at. lahtiag.fi/board

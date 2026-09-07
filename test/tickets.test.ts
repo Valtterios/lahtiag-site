@@ -26,12 +26,12 @@ import {
   listMyTickets,
   recordDoorPayment,
   listUnattachedDoorPayments,
-  attachDoorPayment,
   salesSummary,
   listSignups,
   deleteEvent,
   PENDING_TICKET_SECONDS,
 } from '../src/lib/db';
+import { attachDoorPayment } from '../src/lib/purchases';
 import { newTicketCode, normalizeTicketCode, codeFromScan, qrSvg } from '../src/lib/qr';
 import { verifyWebhookSignature } from '../src/lib/stripe';
 
@@ -245,10 +245,15 @@ describe('ticket lifecycle', () => {
     await recordDoorPayment(db(), 'pi_tap', 1000, NOW, '  Walk  In ');
     await recordDoorPayment(db(), 'pi_tap', 1000, NOW); // idempotent
     expect((await listUnattachedDoorPayments(db(), NOW - 3600)).map((p) => [p.stripe_payment_intent, p.note])).toEqual([['pi_tap', 'Walk In']]);
-    const ticket = await attachDoorPayment(db(), 'pi_tap', id, typeId, 'Walk In', NOW + 5);
-    expect(ticket).toMatchObject({ status: 'paid', source: 'door', holder_name: 'Walk In', stripe_payment_intent: 'pi_tap' });
+    const attached = await attachDoorPayment(db(), 'pi_tap', { eventId: id, lines: [{ kind: 'ticket', typeId, name: 'Walk In', members: false }], buyerName: 'Walk In', by: 'board@x' }, NOW + 5);
+    const ticket = attached.tickets[0];
+    // One line takes the whole payment, whatever the list says.
+    expect(ticket).toMatchObject({ status: 'paid', source: 'door', holder_name: 'Walk In', stripe_payment_intent: 'pi_tap', amount_cents: 1000 });
+    expect(attached.purchase).toBeNull();
     expect(await listUnattachedDoorPayments(db(), NOW - 3600)).toEqual([]);
-    await expect(attachDoorPayment(db(), 'pi_tap', id, typeId, 'Again', NOW)).rejects.toMatchObject({ code: 'missing' });
+    await expect(
+      attachDoorPayment(db(), 'pi_tap', { eventId: id, lines: [{ kind: 'ticket', typeId, name: 'Again', members: false }], buyerName: 'Again', by: 'board@x' }, NOW),
+    ).rejects.toMatchObject({ code: 'missing' });
     // deleting the event takes its tickets, types and door payments with it
     await deleteEvent(db(), id);
     expect(await getTicketByCode(db(), ticket.code)).toBeNull();

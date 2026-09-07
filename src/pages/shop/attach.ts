@@ -3,9 +3,12 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
 import { requireBoard } from '../../lib/board';
 import { RuleError } from '../../lib/db';
-import { attachDoorPaymentToItem } from '../../lib/purchases';
+import { attachDoorPayment } from '../../lib/purchases';
+import { doorLines, attachSummary } from '../../lib/door';
 
-// Board: a Tap to Pay payment becomes a shop item sold and handed over.
+// Board: a Tap to Pay payment becomes shop items sold and handed over —
+// several different ones in the same payment if that is what was bought.
+// Tickets belong to an event, so they are attached on its door page.
 
 export const POST: APIRoute = async ({ request, redirect }) => {
   const back = '/shop/orders';
@@ -16,13 +19,12 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   const form = await request.formData();
   if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf`, 303);
   const paymentIntent = String(form.get('payment_intent') ?? '').trim();
-  const productId = Number(form.get('product_id'));
-  const quantity = Math.max(1, Number(form.get('quantity')) || 1);
   const holder = String(form.get('holder_name') ?? '').trim();
-  if (!/^pi_[A-Za-z0-9]+$/.test(paymentIntent) || !Number.isInteger(productId) || !holder) return redirect(`${back}?err=bad_input`, 303);
+  const lines = doorLines(form, holder, true);
+  if (!/^pi_[A-Za-z0-9]+$/.test(paymentIntent) || !holder || lines.length === 0) return redirect(`${back}?err=bad_input`, 303);
   try {
-    const purchase = await attachDoorPaymentToItem(env.DB, paymentIntent, productId, quantity, holder, by, Math.floor(Date.now() / 1000));
-    return redirect(`${back}?ok=attached_item&who=${encodeURIComponent(purchase.buyer_name)}`, 303);
+    const made = await attachDoorPayment(env.DB, paymentIntent, { eventId: null, lines, buyerName: holder, by }, Math.floor(Date.now() / 1000));
+    return redirect(`${back}?ok=attached_item&who=${encodeURIComponent(attachSummary(made))}`, 303);
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
     throw error;

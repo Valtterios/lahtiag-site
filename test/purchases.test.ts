@@ -45,7 +45,8 @@ import {
   listUndeliveredItems,
   markItemDelivered,
   listMyItems,
-  attachDoorPaymentToItem,
+  attachDoorPayment,
+  type DoorLine,
   MAX_PER_PURCHASE,
   setProductImage,
   getProductImage,
@@ -379,16 +380,77 @@ describe('a tapped payment for a shop item', () => {
   it('becomes a paid purchase, handed over, and leaves the payment list', async () => {
     const id = await createProduct(db(), { name: 'Patch', description: '', price_cents: 500, member_price_cents: null, stock: 2, active: true }, NOW);
     await recordDoorPayment(db(), 'pi_patch', 1000, NOW, 'Walk In');
-    await expect(attachDoorPaymentToItem(db(), 'pi_patch', id, 3, 'Walk In', 'board@x', NOW)).rejects.toMatchObject({ code: 'sold_out' });
-    await expect(attachDoorPaymentToItem(db(), 'pi_nope', id, 1, 'Walk In', 'board@x', NOW)).rejects.toMatchObject({ code: 'missing' });
-    const purchase = await attachDoorPaymentToItem(db(), 'pi_patch', id, 2, ' Walk  In ', 'board@x', NOW);
-    expect(purchase).toMatchObject({ status: 'paid', total_cents: 1000, buyer_name: 'Walk In', stripe_payment_intent: 'pi_patch', discord_id: null });
-    const items = await purchaseItems(db(), purchase.id);
+    const item = (productId: number, quantity: number) => ({ kind: 'item' as const, productId, quantity, members: false });
+    const door = (paymentIntent: string, lines: ReturnType<typeof item>[], name = 'Walk In') =>
+      attachDoorPayment(db(), paymentIntent, { eventId: null, lines, buyerName: name, by: 'board@x' }, NOW);
+    await expect(door('pi_patch', [item(id, 3)])).rejects.toMatchObject({ code: 'sold_out' });
+    await expect(door('pi_nope', [item(id, 1)])).rejects.toMatchObject({ code: 'missing' });
+    const made = await door('pi_patch', [item(id, 2)], ' Walk  In ');
+    expect(made.purchase).toMatchObject({ status: 'paid', total_cents: 1000, buyer_name: 'Walk In', stripe_payment_intent: 'pi_patch', discord_id: null });
+    expect(made.tickets).toEqual([]);
+    const items = await purchaseItems(db(), made.purchase!.id);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ quantity: 2, unit_cents: 500, delivered_by: 'board@x' });
     expect(items[0].delivered_at).toBe(NOW);
     expect((await getProduct(db(), id, NOW))!.sold).toBe(2);
     expect(await listUnattachedDoorPayments(db(), NOW - 3600)).toEqual([]);
-    await expect(attachDoorPaymentToItem(db(), 'pi_patch', id, 1, 'Again', 'board@x', NOW)).rejects.toMatchObject({ code: 'missing' });
+    await expect(door('pi_patch', [item(id, 1)], 'Again')).rejects.toMatchObject({ code: 'missing' });
+  });
+});
+
+describe('a tapped payment for several things', () => {
+  it('splits into tickets by name and shop items, and the money always adds up', async () => {
+    const eventId = await event();
+    const typeId = await createTicketType(db(), eventId, { name: 'Entry', price_cents: 800, member_price_cents: 500, members_only: false, quantity: null, sales_close_at: null });
+    const patchId = await createProduct(db(), { name: 'Patch', description: '', price_cents: 500, member_price_cents: 400, stock: 10, active: true }, NOW);
+    const attach = (intent: string, lines: DoorLine[], name = 'Pekka K') =>
+      attachDoorPayment(db(), intent, { eventId, lines, buyerName: name, by: 'board@x' }, NOW);
+
+    // An entry and a patch in one tap: a ticket at its price, a purchase for the rest.
+    await recordDoorPayment(db(), 'pi_both', 1300, NOW, 'Pekka K');
+    const both = await attach('pi_both', [
+      { kind: 'ticket', typeId, name: '', members: false },
+      { kind: 'item', productId: patchId, quantity: 1, members: false },
+    ]);
+    expect(both.tickets).toHaveLength(1);
+    expect(both.tickets[0]).toMatchObject({ holder_name: 'Pekka K', amount_cents: 800, source: 'door', stripe_payment_intent: 'pi_both' });
+    expect(both.purchase).toMatchObject({ total_cents: 500, buyer_name: 'Pekka K' });
+    expect(both.items).toHaveLength(1);
+    expect(both.items[0]).toMatchObject({ quantity: 1, unit_cents: 500, delivered_by: 'board@x' });
+    // The ticket belongs to the same purchase, and the payment is off the list.
+    expect(both.tickets[0].purchase_id).toBe(both.purchase!.id);
+    expect(await listUnattachedDoorPayments(db(), NOW - 3600)).toEqual([]);
+
+    // Two people, one card: a ticket each, the second by name.
+    await recordDoorPayment(db(), 'pi_two', 1600, NOW, 'Pekka K');
+    const two = await attach('pi_two', [
+      { kind: 'ticket', typeId, name: '', members: false },
+      { kind: 'ticket', typeId, name: ' Sanna  R ', members: false },
+    ]);
+    expect(two.tickets.map((t) => [t.holder_name, t.amount_cents])).toEqual([
+      ['Pekka K', 800],
+      ['Sanna R', 800],
+    ]);
+    expect(two.purchase).toBeNull();
+
+    // A members' price picked per line, and a total the list does not
+    // reach: the difference lands on the first line, so the books match
+    // the money Stripe took.
+    await recordDoorPayment(db(), 'pi_member', 800, NOW, 'Iida J');
+    const mixed = await attach('pi_member', [
+      { kind: 'ticket', typeId, name: '', members: true },
+      { kind: 'item', productId: patchId, quantity: 1, members: true },
+    ], 'Iida J');
+    expect(mixed.tickets[0].amount_cents).toBe(400); // 500 + 400 charged as 800
+    expect(mixed.items[0].unit_cents).toBe(400);
+    expect(mixed.purchase!.total_cents).toBe(400);
+
+    // Nothing to attach it to is a refusal, not an empty purchase.
+    await recordDoorPayment(db(), 'pi_empty', 500, NOW, 'Nobody');
+    await expect(attach('pi_empty', [])).rejects.toMatchObject({ code: 'bad_input' });
+    // A ticket type from another event is not this event's to sell.
+    const other = await createTicketType(db(), await event(), { name: 'Elsewhere', price_cents: 500, member_price_cents: null, members_only: false, quantity: null, sales_close_at: null });
+    await expect(attach('pi_empty', [{ kind: 'ticket', typeId: other, name: '', members: false }])).rejects.toMatchObject({ code: 'missing' });
+    expect((await listUnattachedDoorPayments(db(), NOW - 3600)).map((p) => p.stripe_payment_intent)).toEqual(['pi_empty']);
   });
 });

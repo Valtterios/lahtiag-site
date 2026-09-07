@@ -3410,40 +3410,6 @@ export async function listUnattachedDoorPayments(db: D1Database, since: number):
   return results;
 }
 
-// A door payment becomes a paid door ticket for the named person.
-export async function attachDoorPayment(
-  db: D1Database,
-  paymentIntent: string,
-  eventId: number,
-  ticketTypeId: number,
-  holderName: string,
-  now: number,
-): Promise<TicketRow> {
-  const payment = await db
-    .prepare('SELECT * FROM door_payments WHERE stripe_payment_intent = ?1 AND ticket_id IS NULL AND purchase_id IS NULL')
-    .bind(paymentIntent)
-    .first<DoorPaymentRow>();
-  if (!payment) throw new RuleError('missing', 'No unattached payment with that id.');
-  const type = await getTicketType(db, ticketTypeId);
-  if (!type || type.event_id !== eventId) throw new RuleError('missing', 'No such ticket type on this event.');
-  const ticket = await createTicket(
-    db,
-    {
-      event_id: eventId,
-      ticket_type_id: ticketTypeId,
-      discord_id: null,
-      holder_name: holderName,
-      amount_cents: payment.amount_cents,
-      status: 'paid',
-      source: 'door',
-      stripe_payment_intent: paymentIntent,
-    },
-    now,
-  );
-  await db.prepare('UPDATE door_payments SET ticket_id = ?2 WHERE stripe_payment_intent = ?1').bind(paymentIntent, ticket.id).run();
-  return ticket;
-}
-
 export interface SalesSummary {
   tickets: number;
   checked_in: number;

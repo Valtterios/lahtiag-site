@@ -18,10 +18,12 @@ import {
   refundTicket,
   isCurrentMember,
   listTicketsByPurchase,
+  getTicketType,
   blobBytes,
   COVER_TYPES,
   COVER_MAX_BYTES,
   type EventRow,
+  type TicketTypeRow,
   type TicketTypeWithSales,
   type TicketRow,
   type TicketWithType,
@@ -486,44 +488,124 @@ export async function pendingPurchaseFor(db: D1Database, discordId: string, now:
 // A Tap to Pay payment taken for a shop item at a stand or the door: a
 // paid purchase for the named buyer with the item already handed over.
 // The amount is whatever was tapped; stock is checked, prices are not.
-export async function attachDoorPaymentToItem(
+// A card payment taken at the door, said out loud: what it bought, in as
+// many lines as it took. Ticket lines make door tickets by name (the door
+// page checks them in); item lines make one paid purchase, handed over on
+// the spot. One line takes the whole payment, which is what the board
+// charged; several are priced from the list, and any difference between
+// those prices and the money goes on the first line, so the books add up
+// to what Stripe actually took.
+export type DoorLine =
+  | { kind: 'ticket'; typeId: number; name: string; members: boolean }
+  | { kind: 'item'; productId: number; quantity: number; members: boolean };
+
+export interface DoorAttachment {
+  tickets: TicketRow[];
+  purchase: PurchaseRow | null; // only when something from the shop was in it
+  items: PurchaseItemRow[];
+}
+
+export async function attachDoorPayment(
   db: D1Database,
   paymentIntent: string,
-  productId: number,
-  quantity: number,
-  buyerName: string,
-  by: string,
+  input: { eventId: number | null; lines: DoorLine[]; buyerName: string; by: string },
   now: number,
-): Promise<PurchaseRow> {
+): Promise<DoorAttachment> {
   const payment = await db
     .prepare('SELECT * FROM door_payments WHERE stripe_payment_intent = ?1 AND ticket_id IS NULL AND purchase_id IS NULL')
     .bind(paymentIntent)
     .first<{ amount_cents: number }>();
   if (!payment) throw new RuleError('missing', 'No unattached payment with that id.');
-  const product = await getProduct(db, productId, now);
-  if (!product) throw new RuleError('missing', 'No such product.');
-  if (!Number.isInteger(quantity) || quantity < 1) throw new RuleError('bad_input', 'Quantity is at least 1.');
-  const offer = await productOffer(db, product, null);
-  if (!offer.ok) throw new RuleError(offer.reason, 'Not on sale.');
-  if (quantity > offer.max) throw new RuleError('sold_out', 'Not that many left.');
-  const name = buyerName.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Door sale';
-  const id = newTicketCode();
+  if (input.lines.length === 0) throw new RuleError('bad_input', 'Say what the payment was for.');
+  const buyerName = input.buyerName.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Door sale';
+  const single = input.lines.length === 1;
+
+  // Everything is resolved and priced before anything is written.
+  const planned: ({ cents: number } & (
+    | { kind: 'ticket'; type: TicketTypeRow; name: string }
+    | { kind: 'item'; product: ProductWithSales; quantity: number }
+  ))[] = [];
+  const wanted = new Map<number, number>(); // pieces per product, across the lines
+  for (const line of input.lines) {
+    if (line.kind === 'ticket') {
+      const type = await getTicketType(db, line.typeId);
+      if (!type || (input.eventId !== null && type.event_id !== input.eventId)) throw new RuleError('missing', 'No such ticket type on this event.');
+      const list = line.members && type.member_price_cents !== null ? type.member_price_cents : type.price_cents;
+      planned.push({ kind: 'ticket', type, name: line.name.trim() || buyerName, cents: single ? payment.amount_cents : list });
+      continue;
+    }
+    const product = await getProduct(db, line.productId, now);
+    if (!product) throw new RuleError('missing', 'No such product.');
+    if (!Number.isInteger(line.quantity) || line.quantity < 1) throw new RuleError('bad_input', 'Quantity is at least 1.');
+    const offer = await productOffer(db, product, null);
+    if (!offer.ok) throw new RuleError(offer.reason, 'Not on sale.');
+    const pieces = (wanted.get(product.id) ?? 0) + line.quantity;
+    wanted.set(product.id, pieces);
+    if (pieces > offer.max) throw new RuleError('sold_out', 'Not that many left.');
+    const list = line.members && product.member_price_cents !== null ? product.member_price_cents : product.price_cents;
+    planned.push({ kind: 'item', product, quantity: line.quantity, cents: single ? Math.round(payment.amount_cents / line.quantity) : list });
+  }
+  // The money decides: whatever the list prices miss by lands on the first line.
+  const priced = planned.reduce((sum, l) => sum + l.cents * (l.kind === 'item' ? l.quantity : 1), 0);
+  if (priced !== payment.amount_cents) {
+    const first = planned[0];
+    const pieces = first.kind === 'item' ? first.quantity : 1;
+    first.cents += Math.round((payment.amount_cents - priced) / pieces);
+  }
+
+  const itemLines = planned.filter((l) => l.kind === 'item');
+  let purchase: PurchaseRow | null = null;
+  let purchaseId: string | null = null;
+  if (itemLines.length > 0) {
+    purchaseId = newTicketCode();
+    const total = itemLines.reduce((sum, l) => sum + l.cents * (l as { quantity: number }).quantity, 0);
+    await db
+      .prepare(
+        `INSERT INTO purchases (id, discord_id, buyer_name, status, total_cents, stripe_payment_intent, created_at, paid_at)
+         VALUES (?1, NULL, ?2, 'paid', ?3, ?4, ?5, ?5)`,
+      )
+      .bind(purchaseId, buyerName, total, paymentIntent, now)
+      .run();
+    for (const line of itemLines) {
+      if (line.kind !== 'item') continue;
+      await db
+        .prepare(
+          `INSERT INTO purchase_items (purchase_id, product_id, name, quantity, unit_cents, delivered_at, delivered_by)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+        )
+        .bind(purchaseId, line.product.id, line.product.name, line.quantity, line.cents, now, input.by)
+        .run();
+    }
+    purchase = await getPurchase(db, purchaseId);
+  }
+
+  const tickets: TicketRow[] = [];
+  for (const line of planned) {
+    if (line.kind !== 'ticket') continue;
+    tickets.push(
+      await createTicket(
+        db,
+        {
+          event_id: line.type.event_id,
+          ticket_type_id: line.type.id,
+          discord_id: null,
+          holder_name: line.name,
+          amount_cents: line.cents,
+          status: 'paid',
+          source: 'door',
+          stripe_payment_intent: paymentIntent,
+          purchase_id: purchaseId,
+        },
+        now,
+      ),
+    );
+  }
+
   await db
-    .prepare(
-      `INSERT INTO purchases (id, discord_id, buyer_name, status, total_cents, stripe_payment_intent, created_at, paid_at)
-       VALUES (?1, NULL, ?2, 'paid', ?3, ?4, ?5, ?5)`,
-    )
-    .bind(id, name, payment.amount_cents, paymentIntent, now)
+    .prepare('UPDATE door_payments SET ticket_id = ?2, purchase_id = ?3 WHERE stripe_payment_intent = ?1')
+    .bind(paymentIntent, tickets[0]?.id ?? null, purchaseId)
     .run();
-  await db
-    .prepare(
-      `INSERT INTO purchase_items (purchase_id, product_id, name, quantity, unit_cents, delivered_at, delivered_by)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
-    )
-    .bind(id, product.id, product.name, quantity, Math.round(payment.amount_cents / quantity), now, by)
-    .run();
-  await db.prepare('UPDATE door_payments SET purchase_id = ?2 WHERE stripe_payment_intent = ?1').bind(paymentIntent, id).run();
-  return (await getPurchase(db, id))!;
+  return { tickets, purchase, items: purchaseId ? await purchaseItems(db, purchaseId) : [] };
 }
 
 // --- shop items after payment --------------------------------------------------------

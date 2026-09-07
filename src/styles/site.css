@@ -4408,10 +4408,67 @@ details.admin-panel[open] > summary {
 }
 
 .tap-form {
+  display: grid;
+  gap: 0.6rem;
+}
+
+/* one line per thing the payment paid for */
+.tap-lines {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.tap-line {
   display: flex;
   align-items: flex-end;
   flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tap-line + .tap-line {
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--line);
+}
+
+.tap-remove {
+  flex: none;
+  width: 2.1rem;
+  height: 2.4rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.tap-remove:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.tap-do {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 0.6rem;
+}
+
+.tap-do .btn-primary {
+  margin-left: auto;
+}
+
+.tap-count {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1f7a3f;
+}
+
+.tap-count.tap-off {
+  color: #9a6b00;
 }
 
 .tap-field {
@@ -4452,7 +4509,11 @@ details.admin-panel[open] > summary {
 }
 
 .tap-who {
-  flex: 1 1 11rem;
+  max-width: 22rem;
+}
+
+.tap-name {
+  flex: 1 1 9rem;
 }
 
 .tap-what {
@@ -4468,12 +4529,16 @@ details.admin-panel[open] > summary {
 }
 
 @media (max-width: 560px) {
-  .tap-who,
-  .tap-what {
+  .tap-what,
+  .tap-name {
     flex-basis: 100%;
   }
 
-  .tap-form .btn {
+  .tap-who {
+    max-width: none;
+  }
+
+  .tap-do .btn-primary {
     flex: 1 1 auto;
     padding-top: 0.7rem;
     padding-bottom: 0.7rem;

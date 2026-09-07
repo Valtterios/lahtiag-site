@@ -4,11 +4,12 @@ import type { ProductRow } from '../lib/purchases';
 import { agoLabel } from '../lib/time';
 
 // Card payments taken in the Stripe Dashboard app (Tap to Pay), and the
-// form that turns each one into something: a door ticket that is checked
-// in at once, or a shop item sold and handed over. The board sees this on
-// the door page and on the shop's orders page, which is why it lives in
-// one component; the door page also offers the ticket types, the orders
-// page only the shop's items.
+// form that turns each one into what it bought: door tickets by name,
+// checked in at once, and shop items sold and handed over. One payment can
+// pay for several things, so the form takes a line per thing. The board
+// sees this on the door page and on the shop's orders page, which is why
+// it lives in one component; the door page also offers the ticket types,
+// the orders page only the shop's items.
 
 interface Props {
   mode: 'door' | 'shop';
@@ -23,15 +24,37 @@ interface Props {
 const { mode, payments, products, types = [], action, csrf, refresh } = Astro.props;
 const now = Math.floor(Date.now() / 1000);
 const euro = (cents: number) => `${(cents / 100).toFixed(2)} €`;
-const tickets = types.filter((t) => t.active === 1 && t.price_cents > 0);
-// What each amount most likely paid for: the price the buyer was charged,
-// members' price included. Tickets first on the door page, then the shop.
-const priced = [
-  ...tickets.map((t) => ({ value: `ticket:${t.id}`, name: t.name, price_cents: t.price_cents, member_price_cents: t.member_price_cents })),
-  ...products.map((p) => ({ value: mode === 'door' ? `item:${p.id}` : String(p.id), name: p.name, price_cents: p.price_cents, member_price_cents: p.member_price_cents })),
+const tickets = types.filter((t) => t.active === 1);
+
+// Everything a payment can be for, at both prices: the board picks the one
+// they charged, so the record says what was really taken.
+interface Choice {
+  value: string;
+  group: 'Tickets' | 'Shop';
+  label: string;
+  cents: number;
+}
+const choices: Choice[] = [
+  ...tickets.flatMap((t) => [
+    { value: `ticket:${t.id}`, group: 'Tickets' as const, label: `${t.name} · ${euro(t.price_cents)}`, cents: t.price_cents },
+    ...(t.member_price_cents !== null
+      ? [{ value: `ticket:${t.id}:m`, group: 'Tickets' as const, label: `${t.name} · members ${euro(t.member_price_cents)}`, cents: t.member_price_cents }]
+      : []),
+  ]),
+  ...products.flatMap((p) => [
+    { value: `item:${p.id}`, group: 'Shop' as const, label: `${p.name} · ${euro(p.price_cents)}`, cents: p.price_cents },
+    ...(p.member_price_cents !== null
+      ? [{ value: `item:${p.id}:m`, group: 'Shop' as const, label: `${p.name} · members ${euro(p.member_price_cents)}`, cents: p.member_price_cents }]
+      : []),
+  ]),
 ];
-const matchFor = (cents: number) => priced.find((p) => p.price_cents === cents || p.member_price_cents === cents) ?? null;
-const field = mode === 'door' ? 'what' : 'product_id';
+const groups: Choice['group'][] = mode === 'door' ? ['Tickets', 'Shop'] : ['Shop'];
+// The prices to charge, once each, for the list under the steps.
+const priceList = [
+  ...tickets.filter((t) => t.price_cents > 0).map((t) => ({ name: t.name, price_cents: t.price_cents, member_price_cents: t.member_price_cents })),
+  ...products.map((p) => ({ name: p.name, price_cents: p.price_cents, member_price_cents: p.member_price_cents })),
+];
+const matchFor = (cents: number) => choices.find((c) => c.cents === cents) ?? null;
 const ref = (intent: string) => intent.slice(-6).toUpperCase();
 ---
 <section class="panel-card tap-card" id="tap">
@@ -41,6 +64,7 @@ const ref = (intent: string) => intent.slice(-6).toUpperCase();
       <p>
         Take the payment in the <strong>Stripe Dashboard</strong> app and attach it here:
         {mode === 'door' ? ' the buyer gets a door ticket for this event and is checked in on the spot.' : ' the item is sold and marked handed over in one go.'}
+        {' '}One payment can cover several things — add a line for each.
       </p>
     </div>
     {payments.length > 0 ? (
@@ -52,14 +76,14 @@ const ref = (intent: string) => intent.slice(-6).toUpperCase();
 
   <ol class="tap-steps">
     <li><b>1</b><span>In the app: <strong>+</strong> → <strong>Charge card or send invoice</strong></span></li>
-    <li><b>2</b><span>The amount, and the buyer's name as the description</span></li>
+    <li><b>2</b><span>The total, and the buyer's name as the description</span></li>
     <li><b>3</b><span><strong>Tap to Pay</strong> — they tap their card or phone</span></li>
-    <li><b>4</b><span>It turns up here in seconds: check the name, pick what it was for, <strong>Attach</strong></span></li>
+    <li><b>4</b><span>It turns up here in seconds: check the name, say what it was for, <strong>Attach</strong></span></li>
   </ol>
 
-  {priced.length > 0 && (
+  {priceList.length > 0 && (
     <ul class="tap-prices">
-      {priced.map((p) => (
+      {priceList.map((p) => (
         <li>
           <span class="tap-price-name">{p.name}</span>
           <span class="tap-price">{euro(p.price_cents)}</span>
@@ -84,48 +108,54 @@ const ref = (intent: string) => intent.slice(-6).toUpperCase();
               <span class="tap-when">{agoLabel(p.created_at, now)}</span>
               <span class="tap-ref" title={p.stripe_payment_intent}>Stripe ····{ref(p.stripe_payment_intent)}</span>
               {match ? (
-                <span class="tap-match">{match.member_price_cents === p.amount_cents && match.price_cents !== p.amount_cents ? `the members' price of ${match.name}` : `the price of ${match.name}`}</span>
+                <span class="tap-match">the price of {match.label.replace(' · ', ', ')}</span>
               ) : (
-                <span class="tap-match tap-nomatch">{mode === 'door' ? 'no price matches — check what it was for' : "no item costs this — a ticket taken at the door is attached on the event's door page"}</span>
+                <span class="tap-match tap-nomatch">
+                  {mode === 'door'
+                    ? 'no single price matches — several things, or a price of its own: a line each'
+                    : "no item costs this — several items, or a ticket taken at the door (that one belongs on the event's door page)"}
+                </span>
               )}
             </div>
-            <form method="post" action={action} class="tap-form">
+            <form method="post" action={action} class="tap-form" data-tap-amount={p.amount_cents}>
               <input type="hidden" name="csrf" value={csrf} />
               <input type="hidden" name="payment_intent" value={p.stripe_payment_intent} />
               <label class="tap-field tap-who">
                 <span>Who paid</span>
                 <input name="holder_name" required maxlength="60" placeholder="Name" value={p.note ?? ''} />
               </label>
-              <label class="tap-field tap-what">
-                <span>What for</span>
-                <select name={field}>
-                  {mode === 'door' ? (
-                    <>
-                      <optgroup label="Tickets">
-                        {types.filter((t) => t.active === 1).map((t) => (
-                          <option value={`ticket:${t.id}`} selected={match?.value === `ticket:${t.id}`}>{t.name} · {euro(t.price_cents)}</option>
-                        ))}
-                      </optgroup>
-                      {products.length > 0 && (
-                        <optgroup label="Shop">
-                          {products.map((pr) => (
-                            <option value={`item:${pr.id}`} selected={match?.value === `item:${pr.id}`}>{pr.name} · {euro(pr.price_cents)}</option>
-                          ))}
-                        </optgroup>
+              <div class="tap-lines" data-tap-lines>
+                <div class="tap-line" data-tap-line>
+                  <label class="tap-field tap-what">
+                    <span>What for</span>
+                    <select name="line_what" data-tap-what>
+                      {groups.map((group) =>
+                        choices.some((c) => c.group === group) ? (
+                          <optgroup label={group}>
+                            {choices.filter((c) => c.group === group).map((c) => (
+                              <option value={c.value} data-cents={c.cents} selected={match?.value === c.value}>{c.label}</option>
+                            ))}
+                          </optgroup>
+                        ) : null,
                       )}
-                    </>
-                  ) : (
-                    products.map((pr) => <option value={pr.id} selected={match?.value === String(pr.id)}>{pr.name} · {euro(pr.price_cents)}</option>)
-                  )}
-                </select>
-              </label>
-              {(mode === 'shop' || products.length > 0) && (
-                <label class="tap-field tap-qty" data-tap-qty>
-                  <span>Qty</span>
-                  <input name="quantity" type="number" min="1" max="10" value="1" />
-                </label>
-              )}
-              <button class="btn btn-primary" type="submit">Attach</button>
+                    </select>
+                  </label>
+                  <label class="tap-field tap-name" data-tap-name hidden>
+                    <span>Name</span>
+                    <input name="line_name" maxlength="60" placeholder="On the ticket" />
+                  </label>
+                  <label class="tap-field tap-qty" data-tap-qty>
+                    <span>Qty</span>
+                    <input name="line_qty" type="number" min="1" max="10" value="1" />
+                  </label>
+                  <button class="tap-remove" type="button" data-tap-remove hidden aria-label="Take this line off">×</button>
+                </div>
+              </div>
+              <div class="tap-do">
+                <button class="btn btn-ghost btn-sm" type="button" data-tap-add hidden>Add a line</button>
+                <span class="tap-count" data-tap-count hidden></span>
+                <button class="btn btn-primary" type="submit">Attach</button>
+              </div>
             </form>
           </li>
         );
@@ -135,21 +165,67 @@ const ref = (intent: string) => intent.slice(-6).toUpperCase();
 </section>
 
 <script>
-  // A quantity means nothing for a ticket, so it hides while one is
-  // picked. And while nothing waits to be attached, the page looks again
-  // by itself, so a payment taken on the phone turns up without anyone
-  // reaching for the browser — never while someone is typing.
-  document.querySelectorAll<HTMLFormElement>('form.tap-form').forEach((form) => {
-    const what = form.querySelector<HTMLSelectElement>('select[name="what"]');
-    const qty = form.querySelector<HTMLLabelElement>('[data-tap-qty]');
-    if (!what || !qty) return;
-    const sync = () => {
-      qty.hidden = what.value.startsWith('ticket:');
-    };
-    what.addEventListener('change', sync);
-    sync();
-  });
+  // The lines: a name for a ticket, a quantity for an item, and a running
+  // total against what was charged. Without this the form still posts its
+  // one line, which is the everyday case.
+  const money = (cents: number) => `${(cents / 100).toFixed(2)} €`;
 
+  function wire(form: HTMLFormElement): void {
+    const box = form.querySelector<HTMLElement>('[data-tap-lines]');
+    const add = form.querySelector<HTMLButtonElement>('[data-tap-add]');
+    const count = form.querySelector<HTMLElement>('[data-tap-count]');
+    const charged = Number(form.dataset.tapAmount ?? 0);
+    if (!box || !add || !count) return;
+
+    const lines = () => [...box.querySelectorAll<HTMLElement>('[data-tap-line]')];
+    const sync = () => {
+      let total = 0;
+      lines().forEach((line, i) => {
+        const what = line.querySelector<HTMLSelectElement>('[data-tap-what]');
+        const name = line.querySelector<HTMLElement>('[data-tap-name]');
+        const qty = line.querySelector<HTMLElement>('[data-tap-qty]');
+        const remove = line.querySelector<HTMLButtonElement>('[data-tap-remove]');
+        if (!what || !name || !qty || !remove) return;
+        const isTicket = what.value.startsWith('ticket:');
+        // The first line's holder is whoever paid; a further ticket is somebody else.
+        name.hidden = !isTicket || i === 0;
+        qty.hidden = isTicket;
+        remove.hidden = i === 0;
+        const pieces = isTicket ? 1 : Math.max(1, Number(qty.querySelector('input')?.value) || 1);
+        total += Number(what.selectedOptions[0]?.dataset.cents ?? 0) * pieces;
+      });
+      count.hidden = lines().length < 2 && total === charged;
+      count.textContent = total === charged ? `adds up to ${money(total)}` : `lines ${money(total)} · charged ${money(charged)}`;
+      count.classList.toggle('tap-off', total !== charged);
+    };
+
+    add.hidden = false;
+    add.addEventListener('click', () => {
+      const all = lines();
+      const copy = all[all.length - 1].cloneNode(true) as HTMLElement;
+      copy.querySelectorAll('input').forEach((i) => {
+        i.value = i.type === 'number' ? '1' : '';
+      });
+      box.append(copy);
+      sync();
+      copy.querySelector<HTMLSelectElement>('[data-tap-what]')?.focus();
+    });
+    box.addEventListener('change', sync);
+    box.addEventListener('input', sync);
+    box.addEventListener('click', (event) => {
+      const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-tap-remove]');
+      if (!button) return;
+      button.closest('[data-tap-line]')?.remove();
+      sync();
+    });
+    sync();
+  }
+
+  document.querySelectorAll<HTMLFormElement>('form.tap-form').forEach(wire);
+
+  // While nothing waits to be attached the page looks again by itself, so a
+  // payment taken on the phone turns up without anyone reaching for the
+  // browser — never while someone is typing.
   if (document.querySelector('[data-tap-poll]')) {
     const busy = () => {
       const active = document.activeElement;
