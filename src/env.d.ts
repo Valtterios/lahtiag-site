@@ -22,6 +22,12 @@ type WorkerEnv = {
   // The Google step-up in front of the member register (src/lib/board.ts).
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  // Sending from the association's own Workspace (src/lib/mail.ts): the
+  // address that sends, its refresh token, and where a reply should go.
+  // Without them the site simply sends no email, as it always has.
+  GMAIL_SENDER?: string;
+  GMAIL_REFRESH_TOKEN?: string;
+  MAIL_REPLY_TO?: string;
   // Fixed allowlist of Workspace accounts for the register; more are
   // added on the register page itself.
   REGISTER_ADMINS: string;

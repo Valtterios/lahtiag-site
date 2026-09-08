@@ -22,11 +22,15 @@ import {
   sameHandle,
 } from '../../../lib/register';
 import { formatHelsinkiDate } from '../../../lib/time';
+import { mailConfigured } from '../../../lib/mail';
 
 // One register entry: the decision buttons on top, everything the person
 // supplied below, editable by the board, and erasure at the very end.
 
 const board = await requireBoard(Astro.request, env);
+// Whether there is an address to send from at all, which decides what the
+// correction panel can promise.
+const canMail = mailConfigured(env);
 Astro.response.status = boardStatus(board);
 const discordSession = board.ok ? null : await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
@@ -49,8 +53,9 @@ const FLASH: Record<string, string> = {
   former: 'Marked as a former member.',
   member: 'Membership reinstated.',
   approved: 'Application approved.',
-  fix_asked: 'Asked, and sent to them on Discord. The entry stays in the queue until they answer.',
-  fix_saved: "Saved. They have no Discord account linked, so nobody has told them yet — their email is above.",
+  fix_discord: 'Asked, and sent to them on Discord. The entry stays in the queue until they answer.',
+  fix_email: 'Asked, and emailed to them. Their reply comes to the board address; the entry stays in the queue.',
+  fix_nobody: 'Saved. There is no Discord account and no email sender set up, so nobody has told them yet.',
   fix_cleared: 'The request is withdrawn.',
   active_approve: 'Approved as an active.',
   active_revoke: 'No longer an active.',
@@ -174,12 +179,17 @@ const SOURCE: Record<string, string> = {
                   They get it as a Discord message, and it sits on their own membership page above the form that
                   answers it. Saving their details clears it and puts the application back in front of you.
                 </p>
+              ) : canMail ? (
+                <p class="queue-intro">
+                  No Discord account is linked, so this goes to <strong>{entry.email}</strong> instead, from the
+                  association's own address. They have no membership page to fix it on, so their answer comes back as a
+                  reply and is yours to type into the fields above.
+                </p>
               ) : (
                 <p class="queue-intro warn-tag">
-                  This application has no Discord account linked, so the site cannot reach them and cannot give them a
-                  page to fix it on: <strong>nothing is sent</strong>. Write to {entry.email} yourself. Saving the note
-                  here marks the application <em>waiting on them</em> so the queue remembers, and their answer is yours
-                  to type into the fields above.
+                  This application has no Discord account linked, and the site has no email sender set up, so
+                  <strong> nothing is sent</strong>. Write to {entry.email} yourself. Saving the note here marks the
+                  application <em>waiting on them</em> so the queue remembers.
                 </p>
               )}
               <form method="post" action={`/register/${entry.id}/action`} class="app-form">

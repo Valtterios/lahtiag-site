@@ -18,6 +18,7 @@ import {
 import { parseApplication, parseHonour, LIMITS, MEMBER_TYPES, type MemberType } from '../../../lib/register';
 import { applyRoles, loadRoleConfig, type RoleOutcome } from '../../../lib/roles';
 import { postWebhook, dmUser } from '../../../lib/discord';
+import { sendMail, mailConfigured } from '../../../lib/mail';
 import { postBoardLine, postActivesRequest } from '../../../lib/board-channel';
 
 // A new member is welcomed in a public channel when WELCOME_WEBHOOK_URL is
@@ -102,17 +103,31 @@ export const POST: APIRoute = async ({ request, redirect, params, url, locals })
         const note = String(form.get('fix_note') ?? '');
         const entry = await askForCorrection(env.DB, id, note, board.email, now);
         if (!entry) return redirect('/register?err=missing', 303);
+        // Discord for the linked, email for everybody else. The two never
+        // both go: one message, to wherever the person actually is.
+        const asked = entry.fix_note ?? '';
+        let sent: 'discord' | 'email' | 'nobody' = 'nobody';
         if (entry.discord_id && env.DISCORD_BOT_TOKEN) {
+          sent = 'discord';
           locals.cfContext.waitUntil(
             dmUser(
               env.DISCORD_BOT_TOKEN,
               entry.discord_id,
-              `📝 The board has a question about your LahtiAG membership application:\n\n> ${entry.fix_note?.replace(/\n/g, '\n> ')}\n\nPut it right under **Your details** at ${url.origin}/membership — that is all it takes; nothing else about your application changes.`,
+              `📝 The board has a question about your LahtiAG membership application:\n\n> ${asked.replace(/\n/g, '\n> ')}\n\nPut it right under **Your details** at ${url.origin}/membership — that is all it takes; nothing else about your application changes.`,
             ).then(() => undefined),
           );
+        } else if (mailConfigured(env)) {
+          sent = 'email';
+          locals.cfContext.waitUntil(
+            sendMail(env, {
+              to: entry.email,
+              subject: 'Your LahtiAG membership application',
+              text: `Hello ${entry.full_name},\n\nThe board has a question about your membership application:\n\n  ${asked.replace(/\n/g, '\n  ')}\n\nJust reply to this message and we will put it right — nothing else about your application changes, and it keeps its place in the queue.\n\nLahti Association of Gaming LAG ry\n${url.origin}\n`,
+            }).then(() => undefined),
+          );
         }
-        tellBoard(`📝 **${entry.full_name}** was asked to fix something by ${board.email}${entry.discord_id ? '' : ' (no Discord account linked, so tell them yourself)'}: ${entry.fix_note}`);
-        return redirect(`${back}?ok=${entry.discord_id ? 'fix_asked' : 'fix_saved'}`, 303);
+        tellBoard(`📝 **${entry.full_name}** was asked to fix something by ${board.email}${sent === 'nobody' ? ' (no Discord account and no email set up, so tell them yourself)' : sent === 'email' ? ` (emailed to ${entry.email})` : ''}: ${asked}`);
+        return redirect(`${back}?ok=fix_${sent}`, 303);
       }
       case 'fix_clear': {
         await clearCorrection(env.DB, id, now);

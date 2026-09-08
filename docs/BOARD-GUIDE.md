@@ -113,9 +113,13 @@ the bottom right lets you view a page as a member or a visitor would.
   Nobody is rejected for a typo, and nobody on the board has to guess at
   a surname.
 
-- **An applicant without Discord** has no membership page and cannot be
-  messaged, so nothing is sent and the panel says so: write to the email
-  on the application, and type their answer into the fields yourself.
+- **An applicant without Discord** has no membership page to fix
+  anything on, so the correction goes to them by email from the
+  association's own address, and their reply comes to the board — you
+  type the answer into the fields yourself. If the sending address is not
+  set up (OPERATIONS, "Email from the association's own address"), the
+  panel says plainly that nothing was sent and leaves the writing to
+  you.
   Saving the note still marks the application *waiting on them* so the
   queue remembers where it stands. If they later sign in with Discord and
   claim the entry with that same email (the join page), the page becomes

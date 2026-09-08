@@ -275,12 +275,31 @@ Where there is no pointer, the light comes to the
 turn instead: one sweep across the face as the card comes round.
 `prefers-reduced-motion` stops all of it.
 
+**Email from the association's own address.** The site can send as
+`noreply@lahtiag.fi` through Gmail's API (`src/lib/mail.ts`) — not SMTP,
+which a Worker cannot speak, and not an outside sender, which would need
+DKIM records on a zone whose mail is already Google's. One Workspace
+account does the sending and its refresh token is a Worker secret. To set
+it up: create the address in the Workspace admin console, then in the
+Google Cloud console, on the same OAuth client the register's sign-in
+uses, add `http://localhost:8975/oauth2` to the redirect URIs and the
+scope `https://www.googleapis.com/auth/gmail.send`. Then run
+`node scripts/gmail-token.mjs`, sign in as that account, and put what it
+prints into `GMAIL_REFRESH_TOKEN`, with `GMAIL_SENDER` (the address) and
+`MAIL_REPLY_TO` (`board@lahtiag.fi`, where answers go). Until all three
+exist `mailConfigured()` is false and the site sends no email at all,
+exactly as before.
+
 **Asking an applicant for a correction.** `register.fix_note` (with
 `fix_asked_at` and `fix_asked_by`) is the board's question to the person
 who applied, written to be read by them — unlike `board_note`, which is
-never shown. It is set from the entry page, sent as a DM when the entry
-has a linked `discord_id`, and shown on the applicant's own membership
-page above the details form. Any save through `updateOwnEntry` clears all
+never shown. It is set from the entry page and sent to wherever the
+person actually is: a DM when the entry has a linked `discord_id`, an
+email to `register.email` when it has not and the sender is configured,
+and neither (with the board told to write themselves) when it has
+neither. A linked applicant also sees it on their own membership page
+above the details form; an unlinked one has no such page, which is why
+the letter asks for a reply instead. Any save through `updateOwnEntry` clears all
 three columns in the same statement that writes the details, so answering
 is the same action as fixing. The entry never leaves `pending`: the queue
 marks it "waiting on them" and the board decides when the answer comes.
