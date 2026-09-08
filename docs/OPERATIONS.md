@@ -1022,7 +1022,10 @@ of the people counted are linked members. It is the check that the
 counting is right before any rule of the pass hangs on it. One season at
 a time, the current one unless `?season=2025` asks for a past one; the
 seasons on offer are the academic years with anything counted, and last
-season never blends into this one. `/board` is the hub with every board
+season never blends into this one. Since the backfill (below), 2024–25
+and 2025–26 are on that list too: messages and channels for those, and
+nothing else — no voice, no Minecraft, no ticks, none of which was being
+recorded yet. `/board` is the hub with every board
 page, the same one a board member without register access sees at
 `/register`. Both prefixes are in `run_worker_first` in `wrangler.toml`
 (both environments), like every server route.
@@ -1167,6 +1170,37 @@ is wrong. To recount a season from scratch: stop the container, delete
 `state/state.json` and the rows in `discord_activity`,
 `discord_channel_activity` and `discord_activity_batches`, then
 `docker compose up -d --force-recreate`.
+
+**The history before it** (done 2026-09-08). The listener only ever walks
+forward from 1 September, so everything written before it existed was
+missing from the all-time figures on the membership card — a member's
+"all time" was really "this season". `scripts/discord-listener/backfill.mjs`
+walks the other way: back from 1 September through every channel, voice
+chat and thread that counts, the archived threads included (an old
+conversation is exactly what ends up archived, and the listener never
+revisits those). It counts what the listener counts, by the same rules,
+and posts to the same endpoint in the same batches. Because it stops
+where the listener starts, nothing is counted twice. Run it on
+auraserver:
+
+```
+cd /opt/lahtiag-listener
+docker run --rm --env-file .env -e STATE_DIR=/state \
+  -v /opt/lahtiag-listener/state:/state \
+  -v /opt/lahtiag-listener/backfill.mjs:/app/backfill.mjs:ro \
+  node:22-alpine node /app/backfill.mjs --dry-run
+```
+
+`--dry-run` counts and prints the months without posting anything (it
+keeps its own progress file, so it cannot make the real run think the
+work is done); drop it to post. `--before 2025-09-01` sets another
+boundary. Progress is saved after every page, so it can be stopped and
+started again, and a channel already walked is not walked twice — which
+also means that deleting `state/backfill.json` and running it again
+**would count everything a second time**. The first run brought in 35,061
+messages from 23 February 2024 to 31 August 2026, across 27 channels and
+3 archived threads. Voice is not in it: minutes have no history to walk,
+so what was spoken before the listener existed is gone for good.
 
 ## Editing this handbook
 
