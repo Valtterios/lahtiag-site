@@ -104,6 +104,7 @@ export interface EventRow {
 export interface EventWithCounts extends EventRow {
   yes_count: number;
   maybe_count: number;
+  reserves_count: number; // of the yes count, the ones sitting on a team's bench
   teams_count: number;
   interest_count: number; // people interested, on the site or on Discord, each once
   ticket_types: number; // ticket types on sale: 0 means a signup event
@@ -190,6 +191,7 @@ const EVENT_COUNTS = `
   SELECT e.*,
     (SELECT COUNT(*) FROM signups s WHERE s.event_id = e.id AND s.status = 'yes')   AS yes_count,
     (SELECT COUNT(*) FROM signups s WHERE s.event_id = e.id AND s.status = 'maybe') AS maybe_count,
+    (SELECT COUNT(*) FROM signups s WHERE s.event_id = e.id AND s.status = 'yes' AND s.reserve = 1) AS reserves_count,
     (SELECT COUNT(*) FROM event_teams t WHERE t.event_id = e.id)                    AS teams_count,
     (SELECT COUNT(DISTINCT i.discord_id) FROM event_interest i WHERE i.event_id = e.id) AS interest_count,
     (SELECT COUNT(*) FROM ticket_types tt WHERE tt.event_id = e.id AND tt.active = 1) AS ticket_types,
