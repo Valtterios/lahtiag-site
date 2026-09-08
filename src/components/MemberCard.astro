@@ -67,8 +67,13 @@ const KIND: Record<RegisterStatus, string> = {
 const role = board ? 'Board' : active ? 'Active' : null;
 const no = String(number).padStart(4, '0');
 const wordmark = light ? '/brand/wordmark-blue.png' : '/brand/wordmark-white.png';
+// The card's height is fixed by its proportions, so a long name cannot be
+// allowed to push the bottom row off it. Long names are set smaller; the
+// card is sized to hold two lines of the smaller size either way, since
+// some names wrap however small they are set.
+const scale = name.length > 22 ? ' id-name-longer' : name.length > 14 ? ' id-name-long' : '';
 ---
-<div class={`id-card id-tier-${tier}`} data-id-card>
+<div class={`id-card id-tier-${tier}${scale}`} data-id-card>
   <span class="id-card-shade" aria-hidden="true"></span>
   <div class="id-card-tilt">
     <div class="id-card-flip">
