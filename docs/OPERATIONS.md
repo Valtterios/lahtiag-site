@@ -260,14 +260,16 @@ your own you can always draw.
 
 The Worker draws it rather than a browser: `raster.ts` is a truecolour PNG
 encoder with an alpha channel (for the cut corners) and `png-decode.ts`
-reads the avatar back off Discord's CDN. The stock, the chips and the foil
-follow the web card. The old stats picture (`profile-card.ts`) stays for
+reads back both the avatar from Discord's CDN and the brand files from the
+site's own origin — so the wordmark and the mark are the real ones, not
+type, and the mark on the back is struck in silver by painting metal
+through its alpha. They are decoded once per isolate. The old stats picture (`profile-card.ts`) stays for
 the champion cards posted to an event's channel.
 
 **Founders.** `register.founder`, a checkbox on the entry page for anyone
 with register access. Not a class and not a role anyone is elected to, so
-it is its own flag: it puts a gold chip on the card in place of the board
-one, on the site and in Discord.
+it is its own flag: it gives them the ink stock and a gold chip in place of
+the board one, on the site and in Discord.
 
 **Backups.** D1 keeps thirty days of point-in-time history on its own
 (`npx wrangler d1 time-travel info lahtiag` shows the current bookmark;

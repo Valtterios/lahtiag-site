@@ -256,7 +256,7 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   // /profile: anyone's stats card, for everyone to see. Deferred without
   // the ephemeral flag, then the picture is attached.
   if (interaction.type === 2 && interaction.data?.name === 'profile') {
-    locals.cfContext.waitUntil(fleeting(handleProfile(env, interaction)));
+    locals.cfContext.waitUntil(fleeting(handleProfile(env, interaction, url.origin)));
     return json({ type: 5 });
   }
 
@@ -273,7 +273,7 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   // message it sits on is edited in place, so the answer is a deferred
   // update rather than a reply of its own.
   if (interaction.type === 3 && /^p:[bf]:/.test(interaction.data?.custom_id ?? '')) {
-    locals.cfContext.waitUntil(fleeting(handleProfileTurn(env, interaction, interaction.data!.custom_id!)));
+    locals.cfContext.waitUntil(fleeting(handleProfileTurn(env, interaction, interaction.data!.custom_id!, url.origin)));
     return json({ type: 6 });
   }
 
@@ -851,7 +851,7 @@ async function handleEventButton(env: WorkerEnv, interaction: Interaction, origi
 
 // --- /profile ------------------------------------------------------------------
 
-async function handleProfile(env: WorkerEnv, interaction: Interaction): Promise<Outcome> {
+async function handleProfile(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
   const invoker = interaction.member?.user;
   const picked = interaction.data?.options?.find((o) => o.name === 'user')?.value;
   const targetId = typeof picked === 'string' ? picked : invoker?.id;
@@ -866,7 +866,7 @@ async function handleProfile(env: WorkerEnv, interaction: Interaction): Promise<
     await editInteractionReply(interaction.application_id, interaction.token, 'That member keeps their card to themselves.');
     return;
   }
-  const png = await profileCard(env, interaction, targetId, false);
+  const png = await profileCard(env, interaction, targetId, false, origin);
   if (!png) {
     await editInteractionReply(interaction.application_id, interaction.token, 'The card could not be drawn. Try again in a moment.');
     return;
@@ -900,10 +900,10 @@ function turnButton(targetId: string, showingBack: boolean): unknown[] {
 
 // Turning the card over: the same picture from the other side, swapped
 // into the message that is already there.
-async function handleProfileTurn(env: WorkerEnv, interaction: Interaction, id: string): Promise<Outcome> {
+async function handleProfileTurn(env: WorkerEnv, interaction: Interaction, id: string, origin: string): Promise<Outcome> {
   const [, side, targetId] = id.split(':');
   const back = side === 'b';
-  const png = await profileCard(env, interaction, targetId, back);
+  const png = await profileCard(env, interaction, targetId, back, origin);
   if (!png) return;
   await editInteractionReplyWithFile(
     interaction.application_id,
@@ -917,7 +917,7 @@ async function handleProfileTurn(env: WorkerEnv, interaction: Interaction, id: s
 
 // The card itself: the same code the membership page draws with, so the
 // preview there cannot drift from what the channel sees.
-async function profileCard(env: WorkerEnv, interaction: Interaction, targetId: string, back: boolean): Promise<Uint8Array | null> {
+async function profileCard(env: WorkerEnv, interaction: Interaction, targetId: string, back: boolean, origin: string): Promise<Uint8Array | null> {
   const invoker = interaction.member?.user;
   const resolved = interaction.data?.resolved?.users?.[targetId];
   const who = resolved ?? (targetId === invoker?.id ? invoker : undefined);
@@ -935,7 +935,7 @@ async function profileCard(env: WorkerEnv, interaction: Interaction, targetId: s
       { discordId: targetId, name, avatarHash: who?.avatar ?? null, board: hasAdminRole(roles, env.ADMIN_ROLE_ID) },
       Math.floor(Date.now() / 1000),
     );
-    return await memberCardPng(face, back);
+    return await memberCardPng(face, back, origin);
   } catch {
     return null;
   }

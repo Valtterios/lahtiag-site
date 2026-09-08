@@ -10,8 +10,9 @@ import type { RegisterStatus } from '../lib/register';
 // The stock says what they are to the association, which is half the point
 // of having one, and it follows the classes in the rules (4 §): blue a
 // full member, white an external or supporting one, yellow an honorary
-// one, ink the board. Active is a role rather than a class, so it is the
-// chip and not the stock. An application still in the queue, or a
+// one. Ink is for the two the association is run by: the board, and the
+// people who founded it. Active is a role rather than a class, so it is
+// the chip and not the stock. An application still in the queue, or a
 // membership that has ended, takes the same white in a dashed edge: real
 // enough to see what is coming, plainly not a valid one.
 //
@@ -63,10 +64,10 @@ const {
 } = Astro.props;
 
 const issued = status === 'member';
-const tier = !issued ? 'pale' : board ? 'board' : honorary ? 'honorary' : outside ? 'plain' : 'member';
+const tier = !issued ? 'pale' : board || founder ? 'ink' : honorary ? 'honorary' : outside ? 'plain' : 'member';
 // The yellow and the pale stock take the blue wordmark; the other two are
 // dark enough for the white one.
-const light = tier !== 'member' && tier !== 'board';
+const light = tier !== 'member' && tier !== 'ink';
 const KIND: Record<RegisterStatus, string> = {
   member: 'Member card',
   pending: 'Not issued yet',

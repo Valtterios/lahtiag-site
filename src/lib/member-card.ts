@@ -14,12 +14,32 @@ import { getRegisterByDiscord, isLeaderboardOptIn, memberStats } from './db';
 import { avatarUrl } from './discord';
 import { lifetimeTotals } from './season';
 import { Canvas, cleanText } from './raster';
-import { decodePng } from './png-decode';
+import { decodePng, type Bitmap } from './png-decode';
 import { formatHelsinkiDate } from './time';
 import { voiceLabel } from './activity';
 
 const W = 900;
 const H = 567; // ID-1, the proportions of a bank card
+
+// The wordmark and the mark are files the site already serves, so the
+// Worker fetches them from its own origin and decodes them rather than
+// setting the name as text. Kept per isolate: a card is drawn far more
+// often than a deploy changes them.
+const brand = new Map<string, Bitmap | null>();
+
+async function art(origin: string, file: string): Promise<Bitmap | null> {
+  const known = brand.get(file);
+  if (known !== undefined) return known;
+  let image: Bitmap | null = null;
+  try {
+    const response = await fetch(`${origin}/brand/${file}`);
+    if (response.ok) image = await decodePng(new Uint8Array(await response.arrayBuffer()));
+  } catch {
+    image = null;
+  }
+  brand.set(file, image);
+  return image;
+}
 
 const BLUE = 0x4169e1;
 const YELLOW = 0xffde59;
@@ -28,7 +48,7 @@ const WHITE = 0xffffff;
 const LINE = 0xe0e2e8;
 const MUTED = 0x5f5f5f;
 
-export type CardTier = 'member' | 'plain' | 'honorary' | 'board';
+export type CardTier = 'member' | 'plain' | 'honorary' | 'ink';
 
 export interface CardFace {
   name: string;
@@ -45,16 +65,18 @@ interface Stock {
   bg: number;
   ink: number;
   rule: number;
-  ruling: number;
+  ruling: number; // the colour of the guilloche
+  rulingAlpha: number;
+  well: number; // behind a photograph that has not loaded
   chip: number;
   chipInk: number;
 }
 
 const STOCKS: Record<CardTier, Stock> = {
-  member: { bg: BLUE, ink: WHITE, rule: 0x7f95e8, ruling: 0x4a71e6, chip: YELLOW, chipInk: INK },
-  plain: { bg: WHITE, ink: INK, rule: LINE, ruling: 0xf2f2f4, chip: BLUE, chipInk: WHITE },
-  honorary: { bg: YELLOW, ink: INK, rule: 0xc9ab44, ruling: 0xf7d654, chip: BLUE, chipInk: WHITE },
-  board: { bg: INK, ink: WHITE, rule: 0x5c5c5c, ruling: 0x262626, chip: YELLOW, chipInk: INK },
+  member: { bg: BLUE, ink: WHITE, rule: 0x7f95e8, ruling: WHITE, rulingAlpha: 0.09, well: 0x3a5fd0, chip: YELLOW, chipInk: INK },
+  plain: { bg: WHITE, ink: INK, rule: LINE, ruling: INK, rulingAlpha: 0.05, well: 0xededf0, chip: BLUE, chipInk: WHITE },
+  honorary: { bg: YELLOW, ink: INK, rule: 0xc9ab44, ruling: INK, rulingAlpha: 0.07, well: 0xf2ce46, chip: BLUE, chipInk: WHITE },
+  ink: { bg: INK, ink: WHITE, rule: 0x5c5c5c, ruling: WHITE, rulingAlpha: 0.09, well: 0x2b2b2b, chip: YELLOW, chipInk: INK },
 };
 
 // The bands of a piece of metal, light and dark by turns. The hard turns
@@ -104,16 +126,23 @@ function cutShape(c: Canvas, radius: number, notch: number): void {
   }
 }
 
-// The fine diagonal ruling a printed card is secured with.
-function guilloche(c: Canvas, rgb: number): void {
+// The fine diagonal ruling a printed card is secured with: unbroken lines
+// a pixel wide, nine apart, leaning the way the web card's do. Drawn from
+// the distance along the lines' own normal, so they stay continuous
+// instead of breaking into dots.
+function guilloche(c: Canvas, rgb: number, alpha: number): void {
+  const nx = Math.cos((25 * Math.PI) / 180);
+  const ny = Math.sin((25 * Math.PI) / 180);
   for (let y = 0; y < H; y++) {
-    for (let x = (y * 2) % 9; x < W; x += 9) c.blend(x, y, rgb, 0.55);
+    for (let x = 0; x < W; x++) {
+      const across = (x * nx + y * ny) % 9;
+      if (across < 1) c.blend(x, y, rgb, alpha * (1 - across));
+    }
   }
 }
 
-// A photograph, scaled to a square by nearest neighbour and drawn over
-// whatever is there, alpha and all.
-function drawAvatar(c: Canvas, image: { width: number; height: number; rgba: Uint8Array }, x: number, y: number, size: number): void {
+// A photograph, cropped square and scaled by nearest neighbour.
+function drawAvatar(c: Canvas, image: Bitmap, x: number, y: number, size: number): void {
   const side = Math.min(image.width, image.height);
   const ox = (image.width - side) / 2;
   const oy = (image.height - side) / 2;
@@ -126,6 +155,34 @@ function drawAvatar(c: Canvas, image: { width: number; height: number; rgba: Uin
       c.blend(x + dx, y + dy, rgb, image.rgba[at + 3] / 255);
     }
   }
+}
+
+// An image drawn to a width, keeping its proportions. `paint` decides the
+// colour: the brand's own where it is undefined, a flat one for a wordmark
+// knocked out white, a run of metal for the foil stamp on the back. The
+// image's alpha is the shape either way.
+function drawArt(
+  c: Canvas,
+  image: Bitmap,
+  x: number,
+  y: number,
+  width: number,
+  opacity = 1,
+  paint?: (across: number) => number,
+): number {
+  const height = Math.round((width / image.width) * image.height);
+  for (let dy = 0; dy < height; dy++) {
+    for (let dx = 0; dx < width; dx++) {
+      const sx = Math.min(image.width - 1, Math.floor((dx / width) * image.width));
+      const sy = Math.min(image.height - 1, Math.floor((dy / height) * image.height));
+      const at = (sy * image.width + sx) * 4;
+      const alpha = (image.rgba[at + 3] / 255) * opacity;
+      if (alpha <= 0.004) continue;
+      const rgb = paint ? paint(dx / width) : (image.rgba[at] << 16) | (image.rgba[at + 1] << 8) | image.rgba[at + 2];
+      c.blend(x + dx, y + dy, rgb, alpha);
+    }
+  }
+  return height;
 }
 
 // A chip: the role marker. Struck in metal for an active or a founder,
@@ -167,59 +224,72 @@ function wrap(text: string, width: number, lines: number): string[] {
   return out.slice(0, lines);
 }
 
-export async function memberCardPng(face: CardFace, back: boolean): Promise<Uint8Array> {
+export async function memberCardPng(face: CardFace, back: boolean, origin: string): Promise<Uint8Array> {
   const stock = STOCKS[face.tier];
   const c = new Canvas(W, H, stock.bg);
-  guilloche(c, stock.ruling);
+  guilloche(c, stock.ruling, stock.rulingAlpha);
   const pad = 50;
+  // The yellow and the white stocks take the blue wordmark; the blue and
+  // the ink are dark enough for the white one.
+  const light = face.tier === 'honorary' || face.tier === 'plain';
+  const [wordmark, mark] = await Promise.all([
+    art(origin, light ? 'wordmark-blue.png' : 'wordmark-white.png'),
+    art(origin, 'mark-blue.png'),
+  ]);
 
   if (!back) {
-    // The wordmark is a picture the Worker has no way to open, so the name
-    // is set instead. Upper case throughout, as on the web: the large font
-    // has ÄÖÅ but not äöå, so a Finnish name only survives in capitals.
-    c.text(pad, 30, 'LAHTIAG', stock.ink, 'l');
+    // The mark watermarked into the far corner, as on the web card.
+    if (mark) drawArt(c, mark, W - 232, H - 214, 268, light ? 0.1 : 0.07, () => (light ? BLUE : WHITE));
+
+    if (wordmark) drawArt(c, wordmark, pad, 34, 168);
+    else c.text(pad, 30, 'LAHTIAG', stock.ink, 'l');
     const kind = 'MEMBER CARD';
-    c.text(W - pad - Canvas.textWidth(kind), 46, kind, stock.ink, 's');
+    c.text(W - pad - Canvas.textWidth(kind), 42, kind, stock.ink, 's');
 
     const size = 150;
     const px = pad;
-    const py = 120;
+    const py = 108;
     c.rect(px - 5, py - 5, size + 10, size + 10, stock.rule);
-    c.rect(px, py, size, size, stock.ruling);
+    c.rect(px, py, size, size, stock.well);
     if (face.avatar) {
       const image = await decodePng(face.avatar);
       if (image) drawAvatar(c, image, px, py, size);
     }
 
+    // Upper case throughout, as on the web: the large font has ÄÖÅ but not
+    // äöå, so a Finnish name only survives in capitals.
     const tx = px + size + 40;
     const wide = W - pad - tx;
-    c.text(tx, 138, Canvas.fit(face.name.toUpperCase(), wide, 'l'), stock.ink, 'l');
+    c.text(tx, 124, Canvas.fit(face.name.toUpperCase(), wide, 'l'), stock.ink, 'l');
 
     let cx = tx;
-    if (face.founder) cx += chip(c, cx, 206, 'FOUNDER', stock, 'gold') + 14;
-    else if (face.tier === 'board') cx += chip(c, cx, 206, 'BOARD', stock, null) + 14;
-    if (face.active) chip(c, cx, 206, 'ACTIVE', stock, 'silver');
+    if (face.founder) cx += chip(c, cx, 196, 'FOUNDER', stock, 'gold') + 14;
+    else if (face.tier === 'ink') cx += chip(c, cx, 196, 'BOARD', stock, null) + 14;
+    if (face.active) chip(c, cx, 196, 'ACTIVE', stock, 'silver');
 
-    const since = face.memberSince !== null ? `MEMBER SINCE ${formatHelsinkiDate(face.memberSince).toUpperCase()}` : 'NOT A MEMBER';
-    c.text(pad, 300, since, stock.ink, 's');
-
-    c.rect(pad, 356, W - pad * 2, 2, stock.rule);
+    c.rect(pad, 300, W - pad * 2, 2, stock.rule);
     if (face.figures.length > 0) {
-      c.text(pad, 370, 'ALL TIME', stock.rule, 's');
+      c.text(pad, 312, 'ALL TIME', stock.rule, 's');
       const cell = (W - pad * 2) / face.figures.length;
       face.figures.forEach((f, i) => {
         const x = pad + i * cell;
         const big = Canvas.textWidth(f.value, 'l') <= cell - 20;
-        c.text(x, big ? 412 : 424, Canvas.fit(f.value, cell - 20, big ? 'l' : 's'), stock.ink, big ? 'l' : 's');
-        c.text(x, 476, Canvas.fit(f.label.toUpperCase(), cell - 20), stock.rule, 's');
+        c.text(x, big ? 356 : 368, Canvas.fit(f.value, cell - 20, big ? 'l' : 's'), stock.ink, big ? 'l' : 's');
+        c.text(x, 420, Canvas.fit(f.label.toUpperCase(), cell - 20), stock.rule, 's');
       });
     } else {
-      c.text(pad, 400, 'This member keeps their numbers to themselves.', stock.rule, 's');
+      c.text(pad, 356, 'This member keeps their numbers to themselves.', stock.rule, 's');
     }
+
+    // The bottom row the web card has, minus the member number.
+    c.text(pad, 470, 'MEMBER SINCE', stock.rule, 's');
+    c.text(pad, 504, face.memberSince !== null ? formatHelsinkiDate(face.memberSince) : 'not yet', stock.ink, 's');
+    c.text(pad + 320, 470, 'DISCORD', stock.rule, 's');
+    c.text(pad + 320, 504, Canvas.fit(face.name, W - pad * 2 - 320), stock.ink, 's');
   } else {
     // The back carries no wordmark, as the web card's does not: the stripe
     // is the first thing, the way it is on a card you turn over.
-    c.rect(0, 58, W, 82, face.tier === 'board' ? 0x000000 : INK);
+    c.rect(0, 58, W, 82, face.tier === 'ink' ? 0x000000 : INK);
     const panelY = 184;
     c.rect(pad, panelY, W - pad * 2, 66, face.tier === 'plain' ? 0xf5f5f5 : WHITE);
     c.text(pad + 22, panelY + 6, Canvas.fit(face.name.toUpperCase(), W - pad * 2 - 44, 'l'), INK, 'l');
@@ -232,6 +302,9 @@ export async function memberCardPng(face: CardFace, back: boolean): Promise<Uint
     c.text(pad, 424, 'Lahti Association of Gaming LAG ry, Lahti.', stock.rule, 's');
     c.text(pad, 462, 'Personal and not transferable.', stock.rule, 's');
     c.text(pad, 504, 'LAHTIAG.FI/MEMBERSHIP', stock.ink, 's');
+
+    // The mark struck in silver, where a card keeps its hologram.
+    if (mark) drawArt(c, mark, W - 178, H - 172, 132, 0.95, (across) => foilAt('silver', across));
   }
 
   cutShape(c, 22, 34);
@@ -278,8 +351,8 @@ export async function cardFace(
   const member = entry?.status === 'member';
   const tier: CardTier = !member
     ? 'plain'
-    : who.board
-      ? 'board'
+    : who.board || entry.founder
+      ? 'ink'
       : entry.member_type === 'honorary'
         ? 'honorary'
         : entry.member_type === 'external' || entry.member_type === 'supporting'

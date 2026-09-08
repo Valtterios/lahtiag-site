@@ -666,8 +666,8 @@ a:hover {
    crisp, so the faces stay flat at rest; the gloss is interaction only.
 
    The stock says what they are: blue a full member, white a member from
-   outside the two schools, yellow an honorary member, ink the board, and
-   white with a dashed edge a card not issued yet. */
+   outside the two schools, yellow an honorary member, ink the board and
+   the founders, and white with a dashed edge a card not issued yet. */
 .id-card {
   position: relative;
   container-type: inline-size;
@@ -742,7 +742,7 @@ a:hover {
   --card-shadow: rgba(30, 30, 30, 0.4);
 }
 
-.id-tier-board {
+.id-tier-ink {
   --card-bg: var(--ink);
   --card-shadow: rgba(30, 30, 30, 0.5);
 }

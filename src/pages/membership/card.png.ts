@@ -16,6 +16,6 @@ export const GET: APIRoute = async ({ request, url }) => {
     { discordId: session.discordId, name: session.username, avatarHash: session.avatarHash, board: session.isAdmin },
     Math.floor(Date.now() / 1000),
   );
-  const png = await memberCardPng(face, url.searchParams.get('back') === '1');
+  const png = await memberCardPng(face, url.searchParams.get('back') === '1', url.origin);
   return new Response(png as unknown as BodyInit, { headers: { 'content-type': 'image/png', 'cache-control': 'no-store' } });
 };

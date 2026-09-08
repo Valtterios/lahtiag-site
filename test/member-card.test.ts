@@ -47,7 +47,7 @@ describe('the card Discord gets', () => {
     expect((await cardFace(db(), who('4'), NOW)).tier).toBe('honorary');
     await wipe();
     await entry('5', 'honorary');
-    expect((await cardFace(db(), who('5', true), NOW)).tier).toBe('board');
+    expect((await cardFace(db(), who('5', true), NOW)).tier).toBe('ink');
   });
 
   it('gives someone with no membership the white stock, not a member card', async () => {
@@ -56,9 +56,11 @@ describe('the card Discord gets', () => {
     expect(face.memberSince).toBeNull();
   });
 
-  it('wears the founder flag', async () => {
+  it('wears the founder flag, and the ink stock that comes with it', async () => {
     await entry('6', 'full', 'founder');
-    expect((await cardFace(db(), who('6'), NOW)).founder).toBe(true);
+    const face = await cardFace(db(), who('6'), NOW);
+    expect(face.founder).toBe(true);
+    expect(face.tier).toBe('ink');
   });
 
   it('drops every figure when the member has hidden themselves', async () => {
@@ -83,7 +85,7 @@ describe('the card Discord gets', () => {
     await entry('8');
     const face = await cardFace(db(), who('8'), NOW);
     for (const back of [false, true]) {
-      const decoded = await decodePng(await memberCardPng(face, back));
+      const decoded = await decodePng(await memberCardPng(face, back, 'https://lahtiag.fi'));
       expect(decoded).not.toBeNull();
       expect(decoded!.width / decoded!.height).toBeCloseTo(1.586, 2);
       // The very corner is cut away; the middle is not.
