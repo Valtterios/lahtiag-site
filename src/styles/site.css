@@ -665,8 +665,9 @@ a:hover {
    as one piece instead of falling apart on a phone. The brand is flat and
    crisp, so the faces stay flat at rest; the gloss is interaction only.
 
-   Four stocks, set by the tokens below: blue for a member, ink for an
-   active, yellow for the board, pale for a card not issued yet. */
+   The stock says what they are: blue a full member, white a member from
+   outside the two schools, yellow an honorary member, ink the board, and
+   white with a dashed edge a card not issued yet. */
 .id-card {
   position: relative;
   container-type: inline-size;
@@ -711,7 +712,7 @@ a:hover {
   );
 }
 
-.id-tier-active {
+.id-tier-honorary {
   --card-foil-opacity: 0.9;
   --card-bg: var(--yellow);
   --card-ink: var(--ink);
@@ -734,10 +735,12 @@ a:hover {
   --card-shadow: rgba(30, 30, 30, 0.5);
 }
 
-/* Pale stock: an application still in the queue, or a membership that has
-   ended. The same card, plainly not a valid one. */
+/* White stock, shared by two very different things: a member who is not a
+   full member — external or supporting, the ones from outside the two
+   schools — and a card that is not valid at all. What separates them is
+   the edge and the wording, not the colour. */
+.id-tier-plain,
 .id-tier-pale {
-  --card-foil-opacity: 0.5;
   --card-bg: var(--surface);
   --card-ink: var(--ink);
   --card-rule: var(--line);
@@ -746,12 +749,22 @@ a:hover {
   --card-glare: rgba(65, 105, 225, 0.14);
   --card-glare-out: rgba(65, 105, 225, 0);
   --card-blend: normal;
-  --card-accent: var(--line);
-  --card-accent-ink: var(--muted);
+  --card-accent: var(--blue);
+  --card-accent-ink: #fff;
   --card-mark: none;
   --card-panel: var(--bg);
-  --card-stripe: var(--line);
+  --card-stripe: var(--ink);
   --card-shadow: rgba(30, 30, 30, 0.2);
+  --card-edge: 1px solid var(--line);
+}
+
+/* Not issued: an application still in the queue, or a membership that has
+   ended. The same card, plainly not a valid one. */
+.id-tier-pale {
+  --card-foil-opacity: 0.5;
+  --card-accent: var(--line);
+  --card-accent-ink: var(--muted);
+  --card-stripe: var(--line);
   --card-edge: 1px dashed var(--line);
 }
 
@@ -898,7 +911,8 @@ a:hover {
   pointer-events: none;
 }
 
-.id-tier-active .id-card-mark,
+.id-tier-honorary .id-card-mark,
+.id-tier-plain .id-card-mark,
 .id-tier-pale .id-card-mark {
   opacity: 0.1;
 }
@@ -1033,6 +1047,18 @@ a:hover {
   padding: 0.7cqi 1.6cqi;
   clip-path: var(--cut-s);
   opacity: 1;
+}
+
+/* Actives are a role, not a class, so they get no stock of their own. What
+   they get is foil: the Active chip is struck in the same metal as the
+   mark on the back, and it catches the light the same way. Nothing else on
+   any card is foil, so it is theirs. */
+.id-card-flag-foil {
+  background: var(--card-foil);
+  background-size: 260% 260%;
+  background-position: var(--mx, 50%) var(--my, 50%);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px rgba(30, 30, 30, 0.18);
 }
 
 /* The whole record, not one season: what makes the card worth showing.

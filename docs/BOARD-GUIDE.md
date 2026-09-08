@@ -127,10 +127,12 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ![The membership card](images/site/membership-card.png)
 
-*The card itself. The stock says which they are — blue a member, yellow an
-active, ink the board — and it turns over for the rest of the record.
-An application still waiting shows the same card in pale stock, which is
-the clearest way to say the board has not decided yet.*
+*The card itself. The stock follows the classes in the rules: blue a full
+member, white one from outside the two schools, yellow an honorary member,
+ink the board. Actives are a role rather than a class, so they wear a chip
+struck in foil instead. It turns over for the rest of the record. An
+application still waiting shows the same white card with a dashed edge,
+which is the clearest way to say the board has not decided yet.*
 
 ![Actives on the membership page](images/site/membership-actives.png)
 

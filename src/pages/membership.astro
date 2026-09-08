@@ -241,6 +241,8 @@ const MESSAGES: Record<FieldError, string> = {
           avatar={avatarUrl(session.discordId, session.avatarHash, 128)}
           active={entry.is_active}
           board={session.isAdmin}
+          honorary={entry.member_type === 'honorary'}
+          outside={entry.member_type === 'external' || entry.member_type === 'supporting'}
           figures={figures}
           minecraft={mcOwn?.name ?? null}
           telegram={entry.telegram}

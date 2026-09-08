@@ -7,11 +7,13 @@ import type { RegisterStatus } from '../lib/register';
 // their number, and since when. It replaces the badge-and-name block that
 // used to head the page, so nothing here is said twice.
 //
-// The stock says what they are, which is half the point of having one:
-// blue for a member, yellow for an active, ink for the board. An
-// application still in the queue, or a membership that has ended, gets the
-// same card in pale stock: real enough to see what is coming, plainly not
-// a valid one.
+// The stock says what they are to the association, which is half the point
+// of having one, and it follows the classes in the rules (4 §): blue a
+// full member, white an external or supporting one, yellow an honorary
+// one, ink the board. Active is a role rather than a class, so it is the
+// chip and not the stock. An application still in the queue, or a
+// membership that has ended, takes the same white in a dashed edge: real
+// enough to see what is coming, plainly not a valid one.
 //
 // It turns over. The back carries what a card's back carries — whose it
 // is, what to do if you find it, the small print that would crowd the
@@ -32,6 +34,8 @@ interface Props {
   avatar: string;
   active: boolean;
   board?: boolean;
+  honorary?: boolean; // the rules' own class, and the rarest card
+  outside?: boolean; // external or supporting: a member, but not a full one
   figures?: CardFigure[]; // the whole record, four at most; none before the card is issued
   minecraft?: string | null;
   telegram?: string | null;
@@ -48,6 +52,8 @@ const {
   avatar,
   active,
   board = false,
+  honorary = false,
+  outside = false,
   figures = [],
   minecraft = null,
   telegram = null,
@@ -55,16 +61,20 @@ const {
 } = Astro.props;
 
 const issued = status === 'member';
-const tier = !issued ? 'pale' : board ? 'board' : active ? 'active' : 'member';
+const tier = !issued ? 'pale' : board ? 'board' : honorary ? 'honorary' : outside ? 'plain' : 'member';
 // The yellow and the pale stock take the blue wordmark; the other two are
 // dark enough for the white one.
-const light = tier === 'active' || tier === 'pale';
+const light = tier !== 'member' && tier !== 'board';
 const KIND: Record<RegisterStatus, string> = {
   member: 'Member card',
   pending: 'Not issued yet',
   former: 'Expired',
 };
-const role = board ? 'Board' : active ? 'Active' : null;
+// Both, when both: the stock already says board, but an active board
+// member is still an active and the foil is theirs to wear.
+const roles: { label: string; foil: boolean }[] = [];
+if (board) roles.push({ label: 'Board', foil: false });
+if (active) roles.push({ label: 'Active', foil: true });
 const no = String(number).padStart(4, '0');
 const wordmark = light ? '/brand/wordmark-blue.png' : '/brand/wordmark-white.png';
 // The card's height is fixed by its proportions, so a long name cannot be
@@ -87,7 +97,10 @@ const scale = name.length > 22 ? ' id-name-longer' : name.length > 14 ? ' id-nam
         </div>
         <div class="id-card-who">
           <p class="id-card-name">{name}</p>
-          <p class="id-card-class">{klass}{role && <span class="id-card-flag">{role}</span>}</p>
+          <p class="id-card-class">
+            {klass}
+            {roles.map((r) => <span class={`id-card-flag${r.foil ? ' id-card-flag-foil' : ''}`}>{r.label}</span>)}
+          </p>
         </div>
         {figures.length > 0 && (
           <div class="id-card-figures">
