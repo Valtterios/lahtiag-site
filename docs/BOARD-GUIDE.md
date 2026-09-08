@@ -127,8 +127,8 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ![The membership card](images/site/membership-card.png)
 
-*The card itself. The stock says which they are — blue a member, ink an
-active, yellow the board — and it turns over for the rest of the record.
+*The card itself. The stock says which they are — blue a member, yellow an
+active, ink the board — and it turns over for the rest of the record.
 An application still waiting shows the same card in pale stock, which is
 the clearest way to say the board has not decided yet.*
 

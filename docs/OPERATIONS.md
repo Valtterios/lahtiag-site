@@ -234,7 +234,7 @@ included.
 card (`src/components/MemberCard.astro`): name, number (the register id),
 class, member since, and four figures from the whole record, not one season
 (`lifetimeTotals` in `src/lib/season.ts`). The stock is the tier — blue a
-member, ink an active, yellow the board, pale for an application still in
+member, yellow an active, ink the board, pale for an application still in
 the queue or a membership that has ended. It turns over for the rest. All of
 it is CSS in `site.css`; nothing is rendered to an image, so it costs no
 worker time.

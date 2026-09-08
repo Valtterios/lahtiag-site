@@ -668,6 +668,7 @@ a:hover {
    Four stocks, set by the tokens below: blue for a member, ink for an
    active, yellow for the board, pale for a card not issued yet. */
 .id-card {
+  position: relative;
   container-type: inline-size;
   perspective: 1100px;
   align-self: start;
@@ -692,11 +693,6 @@ a:hover {
 }
 
 .id-tier-active {
-  --card-bg: var(--ink);
-  --card-shadow: rgba(30, 30, 30, 0.5);
-}
-
-.id-tier-board {
   --card-bg: var(--yellow);
   --card-ink: var(--ink);
   --card-rule: rgba(30, 30, 30, 0.28);
@@ -711,6 +707,11 @@ a:hover {
   --card-panel: rgba(255, 255, 255, 0.75);
   --card-stripe: var(--ink);
   --card-shadow: rgba(30, 30, 30, 0.4);
+}
+
+.id-tier-board {
+  --card-bg: var(--ink);
+  --card-shadow: rgba(30, 30, 30, 0.5);
 }
 
 /* Pale stock: an application still in the queue, or a membership that has
@@ -731,6 +732,34 @@ a:hover {
   --card-stripe: var(--line);
   --card-shadow: rgba(30, 30, 30, 0.2);
   --card-edge: 1px dashed var(--line);
+}
+
+/* The shadow is its own element, sitting behind the card at exactly the
+   card's size. It cannot go on the face: clip-path is applied after filter
+   and after the background's rounding, so either shape of shadow ends up
+   pooled in the square corners the rounding had emptied. */
+.id-card-shade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: -1;
+  aspect-ratio: 1.586;
+  border-radius: 3.6cqi;
+  background: var(--card-shadow);
+  filter: blur(13px);
+  opacity: 0;
+  transform: translateY(4px) scale(0.97);
+  transition:
+    opacity 260ms ease,
+    transform 260ms ease;
+  pointer-events: none;
+}
+
+.id-card:hover .id-card-shade,
+.id-card:focus-within .id-card-shade {
+  opacity: 0.5;
+  transform: translateY(11px) scale(0.96);
 }
 
 /* Two wrappers, because the two movements want different speeds: the lean
@@ -759,27 +788,30 @@ a:hover {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: auto 1fr auto auto;
-  gap: 2cqi 4.5cqi;
+  gap: 1.8cqi 4.5cqi;
   aspect-ratio: 1.586; /* ID-1, the size of a bank card */
   padding: 4.5cqi 5.5cqi;
   background: var(--card-bg);
   color: var(--card-ink);
   border: var(--card-edge);
   /* Rounded like a real card, with the brand's one notch cut out of the
-     top-right corner. The notch is redeclared in the card's own units so
-     it grows with the card instead of sitting at a fixed 14px. */
+     top-right corner. The polygon is written out rather than taken from
+     --cut, because --cut resolves its --notch back on :root and would come
+     out a fixed 14px however the card redeclares it. */
   --notch: 5cqi;
   border-radius: 3.6cqi;
-  clip-path: var(--cut);
+  clip-path: polygon(0 0, calc(100% - var(--notch)) 0, 100% var(--notch), 100% 100%, 0 100%);
   overflow: hidden;
   backface-visibility: hidden;
-  transition: box-shadow 260ms ease;
 }
 
-/* The back sits on the same spot, already turned, so the flip reveals it. */
+/* The back sits on the same spot, already turned, so the flip reveals it.
+   Turned over, a card's cut corner is on the other side, so the notch is
+   mirrored here. */
 .id-card-back {
   position: absolute;
   inset: 0;
+  clip-path: polygon(var(--notch) 0, 100% 0, 100% 100%, 0 100%, 0 var(--notch));
   display: flex;
   flex-direction: column;
   gap: 1.8cqi;
@@ -810,11 +842,6 @@ a:hover {
 .id-card:hover .id-card-tilt,
 .id-card:focus-within .id-card-tilt {
   --lift: -3px;
-}
-
-.id-card:hover .id-card-face,
-.id-card:focus-within .id-card-face {
-  box-shadow: 0 18px 34px -18px var(--card-shadow);
 }
 
 .id-card:hover .id-card-face::after {
@@ -848,7 +875,7 @@ a:hover {
   pointer-events: none;
 }
 
-.id-tier-board .id-card-mark,
+.id-tier-active .id-card-mark,
 .id-tier-pale .id-card-mark {
   opacity: 0.1;
 }
@@ -907,8 +934,8 @@ a:hover {
 
 .id-card-photo img {
   display: block;
-  width: 22cqi;
-  height: 22cqi;
+  width: 17cqi;
+  height: 17cqi;
   object-fit: cover;
   background: rgba(127, 127, 127, 0.2);
   border: 0.6cqi solid var(--card-rule);
@@ -960,17 +987,33 @@ a:hover {
   opacity: 1;
 }
 
-/* The whole record, not one season: what makes the card worth showing. */
+/* The whole record, not one season: what makes the card worth showing.
+   Said out loud, because a number without its span is a number nobody can
+   read. */
 .id-card-figures {
   grid-column: 1 / -1;
   grid-row: 3;
+  padding: 1.5cqi 0 0;
+  border-top: 1px solid var(--card-rule);
+}
+
+.id-card-figures-head {
+  margin: 0 0 1.1cqi;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 2.1cqi;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.id-card-figures ul {
   margin: 0;
-  padding: 2cqi 0 0;
+  padding: 0;
   list-style: none;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 2cqi;
-  border-top: 1px solid var(--card-rule);
 }
 
 .id-card-figures li {
@@ -1138,6 +1181,11 @@ a:hover {
    figures two by two. A container query, so it follows the card's own
    width rather than the window's. */
 @container (max-width: 26rem) {
+  .id-card-shade {
+    aspect-ratio: 0.631;
+    border-radius: 5cqi;
+  }
+
   .id-card-face {
     aspect-ratio: 0.631;
     grid-template-columns: minmax(0, 1fr);
@@ -1202,9 +1250,16 @@ a:hover {
   .id-card-figures {
     grid-column: 1;
     grid-row: 4;
+    padding-top: 4cqi;
+  }
+
+  .id-card-figures-head {
+    font-size: 3cqi;
+  }
+
+  .id-card-figures ul {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 3.5cqi 4cqi;
-    padding-top: 4cqi;
   }
 
   .id-card-figure {
