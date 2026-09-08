@@ -31,10 +31,6 @@ const board = await requireBoard(Astro.request, env);
 // Whether there is an address to send from at all, which decides what the
 // correction panel can promise.
 const canMail = mailConfigured(env);
-// A private link the board has sent, if one is still good. The token
-// itself is not kept, so there is nothing here to copy — asking again
-// sends a fresh one.
-const editLink = entry ? await editLinkStatus(env.DB, entry.id) : null;
 Astro.response.status = boardStatus(board);
 const discordSession = board.ok ? null : await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
@@ -43,6 +39,10 @@ const entry = board.ok && Number.isInteger(id) ? await getRegisterEntry(env.DB, 
 if (board.ok && !entry) Astro.response.status = 404;
 
 const similar = entry && entry.status === 'pending' ? await findSimilarEntries(env.DB, entry) : [];
+// A private link the board has sent, if one is still good. The token
+// itself is not kept, so there is nothing here to copy — asking again
+// sends a fresh one.
+const editLink = entry ? await editLinkStatus(env.DB, entry.id) : null;
 
 const gamesList = entry?.games ? entry.games.split(',').map((g) => g.trim()) : [];
 const knownGames = gamesList.filter((g) => (GAMES as readonly string[]).includes(g));
