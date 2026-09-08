@@ -38,16 +38,25 @@ const brand = new Map<string, Bitmap | null>();
 async function art(source: ArtSource, file: string): Promise<Bitmap | null> {
   const known = brand.get(file);
   if (known !== undefined) return known;
-  try {
-    const url = `${source.origin}/brand/${file}`;
-    const response = await (source.assets ? source.assets.fetch(url) : fetch(url));
-    if (!response.ok) return null;
-    const image = await decodePng(new Uint8Array(await response.arrayBuffer()));
-    if (image) brand.set(file, image);
-    return image;
-  } catch {
-    return null;
+  const url = `${source.origin}/brand/${file}`;
+  // The binding first, the open road second: whichever answers, the card
+  // gets its artwork, and the card is drawn either way if neither does.
+  for (const get of [source.assets ? () => source.assets!.fetch(url) : null, () => fetch(url)]) {
+    if (!get) continue;
+    try {
+      const response = await get();
+      if (!response.ok) continue;
+      const image = await decodePng(new Uint8Array(await response.arrayBuffer()));
+      if (image) {
+        brand.set(file, image);
+        return image;
+      }
+    } catch {
+      // the next way in, or none
+    }
   }
+  console.log(`member card: ${file} could not be read`);
+  return null;
 }
 
 const BLUE = 0x4169e1;
