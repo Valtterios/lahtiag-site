@@ -8,7 +8,7 @@ import {
   getEvent,
   listSignups,
   listEventTeams,
-  getBracket,
+  listBrackets,
   coverInfo,
   listTicketTypes,
   signupAccess,
@@ -53,7 +53,11 @@ const csrf = ensureCsrf(Astro.cookies);
 
 
 const eventTeams = event?.team_size != null ? await listEventTeams(env.DB, event.id) : [];
-const hasBracket = event ? (await getBracket(env.DB, event.id)).length > 0 : false;
+// An event's draws: usually one, sometimes several under their own
+// names. The page says "the bracket" while there is one of them.
+const brackets = event ? await listBrackets(env.DB, event.id) : [];
+const hasBracket = brackets.length > 0;
+const liveBrackets = brackets.filter((b) => b.live_at !== null);
 const cover = event ? await coverInfo(env.DB, event.id) : null;
 const coverAt = cover?.updated_at ?? null;
 // Blank lines split the description into paragraphs; single line breaks stay.
@@ -150,6 +154,7 @@ const PARTICIPANT_KEYS = new Set([
   'not_linked',
   'team_renamed',
   'team_saved',
+  'placed',
   'grouped',
   'team_full',
   'not_team_event',
@@ -177,6 +182,7 @@ const FLASH: Record<string, string> = {
   signin: 'Sign in with Discord first.',
   csrf: 'The form was stale. Try again.',
   bad_input: "That didn't save. Check the values: reserved seats can't exceed the capacity, a team name is 1 to 40 characters, a team size is a whole number.",
+  team_reserves: "The reserves didn't change: a team already has more of them than that. Move those players into the line-up, or off the team, first.",
   team_size: "The team size didn't change: a team already has more members than that, or teams exist and the event can't go individual. Move people first.",
   missing: 'No such team on this event.',
   forbidden: 'That needs the admin role in Discord.',
@@ -233,8 +239,9 @@ const OK: Record<string, string> = {
   team_saved: 'Team created. Put people in it with the team pickers below.',
   team_added: 'Added to your team.',
   team_kicked: 'Taken out of the team; they are still signed up.',
+  placed: 'Moved between the line-up and the bench.',
   grouped: 'Players without a team were grouped into teams.',
-  team_renamed: 'Team renamed; its voice channel and the bracket follow.',
+  team_renamed: 'Team renamed; its voice channel and the brackets follow.',
   reinstated: 'The event is back on. The Discord cancellation line was removed.',
   released: 'Released. Nothing was charged.',
   added: 'Added to your basket.',
@@ -576,13 +583,16 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
 
       </aside>
       <div class="event-body">
-        {(event.description || hasBracket || event.link_url) && (
+        {(event.description || liveBrackets.length > 0 || event.link_url) && (
           <section class="event-card">
             <h2 class="section-label">Description</h2>
             <div class="event-description">{paragraphs.map((para) => <p>{para}</p>)}</div>
-            {(hasBracket || event.link_url) && (
+            {(liveBrackets.length > 0 || event.link_url) && (
               <p class="entry-actions">
-                {hasBracket && <a class="btn btn-primary" href={`/events/${event.id}/bracket`}>View the bracket</a>}
+                {liveBrackets.length === 1 && <a class="btn btn-primary" href={`/events/${event.id}/bracket`}>View the bracket</a>}
+                {liveBrackets.length > 1 && liveBrackets.map((b) => (
+                  <a class="btn btn-primary" href={`/events/${event.id}/bracket?b=${b.id}`}>{b.name}</a>
+                ))}
                 {event.link_url && <a class="btn btn-ghost" href={event.link_url} rel="noopener">Stream / info link</a>}
               </p>
             )}
@@ -688,21 +698,25 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
       )}
 
       {isTeamEvent && (
-        <section class="event-card">
+        <section class="event-card" id="teams">
           <h2 class="section-label">Teams</h2>
           {eventTeams.length === 0 && (
             <p class="app-empty">No teams yet. Start the first one!</p>
           )}
           {eventTeams.map((team) => {
             const members = teamMembers(team.id);
-            const slotsLeft = event.team_size! - members.length;
+            // A team is its starting line-up plus whatever bench the event
+            // allows; it is full only when both are.
+            const lineUp = members.filter((m) => m.reserve !== 1);
+            const bench = members.filter((m) => m.reserve === 1);
+            const slotsLeft = event.team_size! + event.team_reserves - members.length;
             const inThisTeam = mine?.event_team_id === team.id;
             const captain = session !== null && !session.isAdmin && team.created_by === session.discordId && open;
             return (
               <div class="team-card">
                 <h3>
                   {team.name}
-                  <span class="event-meta"> {members.length} / {event.team_size}</span>
+                  <span class="event-meta"> {lineUp.length} / {event.team_size}{event.team_reserves > 0 ? `, ${bench.length} / ${event.team_reserves} on the bench` : ''}</span>
                 </h3>
                 <ul class="roster">
                   {members.length === 0 && <li class="queue-meta">Empty</li>}
@@ -712,7 +726,17 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                           <img class="person-face" src={avatarUrl(m.discord_id, m.avatar_hash)} width="28" height="28" alt="" loading="lazy" />
                           <span class="person-name">{m.username}</span>
                           {m.discord_id === team.created_by && <span class="member-mark captain-mark" title="Founded the team">captain</span>}
+                          {m.reserve === 1 && <span class="member-mark reserve-mark" title="On the bench, not in the starting line-up">reserve</span>}
                           {m.is_member !== 1 && <span class="member-mark member-mark-guest" title="Not in the member register">guest</span>}
+                          {event.team_reserves > 0 && (
+                            <form method="post" action={`/events/${event.id}/admin-team`} class="inline-form">
+                              <input type="hidden" name="csrf" value={csrf} />
+                              <input type="hidden" name="action" value="place" />
+                              <input type="hidden" name="discord_id" value={m.discord_id} />
+                              <input type="hidden" name="reserve" value={m.reserve === 1 ? '0' : '1'} />
+                              <button class="chip-remove chip-swap" type="submit" title={m.reserve === 1 ? 'Into the starting line-up' : 'Onto the bench'}>{m.reserve === 1 ? '↑' : '↓'}</button>
+                            </form>
+                          )}
                           <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
                             <input type="hidden" name="csrf" value={csrf} />
                             <input type="hidden" name="discord_id" value={m.discord_id} />
@@ -726,6 +750,17 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                             <img class="person-face" src={avatarUrl(m.discord_id, m.avatar_hash)} width="28" height="28" alt="" loading="lazy" />
                             <span class="person-name">{m.username}</span>
                             {m.discord_id === team.created_by && <span class="member-mark captain-mark" title="Founded the team">captain</span>}
+                            {m.reserve === 1 && <span class="member-mark reserve-mark" title="On the bench, not in the starting line-up">reserve</span>}
+                            {event.team_reserves > 0 && (
+                              <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form">
+                                <input type="hidden" name="csrf" value={csrf} />
+                                <input type="hidden" name="action" value="place" />
+                                <input type="hidden" name="event_team_id" value={team.id} />
+                                <input type="hidden" name="discord_id" value={m.discord_id} />
+                                <input type="hidden" name="reserve" value={m.reserve === 1 ? '0' : '1'} />
+                                <button class="chip-remove chip-swap" type="submit" title={m.reserve === 1 ? 'Into the starting line-up' : 'Onto the bench'}>{m.reserve === 1 ? '↑' : '↓'}</button>
+                              </form>
+                            )}
                             {m.discord_id !== session!.discordId && (
                               <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form">
                                 <input type="hidden" name="csrf" value={csrf} />
@@ -742,6 +777,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                             <img class="person-face" src={avatarUrl(m.discord_id, m.avatar_hash)} width="28" height="28" alt="" loading="lazy" />
                             <span class="person-name">{m.username}</span>
                             {m.discord_id === team.created_by && <span class="member-mark captain-mark" title="Founded the team">captain</span>}
+                            {m.reserve === 1 && <span class="member-mark reserve-mark" title="On the bench, not in the starting line-up">reserve</span>}
                           </li>
                         ))}
                 </ul>
@@ -764,7 +800,9 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                     <input type="hidden" name="csrf" value={csrf} />
                     <input type="hidden" name="action" value="join" />
                     <input type="hidden" name="event_team_id" value={team.id} />
-                    <button class="btn btn-ghost" type="submit">Join this team</button>
+                    <button class="btn btn-ghost" type="submit">
+                      {lineUp.length >= event.team_size! ? 'Join as a reserve' : 'Join this team'}
+                    </button>
                   </form>
                 )}
                 {inThisTeam && open && (
@@ -843,7 +881,10 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             <span class="status-badge">{signupsClosed ? 'Signups closed' : opensLater ? `Signups open ${formatHelsinki(event.signups_open_at!)}` : 'Signups open'}</span>
             <span class="status-badge">{isTeamEvent ? `${eventTeams.length} teams, ${going.length} players` : `${going.length}${event.capacity !== null ? ` / ${event.capacity}` : ''} going`}{waitlist.length > 0 ? `, ${waitlist.length} waiting` : ''}</span>
             {sales && <span class="status-badge">{sales.tickets} tickets sold</span>}
-            {hasBracket && <span class={`status-badge${event.bracket_live_at === null ? ' status-muted' : ''}`}>{event.bracket_live_at === null ? 'Bracket: draft' : 'Bracket: live'}</span>}
+            {brackets.length === 1 && <span class={`status-badge${brackets[0].live_at === null ? ' status-muted' : ''}`}>{brackets[0].live_at === null ? 'Bracket: draft' : 'Bracket: live'}</span>}
+            {brackets.length > 1 && brackets.map((b) => (
+              <span class={`status-badge${b.live_at === null ? ' status-muted' : ''}`}>{b.name}: {b.live_at === null ? 'draft' : 'live'}</span>
+            ))}
             {event.interest_count > 0 && <span class="status-badge status-muted">♡ {event.interest_count}</span>}
           </p>
           {event.cancelled_at !== null && (
@@ -862,15 +903,19 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 {signupsClosed ? 'Reopen signups' : 'Close signups'}
               </button>
             </form>
-            <form method="post" action={`/events/${event.id}/bracket-action`}>
-              <input type="hidden" name="csrf" value={csrf} />
-              <input type="hidden" name="action" value="generate" />
-              <button class="btn btn-ghost" type="submit" data-confirm={hasBracket ? 'Regenerate the bracket from scratch? Recorded results are lost.' : undefined}>
-                {hasBracket ? 'Regenerate bracket' : 'Generate bracket'}
-              </button>
-            </form>
+            {brackets.length < 2 && (
+              <form method="post" action={`/events/${event.id}/bracket-action`}>
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="action" value="generate" />
+                <button class="btn btn-ghost" type="submit" data-confirm={hasBracket ? 'Regenerate the bracket from scratch? Recorded results are lost.' : undefined}>
+                  {hasBracket ? 'Regenerate bracket' : 'Generate bracket'}
+                </button>
+              </form>
+            )}
             {hasBracket && (
-              <a class={`btn ${event.bracket_live_at === null ? 'btn-cta' : 'btn-ghost'}`} href={`/events/${event.id}/bracket`}>{event.bracket_live_at === null ? 'Seed and go live' : 'Bracket page'}</a>
+              <a class={`btn ${brackets.some((b) => b.live_at === null) ? 'btn-cta' : 'btn-ghost'}`} href={`/events/${event.id}/bracket`}>
+                {brackets.length > 1 ? 'Brackets' : brackets[0].live_at === null ? 'Seed and go live' : 'Bracket page'}
+              </a>
             )}
             {sales && <a class="btn btn-ghost" href={`/events/${event.id}/door`}>Door page</a>}
           </div>
@@ -913,7 +958,11 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 Team size
                 <input name="team_size" type="number" min="1" value={event.team_size ?? ''} placeholder="empty = individual signups" />
               </label>
-              <p class="event-meta">A team size makes this a tournament with teams; existing signups become players without a team. It can change as long as no team has more members than the new size. Any bracket is redrawn.</p>
+              <label>
+                Reserves per team
+                <input name="team_reserves" type="number" min="0" max="20" value={event.team_reserves} placeholder="0" />
+              </label>
+              <p class="event-meta">A team size makes this a tournament with teams; existing signups become players without a team. It can change as long as no team has more members than the new size. Any bracket is redrawn. Reserves are places beyond the line-up — five a side with one reserve is a team of six, one of whom starts on the bench.</p>
               <label>Description <textarea name="description" rows="3">{event.description ?? ''}</textarea></label>
               <button class="btn btn-primary" type="submit">Save changes</button>
             </form>
@@ -1202,6 +1251,14 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                             <option value={team.id} selected={s.event_team_id === team.id}>{team.name}</option>
                           ))}
                         </select>
+                      )}
+                      {isTeamEvent && event.team_reserves > 0 && (
+                        <>
+                          <input type="hidden" name="reserve_set" value="1" />
+                          <label class="check">
+                            <input type="checkbox" name="reserve" checked={s.reserve === 1} /> <span>reserve</span>
+                          </label>
+                        </>
                       )}
                       <button class="btn btn-ghost" type="submit">Save</button>
                     </form>

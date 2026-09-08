@@ -6,7 +6,11 @@ import {
   createEventTeam,
   setSignup,
   setSignupsClosed,
+  addBracket,
   generateBracket,
+  createBracket,
+  listBrackets,
+  goLiveBracket,
   getBracket,
   setBracketWinner,
   clearBracketWinner,
@@ -25,7 +29,7 @@ const NOW = 1_760_000_000;
 const db = () => env.DB;
 
 async function wipe(): Promise<void> {
-  for (const table of ['bracket_matches', 'signups', 'event_teams', 'events', 'announcements', 'members']) {
+  for (const table of ['bracket_matches', 'brackets', 'signups', 'event_teams', 'events', 'announcements', 'members']) {
     await db().prepare(`DELETE FROM ${table}`).run();
   }
 }
@@ -48,13 +52,19 @@ async function soloEventWith(playerIds: string[]): Promise<number> {
   return eventId;
 }
 
+// The event's one bracket, drawn: what the plain "Generate bracket"
+// button does. Everything below works on the bracket it returns.
+async function draw(eventId: number, now = NOW, entrants?: string[]): Promise<number> {
+  return addBracket(db(), eventId, null, now, entrants);
+}
+
 beforeEach(wipe);
 
 describe('generateBracket', () => {
   it('builds one final from 4 players across 2 rounds', async () => {
     const eventId = await soloEventWith(['a', 'b', 'c', 'd']);
-    await generateBracket(db(), eventId);
-    const matches = await getBracket(db(), eventId);
+    const bracket = await draw(eventId);
+    const matches = await getBracket(db(), bracket);
     expect(matches.filter((m) => m.round === 1)).toHaveLength(2);
     expect(matches.filter((m) => m.round === 2)).toHaveLength(1);
     // every player placed exactly once in round 1
@@ -67,8 +77,8 @@ describe('generateBracket', () => {
 
   it('gives byes that auto-advance when the field is not a power of two', async () => {
     const eventId = await soloEventWith(['a', 'b', 'c', 'd', 'e']);
-    await generateBracket(db(), eventId);
-    const matches = await getBracket(db(), eventId);
+    const bracket = await draw(eventId);
+    const matches = await getBracket(db(), bracket);
     const round1 = matches.filter((m) => m.round === 1);
     expect(round1).toHaveLength(4); // bracket of 8
     const byes = round1.filter((m) => m.side_b === null);
@@ -102,15 +112,15 @@ describe('generateBracket', () => {
     );
     const t1 = await createEventTeam(db(), eventId, 'One', 'a', NOW);
     const t2 = await createEventTeam(db(), eventId, 'Two', 'b', NOW);
-    await generateBracket(db(), eventId);
-    const matches = await getBracket(db(), eventId);
+    const bracket = await draw(eventId);
+    const matches = await getBracket(db(), bracket);
     expect(matches).toHaveLength(1);
     expect([matches[0].side_a, matches[0].side_b].sort()).toEqual([`t:${t1}`, `t:${t2}`].sort());
   });
 
   it('refuses a bracket with fewer than two participants', async () => {
     const eventId = await soloEventWith(['a']);
-    await expect(generateBracket(db(), eventId)).rejects.toMatchObject({ code: 'too_few' });
+    await expect(draw(eventId)).rejects.toMatchObject({ code: 'too_few' });
   });
 
   it('groups players without a team into teams before the draw', async () => {
@@ -118,20 +128,20 @@ describe('generateBracket', () => {
     const eventId = await createEvent(db(), { title: 'Doubles', description: null, starts_at: NOW + 86400, capacity: null, team_size: 2, created_by: 'admin' }, NOW);
     const t1 = await createEventTeam(db(), eventId, 'Ready', 'a', NOW);
     for (const id of ['b', 'c', 'd', 'e']) await setSignup(db(), eventId, id, 'yes', NOW);
-    await generateBracket(db(), eventId, NOW);
+    const bracket = await draw(eventId, NOW);
     const teams = await listEventTeams(db(), eventId);
     expect(teams).toHaveLength(3);
     expect(teams.map((t) => t.name).sort()).toEqual(['Ready', 'Team user-b', 'Team user-d'].sort());
     const signups = await listSignups(db(), eventId);
     expect(signups.every((s) => s.event_team_id !== null)).toBe(true);
-    const matches = await getBracket(db(), eventId);
+    const matches = await getBracket(db(), bracket);
     expect(matches.length).toBeGreaterThanOrEqual(2);
     expect(matches.some((m) => m.side_a === `t:${t1}` || m.side_b === `t:${t1}`)).toBe(true);
     // two loose players only: one team, not enough for a draw
     const small = await createEvent(db(), { title: 'Pair', description: null, starts_at: NOW + 86400, capacity: null, team_size: 2, created_by: 'admin' }, NOW);
     await setSignup(db(), small, 'b', 'yes', NOW);
     await setSignup(db(), small, 'c', 'yes', NOW);
-    await expect(generateBracket(db(), small, NOW)).rejects.toMatchObject({ code: 'too_few' });
+    await expect(draw(small, NOW)).rejects.toMatchObject({ code: 'too_few' });
     expect(await listEventTeams(db(), small)).toHaveLength(1);
   });
 });
@@ -139,52 +149,52 @@ describe('generateBracket', () => {
 describe('setBracketWinner', () => {
   it('advances the winner into the next round and crowns a champion', async () => {
     const eventId = await soloEventWith(['a', 'b', 'c', 'd']);
-    await generateBracket(db(), eventId);
-    const round1 = (await getBracket(db(), eventId)).filter((m) => m.round === 1);
-    await setBracketWinner(db(), eventId, 1, 0, round1[0].side_a!);
-    await setBracketWinner(db(), eventId, 1, 1, round1[1].side_b!);
-    let final = (await getBracket(db(), eventId)).find((m) => m.round === 2)!;
+    const bracket = await draw(eventId);
+    const round1 = (await getBracket(db(), bracket)).filter((m) => m.round === 1);
+    await setBracketWinner(db(), bracket, 1, 0, round1[0].side_a!);
+    await setBracketWinner(db(), bracket, 1, 1, round1[1].side_b!);
+    let final = (await getBracket(db(), bracket)).find((m) => m.round === 2)!;
     expect(final.side_a).toBe(round1[0].side_a);
     expect(final.side_b).toBe(round1[1].side_b);
-    await setBracketWinner(db(), eventId, 2, 0, final.side_a!);
-    final = (await getBracket(db(), eventId)).find((m) => m.round === 2)!;
+    await setBracketWinner(db(), bracket, 2, 0, final.side_a!);
+    final = (await getBracket(db(), bracket)).find((m) => m.round === 2)!;
     expect(final.winner).toBe(round1[0].side_a);
   });
 
   it('changing an earlier result clears everything downstream of it', async () => {
     const eventId = await soloEventWith(['a', 'b', 'c', 'd']);
-    await generateBracket(db(), eventId);
-    const round1 = (await getBracket(db(), eventId)).filter((m) => m.round === 1);
-    await setBracketWinner(db(), eventId, 1, 0, round1[0].side_a!);
-    await setBracketWinner(db(), eventId, 1, 1, round1[1].side_a!);
-    await setBracketWinner(db(), eventId, 2, 0, round1[0].side_a!); // champion
+    const bracket = await draw(eventId);
+    const round1 = (await getBracket(db(), bracket)).filter((m) => m.round === 1);
+    await setBracketWinner(db(), bracket, 1, 0, round1[0].side_a!);
+    await setBracketWinner(db(), bracket, 1, 1, round1[1].side_a!);
+    await setBracketWinner(db(), bracket, 2, 0, round1[0].side_a!); // champion
     // Now flip match 1's result.
-    await setBracketWinner(db(), eventId, 1, 0, round1[0].side_b!);
-    const final = (await getBracket(db(), eventId)).find((m) => m.round === 2)!;
+    await setBracketWinner(db(), bracket, 1, 0, round1[0].side_b!);
+    const final = (await getBracket(db(), bracket)).find((m) => m.round === 2)!;
     expect(final.side_a).toBe(round1[0].side_b);
     expect(final.winner).toBeNull();
   });
 
   it('rejects a winner that is not one of the sides or an unready match', async () => {
     const eventId = await soloEventWith(['a', 'b', 'c', 'd']);
-    await generateBracket(db(), eventId);
-    await expect(setBracketWinner(db(), eventId, 1, 0, 'u:zzz')).rejects.toMatchObject({
+    const bracket = await draw(eventId);
+    await expect(setBracketWinner(db(), bracket, 1, 0, 'u:zzz')).rejects.toMatchObject({
       code: 'bad_input',
     });
-    await expect(setBracketWinner(db(), eventId, 2, 0, 'u:a')).rejects.toMatchObject({
+    await expect(setBracketWinner(db(), bracket, 2, 0, 'u:a')).rejects.toMatchObject({
       code: 'bad_input',
     });
   });
 
   it('clearBracketWinner reverts a result and pulls the winner back out of later rounds', async () => {
     const eventId = await soloEventWith(['a', 'b', 'c', 'd']);
-    await generateBracket(db(), eventId);
-    const round1 = (await getBracket(db(), eventId)).filter((m) => m.round === 1);
-    await setBracketWinner(db(), eventId, 1, 0, round1[0].side_a!);
-    await setBracketWinner(db(), eventId, 1, 1, round1[1].side_a!);
-    await setBracketWinner(db(), eventId, 2, 0, round1[0].side_a!); // champion
-    await clearBracketWinner(db(), eventId, 1, 0);
-    const after = await getBracket(db(), eventId);
+    const bracket = await draw(eventId);
+    const round1 = (await getBracket(db(), bracket)).filter((m) => m.round === 1);
+    await setBracketWinner(db(), bracket, 1, 0, round1[0].side_a!);
+    await setBracketWinner(db(), bracket, 1, 1, round1[1].side_a!);
+    await setBracketWinner(db(), bracket, 2, 0, round1[0].side_a!); // champion
+    await clearBracketWinner(db(), bracket, 1, 0);
+    const after = await getBracket(db(), bracket);
     expect(after.find((m) => m.round === 1 && m.slot === 0)!.winner).toBeNull();
     const final = after.find((m) => m.round === 2)!;
     expect(final.side_a).toBeNull(); // the reverted winner is gone from the final
@@ -194,33 +204,36 @@ describe('setBracketWinner', () => {
 
   it('clearBracketWinner is a no-op on an undecided match and rejects byes', async () => {
     const eventId = await soloEventWith(['a', 'b', 'c']);
-    await generateBracket(db(), eventId);
-    const round1 = (await getBracket(db(), eventId)).filter((m) => m.round === 1);
+    const bracket = await draw(eventId);
+    const round1 = (await getBracket(db(), bracket)).filter((m) => m.round === 1);
     const real = round1.find((m) => m.side_b !== null)!;
     const bye = round1.find((m) => m.side_b === null)!;
-    await clearBracketWinner(db(), eventId, 1, real.slot); // undecided: no-op
-    await expect(clearBracketWinner(db(), eventId, 1, bye.slot)).rejects.toMatchObject({
+    await clearBracketWinner(db(), bracket, 1, real.slot); // undecided: no-op
+    await expect(clearBracketWinner(db(), bracket, 1, bye.slot)).rejects.toMatchObject({
       code: 'bad_input',
     });
-    await expect(clearBracketWinner(db(), eventId, 9, 9)).rejects.toMatchObject({
+    await expect(clearBracketWinner(db(), bracket, 9, 9)).rejects.toMatchObject({
       code: 'missing',
     });
   });
 
   it('deleteBracket clears the chart', async () => {
     const eventId = await soloEventWith(['a', 'b']);
-    await generateBracket(db(), eventId);
-    await deleteBracket(db(), eventId);
-    expect(await getBracket(db(), eventId)).toHaveLength(0);
+    const bracket = await draw(eventId);
+    await deleteBracket(db(), bracket);
+    expect(await getBracket(db(), bracket)).toHaveLength(0);
   });
 });
 
 describe('results and deletion', () => {
   it('a decided final lands in results, unless the event is cancelled', async () => {
     const eventId = await soloEventWith(['a', 'b']);
-    await generateBracket(db(), eventId);
-    const match = (await getBracket(db(), eventId))[0];
-    await setBracketWinner(db(), eventId, 1, 0, match.side_a!);
+    const bracket = await draw(eventId);
+    const match = (await getBracket(db(), bracket))[0];
+    await setBracketWinner(db(), bracket, 1, 0, match.side_a!);
+    // A draft's champion is the board's business until they put it live.
+    expect((await listResults(db())).map((r) => r.event_id)).not.toContain(eventId);
+    await goLiveBracket(db(), bracket, NOW);
     expect((await listResults(db())).map((r) => r.event_id)).toContain(eventId);
     await cancelEventRow(db(), eventId, NOW);
     expect((await listResults(db())).map((r) => r.event_id)).not.toContain(eventId);
@@ -228,10 +241,10 @@ describe('results and deletion', () => {
 
   it('deleteEvent erases the event with signups and bracket', async () => {
     const eventId = await soloEventWith(['a', 'b']);
-    await generateBracket(db(), eventId);
+    const bracket = await draw(eventId);
     await deleteEvent(db(), eventId);
     expect(await getEvent(db(), eventId)).toBeNull();
-    expect(await getBracket(db(), eventId)).toHaveLength(0);
+    expect(await getBracket(db(), bracket)).toHaveLength(0);
     expect(await listSignups(db(), eventId)).toHaveLength(0);
     await expect(deleteEvent(db(), eventId)).rejects.toMatchObject({ code: 'missing' });
   });
@@ -272,8 +285,8 @@ describe('closed signups', () => {
   it('bracket generation still works while signups are closed', async () => {
     const eventId = await soloEventWith(['a', 'b']);
     await setSignupsClosed(db(), eventId, true, NOW);
-    await generateBracket(db(), eventId);
-    expect(await getBracket(db(), eventId)).toHaveLength(1);
+    const bracket = await draw(eventId);
+    expect(await getBracket(db(), bracket)).toHaveLength(1);
   });
 });
 

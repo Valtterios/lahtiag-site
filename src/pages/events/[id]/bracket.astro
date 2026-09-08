@@ -2,7 +2,7 @@
 import { env } from 'cloudflare:workers';
 import Base from '../../../layouts/Base.astro';
 import { currentSession, ensureCsrf } from '../../../lib/guard';
-import { getEvent, getBracket, listSignups, listEventTeams } from '../../../lib/db';
+import { getEvent, getBracket, listBrackets, listSignups, listEventTeams } from '../../../lib/db';
 import { avatarUrl } from '../../../lib/discord';
 import { formatHelsinki } from '../../../lib/time';
 
@@ -14,14 +14,21 @@ if (!event) {
 
 const session = await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
-// A generated bracket is a draft the board seeds first; others see it
-// once it is live.
-const stored = event ? await getBracket(env.DB, event.id) : [];
-const draftBracket = event !== null && stored.length > 0 && event.bracket_live_at === null;
-const matches = session?.isAdmin || !draftBracket ? stored : [];
+// An event runs one bracket, usually; when it runs several they sit side
+// by side under their names, and ?b= says which one is on show. A draft
+// is the board's until they put it live, so everyone else picks from the
+// live ones — and an event whose only draw is still a draft says so.
+const brackets = event ? await listBrackets(env.DB, event.id) : [];
+const visible = session?.isAdmin ? brackets : brackets.filter((b) => b.live_at !== null);
+const askedRaw = Astro.url.searchParams.get('b');
+const asked = askedRaw === null || askedRaw.trim() === '' ? null : Number(askedRaw);
+const bracket = (asked !== null ? visible.find((b) => b.id === asked) : undefined) ?? visible[0] ?? null;
+const many = brackets.length > 1;
+const drafting = bracket === null && brackets.length > 0;
+const matches = bracket ? await getBracket(env.DB, bracket.id) : [];
+const draftBracket = bracket !== null && bracket.live_at === null;
 const signups = event ? await listSignups(env.DB, event.id) : [];
 const eventTeams = event?.team_size != null ? await listEventTeams(env.DB, event.id) : [];
-
 // Resolve participant keys to names and avatar stacks.
 interface Participant {
   name: string;
@@ -68,19 +75,24 @@ const final = matches.find((m) => m.round === totalRounds);
 const champion = final?.winner ? nameOf(final.winner) : null;
 
 const FLASH: Record<string, string> = {
-  bad_input: "That didn't go through: a substitute must be on the roster and not in the bracket yet.",
-  missing: 'No such match or participant.',
+  bad_input: "That didn't go through: a substitute must be on the roster and not in the bracket yet, and a bracket name is 1 to 40 characters.",
+  missing: 'No such match, participant or bracket.',
   bad_seeding: 'That seeding could not be saved: every participant exactly once, and the same number of byes.',
   bracket_live: 'The bracket is live; regenerate to start over with a new draft.',
+  dup_name: 'This event already has a bracket by that name.',
+  too_few: 'A bracket needs at least two teams or players. Tick more entrants, or add them to the roster first.',
   forbidden: 'That needs the admin role in Discord.',
   discord_down: "Discord didn't answer while re-checking your role. Try again.",
   csrf: 'The form was stale. Try again.',
 };
 const OK: Record<string, string> = {
   drafted: 'Bracket drawn as a draft. Only the board sees it: rearrange round one below if you like, then go live.',
+  added: 'Bracket added as a draft. Only the board sees it: rearrange round one below if you like, then go live.',
   seeded: 'Seeding saved.',
   live: "The bracket is live for everyone and posted to the event's Discord channel.",
   replaced: 'Substitute in place.',
+  renamed: 'Bracket renamed.',
+  bracket_deleted: 'Bracket deleted.',
 };
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
 // For the board's seeding and substitute forms.
@@ -89,11 +101,12 @@ const drawKeys = roundOne.flatMap((m) => [m.side_a, m.side_b]).filter((k): k is 
 const inDraw = new Set(matches.flatMap((m) => [m.side_a, m.side_b, m.winner]).filter((k): k is string => k !== null));
 const poolKeys = event?.team_size != null ? eventTeams.map((t) => `t:${t.id}`) : signups.filter((s) => s.status === 'yes').map((s) => `u:${s.discord_id}`);
 const benchKeys = poolKeys.filter((k) => !inDraw.has(k));
+const title = event ? (many && bracket ? `${event.title}: ${bracket.name}` : `${event.title}: bracket`) : 'Event not found';
 ---
 <Base
-  title={event ? `${event.title}: bracket` : 'Event not found'}
+  title={title}
   description={event ? `Tournament bracket for ${event.title}` : undefined}
-  image={event && matches.length > 0 ? `${Astro.url.origin}/events/${event.id}/bracket.png?t=${Math.floor(Date.now() / 600)}` : undefined}
+  image={event && bracket && bracket.live_at !== null && matches.length > 0 ? `${Astro.url.origin}/events/${event.id}/bracket.png?b=${bracket.id}&t=${Math.floor(Date.now() / 600)}` : undefined}
 >
   {!event ? (
     <article class="prose">
@@ -104,24 +117,39 @@ const benchKeys = poolKeys.filter((k) => !inDraw.has(k));
     <>
       <article class="prose">
         <p class="hero-eyebrow">{formatHelsinki(event.starts_at)}</p>
-        <h1>{event.title}: bracket</h1>
+        <h1>{title}</h1>
         <p class="event-meta">
           <a href={`/events/${event.id}`}>Back to the event page</a>
-          {session?.isAdmin && (
+          {session?.isAdmin && bracket && (
             <>
               {' · '}
-              <a href={`/events/${event.id}/bracket?display`}>Open presenter mode</a>
+              <a href={`/events/${event.id}/bracket?display${many ? `&b=${bracket.id}` : ''}`}>Open presenter mode</a>
             </>
           )}
         </p>
       </article>
       {flash && <p class="flash">{flash}</p>}
 
+      {visible.length > 1 && (
+        <nav class="bracket-tabs" aria-label="Brackets">
+          {visible.map((b) => (
+            <a
+              class={`bracket-tab${bracket?.id === b.id ? ' is-on' : ''}`}
+              href={`/events/${event.id}/bracket?b=${b.id}`}
+              aria-current={bracket?.id === b.id ? 'page' : undefined}
+            >
+              {b.name}
+              {b.live_at === null && <span class="bracket-tab-draft" title="A draft only the board sees">draft</span>}
+            </a>
+          ))}
+        </nav>
+      )}
+
       <div id="bracket-live">
       {event.display_note && <p class="display-note">{event.display_note}</p>}
       {champion && (
         <p class="champion">
-          🏆 <strong>{champion.name}</strong> takes it!
+          🏆 <strong>{champion.name}</strong> takes it{many && bracket ? ` in ${bracket.name}` : ''}!
           {champion.avatars.map((src) => (
             <img src={src} alt="" width="28" height="28" loading="lazy" />
           ))}
@@ -130,7 +158,7 @@ const benchKeys = poolKeys.filter((k) => !inDraw.has(k));
 
       {matches.length === 0 ? (
         <p class="app-empty">
-          {draftBracket
+          {drafting
             ? 'The organizers are finalizing the bracket. It appears here shortly.'
             : <>No bracket yet. {session?.isAdmin ? 'Generate one from the event page once signups are in.' : 'It appears here once the organizers generate it.'}</>}
         </p>
@@ -164,6 +192,7 @@ const benchKeys = poolKeys.filter((k) => !inDraw.has(k));
                               {clickable && (
                                 <form method="post" action={`/events/${event.id}/bracket-action`} class="inline-form">
                                   <input type="hidden" name="csrf" value={csrf} />
+                                  <input type="hidden" name="bracket_id" value={bracket!.id} />
                                   <input type="hidden" name="action" value={won ? 'undo' : 'winner'} />
                                   <input type="hidden" name="round" value={match.round} />
                                   <input type="hidden" name="slot" value={match.slot} />
@@ -198,83 +227,153 @@ const benchKeys = poolKeys.filter((k) => !inDraw.has(k));
 
       </div>
 
-      {session?.isAdmin && matches.length > 0 && (
+      {session?.isAdmin && (
         <section class="admin-panel">
           <h2>Board tools</h2>
-          <p class="admin-status">
-            <span class={`status-badge${draftBracket ? ' status-muted' : ' status-member'}`}>{draftBracket ? 'Bracket: draft' : 'Bracket: live'}</span>
-            <span class="status-badge">{matches.length} matches</span>
-          </p>
-          {draftBracket ? (
+          {bracket && matches.length > 0 && (
             <>
-              <p class="event-meta">
-                Only the board sees this draw. Rearrange round one below (a bye is an empty second side), save, and
-                press Go live: everyone sees it and the event's Discord channel gets it.
+              <p class="admin-status">
+                {many && <span class="status-badge status-member">{bracket.name}</span>}
+                <span class={`status-badge${draftBracket ? ' status-muted' : ' status-member'}`}>{draftBracket ? 'Bracket: draft' : 'Bracket: live'}</span>
+                <span class="status-badge">{matches.length} matches</span>
               </p>
-              <form method="post" action={`/events/${event.id}/bracket-action`} class="seeding">
-                <input type="hidden" name="csrf" value={csrf} />
-                <input type="hidden" name="action" value="seed" />
-                {roundOne.map((m) => (
-                  <div class="seeding-match">
-                    <span class="queue-meta">Match {m.slot + 1}</span>
-                    {(['a', 'b'] as const).map((side) => (
-                      <select name={`${side}${m.slot}`} aria-label={`Match ${m.slot + 1}, side ${side.toUpperCase()}`}>
-                        <option value="">bye</option>
-                        {drawKeys.map((key) => (
-                          <option value={key} selected={(side === 'a' ? m.side_a : m.side_b) === key}>{nameOf(key)?.name ?? 'Unknown'}</option>
+              {draftBracket ? (
+                <>
+                  <p class="event-meta">
+                    Only the board sees this draw. Rearrange round one below (a bye is an empty second side), save, and
+                    press Go live: everyone sees it and the event's Discord channel gets it.
+                  </p>
+                  <form method="post" action={`/events/${event.id}/bracket-action`} class="seeding">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="bracket_id" value={bracket.id} />
+                    <input type="hidden" name="action" value="seed" />
+                    {roundOne.map((m) => (
+                      <div class="seeding-match">
+                        <span class="queue-meta">Match {m.slot + 1}</span>
+                        {(['a', 'b'] as const).map((side) => (
+                          <select name={`${side}${m.slot}`} aria-label={`Match ${m.slot + 1}, side ${side.toUpperCase()}`}>
+                            <option value="">bye</option>
+                            {drawKeys.map((key) => (
+                              <option value={key} selected={(side === 'a' ? m.side_a : m.side_b) === key}>{nameOf(key)?.name ?? 'Unknown'}</option>
+                            ))}
+                          </select>
                         ))}
-                      </select>
+                      </div>
                     ))}
-                  </div>
-                ))}
-                <div class="entry-actions">
-                  <button class="btn btn-ghost" type="submit">Save seeding</button>
-                </div>
+                    <div class="entry-actions">
+                      <button class="btn btn-ghost" type="submit">Save seeding</button>
+                    </div>
+                  </form>
+                  <form method="post" action={`/events/${event.id}/bracket-action`}>
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="bracket_id" value={bracket.id} />
+                    <input type="hidden" name="action" value="live" />
+                    <button class="btn btn-cta" type="submit" data-confirm="Go live? Everyone sees the bracket and it is posted to the event's Discord channel.">Go live</button>
+                  </form>
+                </>
+              ) : (
+                <p class="event-meta">
+                  Click W on a side to record the winner, or ↺ on the recorded winner
+                  to revert the result. Changing or reverting an earlier result
+                  clears everything that followed from it.
+                </p>
+              )}
+              <h3>Substitute</h3>
+              {benchKeys.length === 0 ? (
+                <p class="event-meta">
+                  Everyone on the roster is in the draw. Add the substitute first ({event.team_size != null ? 'a team under Manage participants' : 'a walk-in, or their own signup'}), then pick them here.
+                </p>
+              ) : (
+                <form method="post" action={`/events/${event.id}/bracket-action`} class="participant-row">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="bracket_id" value={bracket.id} />
+                  <input type="hidden" name="action" value="replace" />
+                  <label>
+                    Out
+                    <select name="from">
+                      {drawKeys.map((key) => <option value={key}>{nameOf(key)?.name ?? 'Unknown'}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    In
+                    <select name="to">
+                      {benchKeys.map((key) => <option value={key}>{nameOf(key)?.name ?? 'Unknown'}</option>)}
+                    </select>
+                  </label>
+                  <button class="btn btn-ghost btn-sm" type="submit">Replace</button>
+                </form>
+              )}
+              <p class="event-meta">A substitute takes over the place and any results; team names change under Manage participants on the event page.</p>
+
+              <h3>This bracket</h3>
+              <form method="post" action={`/events/${event.id}/bracket-action`} class="participant-row">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="bracket_id" value={bracket.id} />
+                <input type="hidden" name="action" value="rename" />
+                <label>
+                  Name
+                  <input name="name" value={bracket.name} maxlength="40" required />
+                </label>
+                <button class="btn btn-ghost btn-sm" type="submit">Rename</button>
               </form>
               <form method="post" action={`/events/${event.id}/bracket-action`}>
                 <input type="hidden" name="csrf" value={csrf} />
-                <input type="hidden" name="action" value="live" />
-                <button class="btn btn-cta" type="submit" data-confirm="Go live? Everyone sees the bracket and it is posted to the event's Discord channel.">Go live</button>
+                <input type="hidden" name="bracket_id" value={bracket.id} />
+                <input type="hidden" name="action" value="regenerate" />
+                <details class="entrant-pick">
+                  <summary>Choose who is drawn (everyone on the roster by default)</summary>
+                  <label class="check check-standalone">
+                    <input type="checkbox" name="pick_entrants" /> <span>Draw only the ones ticked below</span>
+                  </label>
+                  <div class="entrant-list">
+                    {poolKeys.map((key) => (
+                      <label class="check">
+                        <input type="checkbox" name="entrant" value={key} checked={inDraw.has(key)} />
+                        <span>{nameOf(key)?.name ?? 'Unknown'}</span>
+                      </label>
+                    ))}
+                  </div>
+                </details>
+                <button class="btn btn-ghost" type="submit" data-confirm="Redraw this bracket from scratch? Results are lost and it becomes a draft again.">
+                  Regenerate this bracket (new random seeding, results reset)
+                </button>
+              </form>
+              <form method="post" action={`/events/${event.id}/bracket-action`}>
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="bracket_id" value={bracket.id} />
+                <input type="hidden" name="action" value="delete" />
+                <button class="btn btn-danger btn-sm" type="submit" data-confirm="Delete this bracket, with its results? The event's other brackets stay.">Delete this bracket</button>
               </form>
             </>
-          ) : (
-            <p class="event-meta">
-              Click W on a side to record the winner, or ↺ on the recorded winner
-              to revert the result. Changing or reverting an earlier result
-              clears everything that followed from it.
-            </p>
           )}
-          <h3>Substitute</h3>
-          {benchKeys.length === 0 ? (
-            <p class="event-meta">
-              Everyone on the roster is in the draw. Add the substitute first ({event.team_size != null ? 'a team under Manage participants' : 'a walk-in, or their own signup'}), then pick them here.
-            </p>
-          ) : (
-            <form method="post" action={`/events/${event.id}/bracket-action`} class="participant-row">
-              <input type="hidden" name="csrf" value={csrf} />
-              <input type="hidden" name="action" value="replace" />
-              <label>
-                Out
-                <select name="from">
-                  {drawKeys.map((key) => <option value={key}>{nameOf(key)?.name ?? 'Unknown'}</option>)}
-                </select>
-              </label>
-              <label>
-                In
-                <select name="to">
-                  {benchKeys.map((key) => <option value={key}>{nameOf(key)?.name ?? 'Unknown'}</option>)}
-                </select>
-              </label>
-              <button class="btn btn-ghost btn-sm" type="submit">Replace</button>
-            </form>
-          )}
-          <p class="event-meta">A substitute takes over the place and any results; team names change under Manage participants on the event page.</p>
+
+          <h3>Another bracket</h3>
+          <p class="event-meta">
+            An event can run more than one: a main draw and a plate, a bracket per game, a group each. Each is
+            named, drawn and put live on its own, and gets its own pinned message in Discord.
+          </p>
           <form method="post" action={`/events/${event.id}/bracket-action`}>
             <input type="hidden" name="csrf" value={csrf} />
-            <input type="hidden" name="action" value="regenerate" />
-            <button class="btn btn-ghost" type="submit" data-confirm="Redraw the bracket from scratch? Results are lost and it becomes a draft again.">
-              Regenerate bracket (new random seeding, results reset)
-            </button>
+            <input type="hidden" name="action" value="add" />
+            <label>
+              Name
+              <input name="name" maxlength="40" placeholder={brackets.length === 0 ? 'Main bracket' : `Bracket ${brackets.length + 1}`} />
+            </label>
+            <details class="entrant-pick">
+              <summary>Choose who is in it (everyone on the roster by default)</summary>
+              <label class="check check-standalone">
+                <input type="checkbox" name="pick_entrants" /> <span>Draw only the ones ticked below</span>
+              </label>
+              <div class="entrant-list">
+                {poolKeys.map((key) => (
+                  <label class="check">
+                    <input type="checkbox" name="entrant" value={key} checked />
+                    <span>{nameOf(key)?.name ?? 'Unknown'}</span>
+                  </label>
+                ))}
+              </div>
+            </details>
+            <button class="btn btn-ghost" type="submit">Add a bracket</button>
           </form>
         </section>
       )}

@@ -1,13 +1,14 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { adminCreateTeam, autoTeamLoosePlayers, renameEventTeam, listSignups, RuleError } from '../../../lib/db';
+import { adminCreateTeam, autoTeamLoosePlayers, renameEventTeam, setTeamPlace, listSignups, RuleError } from '../../../lib/db';
 import { syncTeamVoiceChannelsInBackground, renameTeamVoiceChannel } from '../../../lib/event-discord';
-import { later, refreshLiveBracket, notifyTeamPlacement } from '../../../lib/event-channel';
+import { later, refreshEventBrackets, notifyTeamPlacement } from '../../../lib/event-channel';
 import { refreshAnnouncementInBackground } from '../../../lib/announce';
 
-// Board: make an empty team to assign people to, or group everyone
-// without a team into teams of the event's size.
+// Board: make an empty team to assign people to, group everyone without
+// a team into teams of the event's size, or swap somebody between a
+// team's starting line-up and its bench.
 
 export const POST: APIRoute = async ({ request, params, redirect, locals, url }) => {
   const id = Number(params.id);
@@ -25,8 +26,12 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
       await renameEventTeam(env.DB, id, teamId, name);
       // The voice channel and the live bracket carry the new name.
       later(locals.cfContext, renameTeamVoiceChannel(env.DB, env, id, teamId, name));
-      later(locals.cfContext, refreshLiveBracket(env.DB, env, id, url.origin, now));
+      later(locals.cfContext, refreshEventBrackets(env.DB, env, id, url.origin, now));
       return redirect(`${back}?ok=team_renamed#participants`, 303);
+    }
+    if (form.get('action') === 'place') {
+      await setTeamPlace(env.DB, id, String(form.get('discord_id') ?? ''), form.get('reserve') === '1');
+      return redirect(`${back}?ok=placed#teams`, 303);
     }
     if (form.get('action') === 'auto') {
       const loose = (await listSignups(env.DB, id)).filter((s) => s.status === 'yes' && s.event_team_id === null).map((s) => s.discord_id);

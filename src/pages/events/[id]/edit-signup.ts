@@ -22,9 +22,12 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   const teamRaw = String(form.get('event_team_id') ?? '').trim();
   const teamId = teamRaw === '' ? null : Number(teamRaw);
   if (teamId !== null && !Number.isInteger(teamId)) return redirect(`${back}?err=bad_input#participants`, 303);
+  // The form says which place on the team only on events that have a
+  // bench; without it, they go wherever the team has room.
+  const reserve = form.get('reserve_set') === '1' ? form.get('reserve') === 'on' : undefined;
 
   try {
-    await adminUpdateSignup(env.DB, id, String(form.get('discord_id') ?? ''), status, teamId);
+    await adminUpdateSignup(env.DB, id, String(form.get('discord_id') ?? ''), status, teamId, reserve);
   } catch (error) {
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}#participants`, 303);
     throw error;

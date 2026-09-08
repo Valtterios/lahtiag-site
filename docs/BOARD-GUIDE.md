@@ -249,8 +249,19 @@ name, number or class — those stay in the register.*
 *Questions under Board tools: text, choice or checkbox, optional or required.*
 
 - **Team captains.** Whoever founds a team can add people who signed up
-  without a team and take members out, while signups are open. The
-  board's Participants does the rest.
+  without a team, take members out, and move one between the starting
+  line-up and the bench, while signups are open. The board's Participants
+  does the rest.
+
+- **Reserves.** A tournament team can carry more players than it fields:
+  set *Reserves per team* beside the team size, and five-a-side with one
+  reserve becomes a team of six, one of whom starts on the bench. Teams
+  fill their line-up first and the bench takes the rest, so the sixth
+  player to join is the reserve rather than a refusal. A switch is two
+  moves: send a starter to the bench (always allowed), then bring the
+  reserve on (which needs the room that just opened). Reserves are inside
+  their team, so the draw and the results never see them; a champion's
+  bench gets a card like everybody else.
 
 ![Participants](images/site/event-participants-panel.png)
 
@@ -268,6 +279,17 @@ at the door.*
   board sees, the seeding can be rearranged on the bracket page, and Go
   live shows it to everyone. Substitutes are swapped in on the bracket
   page; results are recorded there or from the Discord panel.
+
+- **More than one bracket.** An event can run several draws at once — a
+  main bracket and a plate, one per game at a LAN, a bracket per group.
+  *Another bracket* at the bottom of the bracket page names one and draws
+  it; tick who is in it, or leave every entrant ticked for the whole
+  roster. Each bracket is a draft, goes live, records its results and
+  gets its own pinned message in Discord on its own, and the page puts
+  them side by side under their names. The event page keeps the one-click
+  Generate button while there is a single bracket, and hands over to the
+  bracket page once there are two. Each decided bracket is its own line
+  in the Hall of Fame.
 
 ![A drafted bracket](images/site/bracket-draft.png)
 

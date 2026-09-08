@@ -56,7 +56,7 @@ describe('Canvas', () => {
 });
 
 describe('bracket picture', () => {
-  const m = (round: number, slot: number, a: string | null, b: string | null, winner: string | null = null): BracketMatch => ({ event_id: 1, round, slot, side_a: a, side_b: b, winner });
+  const m = (round: number, slot: number, a: string | null, b: string | null, winner: string | null = null): BracketMatch => ({ bracket_id: 1, event_id: 1, round, slot, side_a: a, side_b: b, winner });
   const names = new Map([['t:1', 'Alpha'], ['t:2', 'Bravo'], ['t:3', 'Charlie'], ['t:4', 'Delta'], ['t:5', 'A very long team name indeed']]);
 
   it('sizes by rounds and first-round matches, and labels rounds', () => {

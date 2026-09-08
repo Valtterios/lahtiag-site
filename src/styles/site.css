@@ -2248,6 +2248,17 @@ a:hover {
   color: #1f7a3f;
 }
 
+/* A player on the team but not in its starting five: the member mark,
+   muted, with the arrow that swaps them in or out beside it. */
+.reserve-mark {
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+.chip-swap:hover {
+  color: var(--blue);
+}
+
 /* The team founder's tag: the member mark in brand blue. */
 .captain-mark {
   color: var(--blue);
@@ -2678,6 +2689,68 @@ a:hover {
 }
 
 /* ---------- tournament bracket ---------- */
+
+/* An event with more than one draw puts them side by side under their
+   names; the one on show is filled in, a draft says so (bracket.astro). */
+.bracket-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+}
+
+.bracket-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 0.82rem;
+  text-decoration: none;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 0.3rem 0.7rem;
+  clip-path: var(--cut-s);
+}
+
+.bracket-tab:hover {
+  border-color: var(--blue);
+}
+
+.bracket-tab.is-on {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.bracket-tab-draft {
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+/* Who is drawn into a bracket: ticked by default, unticked to leave out. */
+.entrant-pick {
+  margin: 0.4rem 0 0.8rem;
+}
+
+.entrant-pick > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.entrant-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.2rem 0.8rem;
+  margin: 0.5rem 0;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
 
 .live-badge {
   display: inline-block;

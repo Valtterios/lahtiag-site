@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
-import { upsertMember, createEvent, setSignup, createEventTeam, joinEventTeam, generateBracket, getBracket, setBracketWinner, type BracketMatch } from '../src/lib/db';
+import { upsertMember, createEvent, setSignup, createEventTeam, joinEventTeam, addBracket, getBracket, setBracketWinner, type BracketMatch } from '../src/lib/db';
 import {
   participantNames,
   nameOf,
@@ -30,7 +30,7 @@ const names = new Map([
   ['t:5', 'Echo'],
   ['u:9', '@everyone **bold** [link](x)'],
 ]);
-const m = (round: number, slot: number, a: string | null, b: string | null, winner: string | null = null): BracketMatch => ({ event_id: 1, round, slot, side_a: a, side_b: b, winner });
+const m = (round: number, slot: number, a: string | null, b: string | null, winner: string | null = null): BracketMatch => ({ bracket_id: 1, event_id: 1, round, slot, side_a: a, side_b: b, winner });
 
 describe('lines', () => {
   it('names safely and labels rounds from the end', () => {
@@ -108,7 +108,7 @@ describe('lines', () => {
 
 describe('against the database', () => {
   beforeEach(async () => {
-    for (const table of ['bracket_matches', 'signups', 'event_teams', 'events', 'members']) await db().prepare(`DELETE FROM ${table}`).run();
+    for (const table of ['bracket_matches', 'brackets', 'signups', 'event_teams', 'events', 'members']) await db().prepare(`DELETE FROM ${table}`).run();
   });
 
   it('resolves keys to names and reads a real bracket back', async () => {
@@ -122,10 +122,10 @@ describe('against the database', () => {
     const map = await participantNames(db(), id);
     expect(map.get(`t:${a}`)).toBe('Alpha');
     expect(map.get('u:3')).toBe('p3');
-    await generateBracket(db(), id, NOW);
-    const first = (await getBracket(db(), id))[0];
-    await setBracketWinner(db(), id, 1, 0, first.side_a!);
-    const story = describeResult(await getBracket(db(), id), 1, 0, map)!;
+    const bracket = await addBracket(db(), id, null, NOW);
+    const first = (await getBracket(db(), bracket))[0];
+    await setBracketWinner(db(), bracket, 1, 0, first.side_a!);
+    const story = describeResult(await getBracket(db(), bracket), 1, 0, map)!;
     expect(story.round).toBe(1);
     expect(story.totalRounds).toBe(1);
     expect(['Alpha', 'Bravo']).toContain(story.winner);

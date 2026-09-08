@@ -13,6 +13,9 @@ import {
   createAnnouncement,
   createEvent,
   generateBracket,
+  addBracket,
+  createBracket,
+  listBrackets,
   goLiveBracket,
   getBracket,
   listEventTeams,
@@ -1163,28 +1166,64 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
         await postEventLine(env.DB, env, eventId, cancelLine(event, true), true);
         await edit(`Cancelled event #${eventId}: **${event.title}**.`);
       } else if (action === 'bracket') {
-        const redraw = (await getBracket(env.DB, eventId)).length > 0;
-        await generateBracket(env.DB, eventId);
-        if (redraw) await dropLiveBracket(env.DB, env, eventId);
+        // The panel draws the event's one bracket. An event running
+        // several is redrawn on the site, where you can say which.
+        const brackets = await listBrackets(env.DB, eventId);
+        if (brackets.length > 1) {
+          await edit(`Event #${eventId} runs ${brackets.length} brackets — redraw the one you mean on the site: ${origin}/events/${eventId}/bracket`);
+          return;
+        }
+        const target = brackets[0]?.id ?? (await createBracket(env.DB, eventId, null, now));
+        await generateBracket(env.DB, target, now);
+        if (brackets.length > 0) await dropLiveBracket(env.DB, env, target);
         await edit(`Bracket drafted; only the board sees it. Check the seeding on the site, then **Go live**: ${origin}/events/${eventId}/bracket`);
         return 'keep';
       } else if (action === 'live') {
-        const fresh = await goLiveBracket(env.DB, eventId, now);
-        if (fresh) await postBracketOut(env.DB, env, eventId, origin, false);
+        const drafts = (await listBrackets(env.DB, eventId)).filter((b) => b.live_at === null);
+        if (drafts.length === 0) {
+          await edit(`Nothing waiting on event #${eventId}: every bracket it has is already live. ${origin}/events/${eventId}/bracket`);
+          return;
+        }
+        if (drafts.length > 1) {
+          await edit('Which bracket goes live?', [
+            {
+              type: 1,
+              components: [
+                {
+                  type: 3,
+                  custom_id: `t:golive:${eventId}`,
+                  options: drafts.slice(0, 25).map((b) => ({ label: b.name.slice(0, 100), value: String(b.id) })),
+                },
+              ],
+            },
+          ]);
+          return 'keep';
+        }
+        const fresh = await goLiveBracket(env.DB, drafts[0].id, now);
+        if (fresh) await postBracketOut(env.DB, env, drafts[0].id, origin, false);
         await edit(fresh ? `The bracket is live: ${origin}/events/${eventId}/bracket` : `The bracket was already live: ${origin}/events/${eventId}/bracket`);
       } else if (action === 'winner') {
         // Step 3: every ready, undecided match offers both possible winners.
         const names = await participantNames(env.DB, eventId);
         const nameOf = (key: string) => names.get(key) ?? 'Unknown';
-        const options = (await getBracket(env.DB, eventId))
-          .filter((m) => m.winner === null && m.side_a !== null && m.side_b !== null)
-          .flatMap((m) =>
-            [m.side_a!, m.side_b!].map((key, i) => ({
-              label: `${nameOf(key)} wins`.slice(0, 100),
-              description: `R${m.round}: vs ${nameOf(i === 0 ? m.side_b! : m.side_a!)}`.slice(0, 100),
-              value: `${m.round}:${m.slot}:${key}`,
-            })),
+        const brackets = await listBrackets(env.DB, eventId);
+        const which = brackets.length > 1;
+        const options = (
+          await Promise.all(
+            brackets.map(async (bracket) =>
+              (await getBracket(env.DB, bracket.id))
+                .filter((m) => m.winner === null && m.side_a !== null && m.side_b !== null)
+                .flatMap((m) =>
+                  [m.side_a!, m.side_b!].map((key, i) => ({
+                    label: `${nameOf(key)} wins`.slice(0, 100),
+                    description: `${which ? `${bracket.name} · ` : ''}R${m.round}: vs ${nameOf(i === 0 ? m.side_b! : m.side_a!)}`.slice(0, 100),
+                    value: `${bracket.id}:${m.round}:${m.slot}:${key}`,
+                  })),
+                ),
+            ),
           )
+        )
+          .flat()
           .slice(0, 25);
         if (options.length === 0) {
           await edit(`No undecided matches on event #${eventId}. ${origin}/events/${eventId}/bracket`);
@@ -1198,14 +1237,23 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
         // Step 3: every recorded (non-bye) result can be reverted.
         const names = await participantNames(env.DB, eventId);
         const nameOf = (key: string) => names.get(key) ?? 'Unknown';
-        const options = (await getBracket(env.DB, eventId))
-          .filter((m) => m.winner !== null && m.side_a !== null && m.side_b !== null)
-          .sort((a, b) => b.round - a.round || a.slot - b.slot)
-          .map((m) => ({
-            label: `Undo: ${nameOf(m.winner!)} won R${m.round}`.slice(0, 100),
-            description: `${nameOf(m.side_a!)} vs ${nameOf(m.side_b!)}`.slice(0, 100),
-            value: `${m.round}:${m.slot}`,
-          }))
+        const brackets = await listBrackets(env.DB, eventId);
+        const which = brackets.length > 1;
+        const options = (
+          await Promise.all(
+            brackets.map(async (bracket) =>
+              (await getBracket(env.DB, bracket.id))
+                .filter((m) => m.winner !== null && m.side_a !== null && m.side_b !== null)
+                .sort((a, b) => b.round - a.round || a.slot - b.slot)
+                .map((m) => ({
+                  label: `Undo: ${nameOf(m.winner!)} won R${m.round}`.slice(0, 100),
+                  description: `${which ? `${bracket.name} · ` : ''}${nameOf(m.side_a!)} vs ${nameOf(m.side_b!)}`.slice(0, 100),
+                  value: `${bracket.id}:${m.round}:${m.slot}`,
+                })),
+            ),
+          )
+        )
+          .flat()
           .slice(0, 25);
         if (options.length === 0) {
           await edit(`No recorded results on event #${eventId}. ${origin}/events/${eventId}/bracket`);
@@ -1216,20 +1264,26 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
         ]);
         return 'keep';
       }
+    } else if (customId.startsWith('t:golive:')) {
+      const eventId = Number(customId.slice('t:golive:'.length));
+      const bracketId = Number(interaction.data!.values?.[0]);
+      const fresh = await goLiveBracket(env.DB, bracketId, now);
+      if (fresh) await postBracketOut(env.DB, env, bracketId, origin, false);
+      await edit(`${fresh ? 'Live now' : 'Already live'}: ${origin}/events/${eventId}/bracket?b=${bracketId}`);
     } else if (customId.startsWith('t:undo:')) {
       const eventId = Number(customId.slice('t:undo:'.length));
-      const [round, slot] = String(interaction.data!.values?.[0]).split(':').map(Number);
-      await clearBracketWinner(env.DB, eventId, round, slot);
-      await postRevert(env.DB, env, eventId, origin, round, slot);
+      const [bracketId, round, slot] = String(interaction.data!.values?.[0]).split(':').map(Number);
+      await clearBracketWinner(env.DB, bracketId, round, slot);
+      await postRevert(env.DB, env, bracketId, origin, round, slot);
       await edit(
         `Reverted: the round ${round} match is undecided again, and everything that followed from it was cleared. ${origin}/events/${eventId}/bracket`,
       );
     } else if (customId.startsWith('t:win:')) {
       const eventId = Number(customId.slice('t:win:'.length));
-      const [round, slot, ...keyParts] = String(interaction.data!.values?.[0]).split(':');
+      const [bracketId, round, slot, ...keyParts] = String(interaction.data!.values?.[0]).split(':');
       const key = keyParts.join(':');
-      await setBracketWinner(env.DB, eventId, Number(round), Number(slot), key);
-      await postResult(env.DB, env, eventId, origin, Number(round), Number(slot));
+      await setBracketWinner(env.DB, Number(bracketId), Number(round), Number(slot), key);
+      await postResult(env.DB, env, Number(bracketId), origin, Number(round), Number(slot));
       const names = await participantNames(env.DB, eventId);
       await edit(
         `Recorded: **${names.get(key) ?? key}** wins round ${round}. ${origin}/events/${eventId}/bracket`,
@@ -1453,9 +1507,22 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
       await reply(closing ? `Signups closed for event #${id}.` : `Signups reopened for event #${id}.`);
     } else if (name === 'bracket generate') {
       const id = Number(opts.get('event'));
-      const redraw = (await getBracket(env.DB, id)).length > 0;
-      await generateBracket(env.DB, id);
-      if (redraw) await dropLiveBracket(env.DB, env, id);
+      const wanted = String(opts.get('name') ?? '').trim();
+      const brackets = await listBrackets(env.DB, id);
+      // With a name it is a new bracket beside the others; without one it
+      // redraws the event's only bracket, which is the usual thing.
+      if (wanted !== '') {
+        const made = await addBracket(env.DB, id, wanted, now);
+        await reply(`**${wanted}** drafted beside the event's other ${brackets.length === 1 ? 'bracket' : 'brackets'}; only the board sees it. Seed it and go live: ${origin}/events/${id}/bracket?b=${made}`);
+        return 'keep';
+      }
+      if (brackets.length > 1) {
+        await reply(`Event #${id} runs ${brackets.length} brackets, so name the one to redraw — or do it on the site: ${origin}/events/${id}/bracket`);
+        return;
+      }
+      const target = brackets[0]?.id ?? (await createBracket(env.DB, id, null, now));
+      await generateBracket(env.DB, target, now);
+      if (brackets.length > 0) await dropLiveBracket(env.DB, env, target);
       await reply(`Bracket drafted; only the board sees it. Check the seeding on the site, then Go live (panel or site): ${origin}/events/${id}/bracket`);
       return 'keep';
     } else if (name === 'bracket win') {
@@ -1476,17 +1543,25 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
         await reply(`No team or player called "${opts.get('name')}" on event #${id}.`);
         return;
       }
-      const match = (await getBracket(env.DB, id))
-        .filter((m) => m.winner === null && m.side_a !== null && m.side_b !== null)
-        .filter((m) => m.side_a === key || m.side_b === key)
-        .sort((a, b) => a.round - b.round)[0];
-      if (!match) {
+      // Their next undecided match, in whichever of the event's brackets
+      // it is waiting.
+      const brackets = await listBrackets(env.DB, id);
+      let found: { bracket: (typeof brackets)[number]; round: number; slot: number } | null = null;
+      for (const bracket of brackets) {
+        const match = (await getBracket(env.DB, bracket.id))
+          .filter((m) => m.winner === null && m.side_a !== null && m.side_b !== null)
+          .filter((m) => m.side_a === key || m.side_b === key)
+          .sort((a, b) => a.round - b.round)[0];
+        if (match && (found === null || match.round < found.round)) found = { bracket, round: match.round, slot: match.slot };
+      }
+      if (!found) {
         await reply(`No undecided match for "${opts.get('name')}" right now.`);
         return;
       }
-      await setBracketWinner(env.DB, id, match.round, match.slot, key);
-      await postResult(env.DB, env, id, origin, match.round, match.slot);
-      await reply(`Recorded: **${opts.get('name')}** wins round ${match.round}. ${origin}/events/${id}/bracket`);
+      await setBracketWinner(env.DB, found.bracket.id, found.round, found.slot, key);
+      await postResult(env.DB, env, found.bracket.id, origin, found.round, found.slot);
+      const where = brackets.length > 1 ? ` of ${found.bracket.name}` : '';
+      await reply(`Recorded: **${opts.get('name')}** wins round ${found.round}${where}. ${origin}/events/${id}/bracket`);
     } else if (name === 'announce') {
       const text = String(opts.get('text') ?? '');
       const title = text.split('\n')[0].replace(/[#*_`>]/g, '').trim().slice(0, 120) || 'Announcement';

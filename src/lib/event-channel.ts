@@ -6,7 +6,7 @@
 // say the same thing; posting is best effort and never blocks a response.
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { getEvent, getBracket, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, memberStats, getSettings, setSetting, getEventPhoto, recordMilestone, WIN_MILESTONES, type BracketMatch, type EventRow } from './db';
+import { getEvent, getBracket, getBracketRow, listBrackets, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, memberStats, getSettings, setSetting, getEventPhoto, recordMilestone, WIN_MILESTONES, type BracketMatch, type BracketRow, type EventRow } from './db';
 import { profileCardPng } from './profile-card';
 import { cleanText } from './raster';
 import { syncEventRole } from './event-discord';
@@ -58,13 +58,39 @@ export function signupsLine(closed: boolean, counts: { teams: number | null; pla
   return closed ? `🔒 Signups are closed: ${who}.` : `🔓 Signups are open again: ${who}.`;
 }
 
-export function bracketLine(matches: BracketMatch[], names: Map<string, string>, url: string, regenerated: boolean): string {
+// One bracket, with what the rest of the event makes of it: where its
+// page is, and whether it needs naming. An event with a single bracket
+// says "the bracket" and links plainly, the way it always did; from two
+// upwards every line and every link carries which one it is about.
+export interface BracketContext {
+  bracket: BracketRow;
+  event: EventRow & { yes_count: number };
+  path: string;
+  label: string | null; // the bracket's name, when the event runs more than one
+}
+
+export async function bracketContext(db: D1Database, bracketId: number): Promise<BracketContext | null> {
+  const bracket = await getBracketRow(db, bracketId);
+  if (!bracket) return null;
+  const event = await getEvent(db, bracket.event_id);
+  if (!event) return null;
+  const only = (await listBrackets(db, bracket.event_id)).length < 2;
+  return {
+    bracket,
+    event,
+    path: only ? `/events/${bracket.event_id}/bracket` : `/events/${bracket.event_id}/bracket?b=${bracket.id}`,
+    label: only ? null : bracket.name,
+  };
+}
+
+export function bracketLine(matches: BracketMatch[], names: Map<string, string>, url: string, regenerated: boolean, label: string | null = null): string {
   const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
   const first = matches.filter((m) => m.round === 1);
   const pairs = first.filter((m) => m.side_a !== null && m.side_b !== null).map((m) => `${nameOf(names, m.side_a)} vs ${nameOf(names, m.side_b)}`);
   const byes = first.filter((m) => m.side_a !== null && m.side_b === null).map((m) => nameOf(names, m.side_a));
   const entrants = first.reduce((n, m) => n + (m.side_a ? 1 : 0) + (m.side_b ? 1 : 0), 0);
-  const head = `🎲 ${regenerated ? 'The bracket was redrawn' : 'The bracket is out'}: ${entrants} ${matches.some((m) => m.side_a?.startsWith('t:') || m.side_b?.startsWith('t:')) ? 'teams' : 'players'}, ${total} ${total === 1 ? 'round' : 'rounds'}.`;
+  const which = label === null ? 'The bracket' : `**${safe(label)}**`;
+  const head = `🎲 ${regenerated ? `${which} was redrawn` : `${which} is out`}: ${entrants} ${matches.some((m) => m.side_a?.startsWith('t:') || m.side_b?.startsWith('t:')) ? 'teams' : 'players'}, ${total} ${total === 1 ? 'round' : 'rounds'}.`;
   const lines = [head];
   if (pairs.length > 0) lines.push(`${roundLabel(1, total)}: ${pairs.join(' · ')}.`);
   if (byes.length > 0) lines.push(`${byes.join(', ')} ${byes.length === 1 ? 'skips' : 'skip'} straight to ${roundLabel(2, total).toLowerCase()}.`);
@@ -93,15 +119,20 @@ export function describeResult(matches: BracketMatch[], round: number, slot: num
   return { round, totalRounds, winner: nameOf(names, match.winner), loser: nameOf(names, loserKey), next };
 }
 
-export function resultLine(story: ResultStory, url: string): string {
-  if (story.round === story.totalRounds) return `🥇 Champion: **${story.winner}**! They beat ${story.loser} in the final.\n${url}`;
+// `bracket` names which draw this happened in, on the events that run
+// more than one; a single-bracket event says nothing and reads as it did.
+export function resultLine(story: ResultStory, url: string, bracket: string | null = null): string {
+  const which = bracket === null ? '' : `${safe(bracket)} · `;
+  if (story.round === story.totalRounds) {
+    return `🥇 Champion${bracket === null ? '' : ` of ${safe(bracket)}`}: **${story.winner}**! They beat ${story.loser} in the final.\n${url}`;
+  }
   const label = roundLabel(story.round, story.totalRounds);
   const next = story.next ? ` Next up: ${story.next.a} vs ${story.next.b}.` : '';
-  return `🏆 ${label}: ${story.winner} beat ${story.loser}.${next}`;
+  return `🏆 ${which}${label}: ${story.winner} beat ${story.loser}.${next}`;
 }
 
-export function revertLine(round: number, totalRounds: number, a: string, b: string): string {
-  return `↩️ ${roundLabel(round, totalRounds)}: ${a} vs ${b} is undecided again.`;
+export function revertLine(round: number, totalRounds: number, a: string, b: string, bracket: string | null = null): string {
+  return `↩️ ${bracket === null ? '' : `${safe(bracket)} · `}${roundLabel(round, totalRounds)}: ${a} vs ${b} is undecided again.`;
 }
 
 export function screenLine(note: string): string {
@@ -133,7 +164,7 @@ const MESSAGE_MAX = 1900; // Discord allows 2000; leave room for the link
 // The whole bracket as text: every round, winners ticked, byes named,
 // unknown sides as a dash, the champion on top once decided. Earliest
 // rounds are dropped first when it would not fit in one message.
-export function liveBracketText(matches: BracketMatch[], names: Map<string, string>, url: string, now: number): string {
+export function liveBracketText(matches: BracketMatch[], names: Map<string, string>, url: string, now: number, label: string | null = null): string {
   const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
   const side = (key: string | null, winner: string | null) => (key === null ? '—' : `${nameOf(names, key)}${winner !== null && winner === key ? ' ✅' : ''}`);
   const rounds: string[] = [];
@@ -145,7 +176,7 @@ export function liveBracketText(matches: BracketMatch[], names: Map<string, stri
     rounds.push(`**${label === 'Final' || label.startsWith('Round') ? label : `${label}s`}**\n${lines.join('\n')}`);
   }
   const final = matches.find((m) => m.round === total && m.slot === 0);
-  const head = [`📋 **Live bracket** · updated ${formatHelsinki(now)}`];
+  const head = [`📋 **Live bracket${label === null ? '' : `: ${safe(label)}`}** · updated ${formatHelsinki(now)}`];
   if (final?.winner) head.push(`🥇 Champion: **${nameOf(names, final.winner)}**`);
   let body = rounds;
   while (body.length > 1 && [...head, ...body].join('\n\n').length > MESSAGE_MAX) body = ['… earlier rounds on the site', ...body.slice(2)];
@@ -153,26 +184,34 @@ export function liveBracketText(matches: BracketMatch[], names: Map<string, stri
 }
 
 // The bracket as a picture, ready to attach.
-export async function bracketPicture(event: Pick<EventRow, 'title'>, matches: BracketMatch[], names: Map<string, string>, now: number): Promise<MessageFile> {
-  const bytes = await bracketPng({ matches, names, title: event.title, subtitle: `updated ${formatHelsinki(now)}` });
+export async function bracketPicture(event: Pick<EventRow, 'title'>, matches: BracketMatch[], names: Map<string, string>, now: number, label: string | null = null): Promise<MessageFile> {
+  const bytes = await bracketPng({ matches, names, title: label === null ? event.title : `${event.title} — ${label}`, subtitle: `updated ${formatHelsinki(now)}` });
   return { name: 'bracket.png', bytes, type: 'image/png' };
 }
 
-// After the final: the champion's stats card, or one per team member (at
-// most five), on a single message under the champion line.
+// The people behind a decided final: a team with its bench, or the one
+// player. A walk-in has no Discord account to give anything to.
+export async function championsOf(db: D1Database, eventId: number, matches: BracketMatch[]): Promise<string[]> {
+  const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
+  const final = matches.find((m) => m.round === total && m.slot === 0);
+  if (!final?.winner) return [];
+  const winner = final.winner;
+  const ids = winner.startsWith('t:')
+    ? (await listSignups(db, eventId)).filter((s) => s.event_team_id === Number(winner.slice(2))).map((s) => s.discord_id)
+    : [winner.slice(2)];
+  return ids.filter((id) => /^\d{5,25}$/.test(id)).slice(0, 6);
+}
+
+// After the final: the champion's stats card, or one per team member
+// (bench included, six at most), on a single message under the champion
+// line.
 export async function postChampionCards(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, matches: BracketMatch[], now: number): Promise<void> {
   const token = env.DISCORD_BOT_TOKEN;
   const event = await getEvent(db, eventId);
   if (!token || !event?.discord_channel_id) return;
-  const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
-  const final = matches.find((m) => m.round === total && m.slot === 0);
-  if (!final?.winner) return;
-  const signups = await listSignups(db, eventId);
-  const ids = final.winner.startsWith('t:')
-    ? signups.filter((s) => s.event_team_id === Number(final.winner!.slice(2))).map((s) => s.discord_id)
-    : [final.winner.slice(2)];
-  const people = ids.filter((id) => /^\d{5,25}$/.test(id)).slice(0, 5);
+  const people = await championsOf(db, eventId, matches);
   if (people.length === 0) return;
+  const signups = await listSignups(db, eventId);
   await awardChampionRole(db, env, eventId, people, now);
   await postWinMilestones(db, env as { WELCOME_WEBHOOK_URL?: string }, people, new Map(signups.map((s) => [`u:${s.discord_id}`, s.username])), now);
   const files: MessageFile[] = [];
@@ -240,8 +279,12 @@ export async function notifyCaptainJoin(db: D1Database, env: { DISCORD_BOT_TOKEN
   if (!team || !event || team.created_by === joinerId || !/^\d{5,25}$/.test(team.created_by)) return;
   const signups = await listSignups(db, eventId);
   const joiner = signups.find((s) => s.discord_id === joinerId)?.username ?? 'Someone';
-  const size = signups.filter((s) => s.event_team_id === teamId).length;
-  await dmUser(token, team.created_by, `👋 **${safe(joiner)}** joined your team **${safe(team.name)}** for **${safe(event.title)}** (${size}${event.team_size !== null ? ` / ${event.team_size}` : ''}). ${origin}/events/${eventId}`);
+  const inTeam = signups.filter((s) => s.event_team_id === teamId);
+  const size = inTeam.filter((s) => s.reserve !== 1).length;
+  const bench = inTeam.length - size;
+  const asReserve = inTeam.find((s) => s.discord_id === joinerId)?.reserve === 1 ? ' as a reserve' : '';
+  const count = event.team_size !== null ? ` (${size} / ${event.team_size}${bench > 0 ? `, ${bench} on the bench` : ''})` : '';
+  await dmUser(token, team.created_by, `👋 **${safe(joiner)}** joined your team **${safe(team.name)}**${asReserve} for **${safe(event.title)}**${count}. ${origin}/events/${eventId}`);
 }
 
 // First win, fifth, tenth: told in the general channel, for members who
@@ -337,51 +380,75 @@ async function bracketChannel(db: D1Database, event: Pick<EventRow, 'id' | 'disc
 
 // Create or update the pinned message; a message deleted on Discord's
 // side is made again. Nothing to show when there is no bracket.
-export async function refreshLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, now: number): Promise<void> {
+export async function refreshLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, bracketId: number, origin: string, now: number): Promise<void> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return;
-  const event = await getEvent(db, eventId);
-  if (!event || event.bracket_live_at === null) return; // a draft stays on the site
+  const here = await bracketContext(db, bracketId);
+  if (!here || here.bracket.live_at === null) return; // a draft stays on the site
+  const { bracket, event } = here;
   const channelId = await bracketChannel(db, event);
   if (!channelId) return;
-  const matches = await getBracket(db, eventId);
+  const matches = await getBracket(db, bracketId);
   if (matches.length === 0) {
-    await dropLiveBracket(db, env, eventId);
+    await dropLiveBracket(db, env, bracketId);
     return;
   }
-  const names = await participantNames(db, eventId);
-  const text = liveBracketText(matches, names, `${origin}/events/${eventId}/bracket`, now);
-  const picture = await bracketPicture(event, matches, names, now);
-  if (event.discord_bracket_message_id) {
-    const edited = await editChannelMessageWithFile(token, channelId, event.discord_bracket_message_id, text, picture, SUPPRESS_EMBEDS);
+  const names = await participantNames(db, event.id);
+  const text = liveBracketText(matches, names, `${origin}${here.path}`, now, here.label);
+  const picture = await bracketPicture(event, matches, names, now, here.label);
+  if (bracket.discord_message_id) {
+    const edited = await editChannelMessageWithFile(token, channelId, bracket.discord_message_id, text, picture, SUPPRESS_EMBEDS);
     if (edited.ok) {
       // A pin that failed earlier (or was removed) is put back.
-      const pinned = await isMessagePinned(token, channelId, event.discord_bracket_message_id);
-      const repinned = pinned === false ? await pinChannelMessage(token, channelId, event.discord_bracket_message_id) : null;
-      console.log(`discord live bracket: event ${eventId} edited, pinned=${pinned}, repin=${repinned}`);
+      const pinned = await isMessagePinned(token, channelId, bracket.discord_message_id);
+      const repinned = pinned === false ? await pinChannelMessage(token, channelId, bracket.discord_message_id) : null;
+      console.log(`discord live bracket: bracket ${bracketId} edited, pinned=${pinned}, repin=${repinned}`);
       return;
     }
     if (edited.status !== 404) return;
   }
   const created = await createChannelMessageWithFile(token, channelId, text, picture, NO_MENTIONS, SUPPRESS_EMBEDS);
   if (!created.ok) return;
-  await db.prepare('UPDATE events SET discord_bracket_message_id = ?2 WHERE id = ?1').bind(eventId, created.value.id).run();
+  await db.prepare('UPDATE brackets SET discord_message_id = ?2 WHERE id = ?1').bind(bracketId, created.value.id).run();
   const pinned = await pinChannelMessage(token, channelId, created.value.id);
-  console.log(`discord live bracket: event ${eventId} created ${created.value.id}, pin=${pinned}`);
+  console.log(`discord live bracket: bracket ${bracketId} created ${created.value.id}, pin=${pinned}`);
 }
 
-// The bracket was deleted, or the message moves: so goes the message.
-// It is looked for in the bracket channel first, then the one channel.
-export async function dropLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number): Promise<void> {
+// Every live bracket the event has, brought up to date at once: what a
+// change to the event rather than to one draw calls for — a team renamed,
+// the channels rearranged.
+export async function refreshEventBrackets(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, now: number): Promise<void> {
+  for (const bracket of await listBrackets(db, eventId)) await refreshLiveBracket(db, env, bracket.id, origin, now);
+}
+
+// The pinned messages of brackets that are on their way out, or already
+// gone: the rows go with the draw, so what to take down is passed in
+// rather than looked up. Each is looked for in the bracket channel first,
+// then in the event's one channel.
+export async function dropPinnedBrackets(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, brackets: Pick<BracketRow, 'discord_message_id'>[]): Promise<void> {
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token) return;
   const event = await getEvent(db, eventId);
-  if (!event?.discord_bracket_message_id) return;
-  if (env.DISCORD_BOT_TOKEN) {
-    const own = await bracketChannel(db, event);
+  if (!event) return;
+  const own = await bracketChannel(db, event);
+  for (const bracket of brackets) {
+    if (!bracket.discord_message_id) continue;
     for (const channelId of new Set([own, event.discord_channel_id])) {
-      if (channelId && (await deleteChannelMessage(env.DISCORD_BOT_TOKEN, channelId, event.discord_bracket_message_id))) break;
+      if (channelId && (await deleteChannelMessage(token, channelId, bracket.discord_message_id))) break;
     }
   }
-  await db.prepare('UPDATE events SET discord_bracket_message_id = NULL WHERE id = ?1').bind(eventId).run();
+}
+
+// The bracket was redrawn, or its message moves: so goes the message.
+export async function dropLiveBracket(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, bracketId: number): Promise<void> {
+  const bracket = await getBracketRow(db, bracketId);
+  if (!bracket?.discord_message_id) return;
+  await dropPinnedBrackets(db, env, bracket.event_id, [bracket]);
+  await db.prepare('UPDATE brackets SET discord_message_id = NULL WHERE id = ?1').bind(bracketId).run();
+}
+
+export async function dropEventLiveBrackets(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number): Promise<void> {
+  for (const bracket of await listBrackets(db, eventId)) await dropLiveBracket(db, env, bracket.id);
 }
 
 // Post into the event's discussion channel, if it has one. `ping` puts
@@ -413,45 +480,62 @@ async function pictureBelongsInTalk(db: D1Database, event: Pick<EventRow, 'id' |
 }
 
 // The lines that need the bracket read back after a change.
-export async function postBracketOut(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, regenerated: boolean): Promise<void> {
-  const matches = await getBracket(db, eventId);
+export async function postBracketOut(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, bracketId: number, origin: string, regenerated: boolean): Promise<void> {
+  const here = await bracketContext(db, bracketId);
+  if (!here || here.bracket.live_at === null) return;
+  const matches = await getBracket(db, bracketId);
   if (matches.length === 0) return;
-  const event = await getEvent(db, eventId);
-  if (!event || event.bracket_live_at === null) return;
-  const names = await participantNames(db, eventId);
+  const { event } = here;
+  const names = await participantNames(db, event.id);
   const now = Math.floor(Date.now() / 1000);
-  const picture = (await pictureBelongsInTalk(db, event)) ? await bracketPicture(event, matches, names, now) : undefined;
-  await postEventLine(db, env, eventId, bracketLine(matches, names, `${origin}/events/${eventId}/bracket`, regenerated), true, picture);
-  await refreshLiveBracket(db, env, eventId, origin, now);
+  const picture = (await pictureBelongsInTalk(db, event)) ? await bracketPicture(event, matches, names, now, here.label) : undefined;
+  await postEventLine(db, env, event.id, bracketLine(matches, names, `${origin}${here.path}`, regenerated, here.label), true, picture);
+  await refreshLiveBracket(db, env, bracketId, origin, now);
 }
 
-export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, round: number, slot: number): Promise<void> {
-  if ((await getEvent(db, eventId))?.bracket_live_at == null) return; // results on a draft stay quiet
-  const matches = await getBracket(db, eventId);
-  const names = await participantNames(db, eventId);
+export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, bracketId: number, origin: string, round: number, slot: number): Promise<void> {
+  const here = await bracketContext(db, bracketId);
+  if (!here || here.bracket.live_at === null) return; // results on a draft stay quiet
+  const { event } = here;
+  const matches = await getBracket(db, bracketId);
+  const names = await participantNames(db, event.id);
   const story = describeResult(matches, round, slot, names);
   if (!story) return;
   const now = Math.floor(Date.now() / 1000);
   const decided = story.round === story.totalRounds;
-  const event = decided ? await getEvent(db, eventId) : null;
   // The champion's line carries the finished picture, unless the pinned one is right there.
-  const picture = event && (await pictureBelongsInTalk(db, event)) ? await bracketPicture(event, matches, names, now) : undefined;
-  await postEventLine(db, env, eventId, resultLine(story, `${origin}/events/${eventId}/bracket`), decided, picture);
-  await refreshLiveBracket(db, env, eventId, origin, now);
-  if (decided) await postChampionCards(db, env, eventId, matches, now);
+  const picture = decided && (await pictureBelongsInTalk(db, event)) ? await bracketPicture(event, matches, names, now, here.label) : undefined;
+  await postEventLine(db, env, event.id, resultLine(story, `${origin}${here.path}`, here.label), decided, picture);
+  await refreshLiveBracket(db, env, bracketId, origin, now);
+  if (decided) await postChampionCards(db, env, event.id, matches, now);
 }
 
-export async function postRevert(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, origin: string, round: number, slot: number): Promise<void> {
-  if ((await getEvent(db, eventId))?.bracket_live_at == null) return;
-  const matches = await getBracket(db, eventId);
+export async function postRevert(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, bracketId: number, origin: string, round: number, slot: number): Promise<void> {
+  const here = await bracketContext(db, bracketId);
+  if (!here || here.bracket.live_at === null) return;
+  const { event } = here;
+  const matches = await getBracket(db, bracketId);
   const match = matches.find((m) => m.round === round && m.slot === slot);
   if (!match || match.side_a === null || match.side_b === null) return;
-  const names = await participantNames(db, eventId);
+  const names = await participantNames(db, event.id);
   const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
-  await postEventLine(db, env, eventId, revertLine(round, total, nameOf(names, match.side_a), nameOf(names, match.side_b)));
-  // A reverted final takes the champion role back.
-  if (round === total) await revokeChampionRole(db, env, eventId, Math.floor(Date.now() / 1000));
-  await refreshLiveBracket(db, env, eventId, origin, Math.floor(Date.now() / 1000));
+  await postEventLine(db, env, event.id, revertLine(round, total, nameOf(names, match.side_a), nameOf(names, match.side_b), here.label));
+  // A reverted final takes the champion role back — and hands it to the
+  // champions of another bracket on the same event, if one is still
+  // decided: the event has not stopped having a winner.
+  if (round === total) {
+    const when = Math.floor(Date.now() / 1000);
+    await revokeChampionRole(db, env, event.id, when);
+    for (const other of await listBrackets(db, event.id)) {
+      if (other.id === bracketId || other.live_at === null) continue;
+      const people = await championsOf(db, event.id, await getBracket(db, other.id));
+      if (people.length > 0) {
+        await awardChampionRole(db, env, event.id, people, when);
+        break;
+      }
+    }
+  }
+  await refreshLiveBracket(db, env, bracketId, origin, Math.floor(Date.now() / 1000));
 }
 
 export async function postSignups(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, closed: boolean): Promise<void> {

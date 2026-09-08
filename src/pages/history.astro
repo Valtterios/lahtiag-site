@@ -52,11 +52,12 @@ const champions = new Map(results.map((r) => [r.event_id, r.champion_name]));
               </span>
               <span>
                 🏆 <strong>{result.champion_name}</strong> won
-                <a href={`/events/${result.event_id}/bracket`}> {result.title}</a>
+                <a href={`/events/${result.event_id}/bracket${result.bracket_name ? `?b=${result.bracket_id}` : ''}`}> {result.title}</a>
+                {result.bracket_name && <span class="event-meta"> · {result.bracket_name}</span>}
                 <span class="event-meta"> ({formatHelsinki(result.starts_at)})</span>
               </span>
-              <a class="results-picture" href={`/events/${result.event_id}/bracket`}>
-                <img src={`/events/${result.event_id}/bracket.png`} alt={`Final bracket of ${result.title}`} loading="lazy" />
+              <a class="results-picture" href={`/events/${result.event_id}/bracket${result.bracket_name ? `?b=${result.bracket_id}` : ''}`}>
+                <img src={`/events/${result.event_id}/bracket.png${result.bracket_name ? `?b=${result.bracket_id}` : ''}`} alt={`Final bracket of ${result.title}`} loading="lazy" />
               </a>
             </li>
           ))}

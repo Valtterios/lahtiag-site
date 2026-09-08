@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
-import { upsertMember, createEvent, setSignup, generateBracket, getBracket, setBracketWinner, memberStats, createAnnouncement, listDueAnnouncements, publishAnnouncement } from '../src/lib/db';
+import { upsertMember, createEvent, setSignup, addBracket, getBracket, setBracketWinner, memberStats, createAnnouncement, listDueAnnouncements, publishAnnouncement } from '../src/lib/db';
 import { profileCardPng, shortDuration } from '../src/lib/profile-card';
 
 // A member's numbers from what is recorded, the card they make, and
@@ -11,20 +11,20 @@ const db = () => env.DB;
 
 describe('memberStats', () => {
   beforeEach(async () => {
-    for (const table of ['bracket_matches', 'signups', 'event_teams', 'announcements', 'events', 'members']) await db().prepare(`DELETE FROM ${table}`).run();
+    for (const table of ['bracket_matches', 'brackets', 'signups', 'event_teams', 'announcements', 'events', 'members']) await db().prepare(`DELETE FROM ${table}`).run();
     for (const p of ['host', '1', '2', '3', '4']) await upsertMember(db(), { discord_id: p, username: `p${p}`, avatar_hash: null }, NOW);
   });
 
   it('counts past events attended, tournaments played and won', async () => {
     const past = await createEvent(db(), { title: 'Cup', description: null, starts_at: NOW + 10, capacity: null, created_by: 'host' }, NOW);
     for (const p of ['1', '2', '3', '4']) await setSignup(db(), past, p, 'yes', NOW);
-    await generateBracket(db(), past, NOW);
-    const first = (await getBracket(db(), past)).filter((m) => m.round === 1);
+    const bracket = await addBracket(db(), past, null, NOW);
+    const first = (await getBracket(db(), bracket)).filter((m) => m.round === 1);
     const winnerA = first[0].side_a!;
     const winnerB = first[1].side_a!;
-    await setBracketWinner(db(), past, 1, 0, winnerA);
-    await setBracketWinner(db(), past, 1, 1, winnerB);
-    await setBracketWinner(db(), past, 2, 0, winnerA);
+    await setBracketWinner(db(), bracket, 1, 0, winnerA);
+    await setBracketWinner(db(), bracket, 1, 1, winnerB);
+    await setBracketWinner(db(), bracket, 2, 0, winnerA);
     const later = NOW + 86400; // the event is in the past by then
     const champion = winnerA.slice(2);
     const runnerUp = winnerB.slice(2);

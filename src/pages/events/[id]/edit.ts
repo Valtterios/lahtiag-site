@@ -1,9 +1,9 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { updateEvent, getEvent, setSignupsOpenAt, demoteOverCapacity, RuleError } from '../../../lib/db';
+import { updateEvent, getEvent, listBrackets, setSignupsOpenAt, demoteOverCapacity, RuleError } from '../../../lib/db';
 import { renameEventDiscord, syncScheduledEvent } from '../../../lib/event-discord';
-import { dropLiveBracket } from '../../../lib/event-channel';
+import { dropPinnedBrackets } from '../../../lib/event-channel';
 import { later, postEventLine, changeLine, announcePromotionsInBackground, notifyWaitlisted } from '../../../lib/event-channel';
 import { syncEventRolesInBackground } from '../../../lib/event-discord';
 import { helsinkiToUnix } from '../../../lib/time';
@@ -40,9 +40,14 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
   const memberSlots = memberSlotsRaw ? Number(memberSlotsRaw) : null;
   const teamSizeRaw = String(form.get('team_size') ?? '').trim();
   const teamSize = teamSizeRaw === '' ? null : Number(teamSizeRaw);
+  const reservesRaw = String(form.get('team_reserves') ?? '').trim();
+  const teamReserves = reservesRaw === '' ? 0 : Number(reservesRaw);
 
   try {
     const before = await getEvent(env.DB, id);
+    // Read before the update: a changed team size takes the brackets with
+    // it, and their pinned messages are only findable while the rows are.
+    const drawn = await listBrackets(env.DB, id);
     const event = await updateEvent(env.DB, id, {
       title: String(form.get('title') ?? ''),
       description: description || null,
@@ -55,6 +60,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
       members_only: membersOnly,
       member_slots: memberSlots,
       team_size: teamSize,
+      team_reserves: teamReserves,
     });
     await setSignupsOpenAt(env.DB, id, opensAt);
     // A smaller event: the latest signups beyond the new capacity wait, and hear about it.
@@ -67,8 +73,8 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
     }
     // Edit the original Discord announcement in place instead of reposting.
     await refreshEventAnnouncement(env.DB, env, id, url.origin);
-    // A changed team size dropped the bracket; its pinned picture goes too.
-    if (before && before.team_size !== event.team_size) await dropLiveBracket(env.DB, env, id);
+    // A changed team size dropped the brackets; their pinned pictures go too.
+    if (before && before.team_size !== event.team_size) await dropPinnedBrackets(env.DB, env, id, drawn);
     // A retitled event renames its Discord role and channel to match.
     if (before && before.title !== event.title && (event.discord_role_id || event.discord_channel_id)) {
       await renameEventDiscord(env, event, url.origin);

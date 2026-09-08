@@ -80,8 +80,11 @@ const commands = [
       {
         type: SUB_COMMAND,
         name: 'generate',
-        description: 'Generate (or re-seed) the bracket from signups',
-        options: [{ type: INTEGER, name: 'event', description: 'Event id', required: true }],
+        description: 'Draw the bracket from signups; a name draws another one beside it',
+        options: [
+          { type: INTEGER, name: 'event', description: 'Event id', required: true },
+          { type: STRING, name: 'name', description: 'Name a second bracket (a plate, a group, another game)', required: false },
+        ],
       },
       {
         type: SUB_COMMAND,

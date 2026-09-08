@@ -89,8 +89,10 @@ returns to the categories):
 
 1. **📅 Create event** (Event) — fill the form. A team size makes it a
    tournament-style event where members form their own teams on the site;
-   empty means individual signups. The announcement posts itself to the
-   webhook channel.
+   empty means individual signups. On the site's form there is also
+   **Reserves per team**: places beyond the line-up, so five-a-side with
+   one reserve is a team of six, one of them starting on the bench. The
+   announcement posts itself to the webhook channel.
 2. Members sign up (and create/join teams) on the event page.
 3. **🔒 Close signups** (Event) when the field is set.
 4. **🎲 Generate bracket** (Bracket) — random seeding, byes handled
@@ -99,6 +101,15 @@ returns to the categories):
    empty second side), save, then **🚀 Go live** (panel or site), which
    shows it to everyone and posts it to the event's channel. The same
    Generate button re-draws from scratch, back to a draft.
+   An event can run **several brackets** — a main draw and a plate, one
+   per game, a bracket per group. Add them under *Another bracket* at the
+   bottom of the bracket page (name it, and tick who is in it), or with
+   `/bracket generate event:<id> name:<name>`. Each one drafts, goes live
+   and records its results on its own, and the bracket page puts them
+   side by side. The panel's Generate and Go live buttons look after an
+   event's single bracket; when it runs more, Generate points at the
+   site and Go live asks which one. Record winner and Revert result name
+   the bracket beside each match, so they keep working either way.
 5. Put the bracket on the venue screen: open the event's bracket page as an
    admin, click **Open presenter mode**, fullscreen it (F11). It scales to
    fill the display and refreshes itself every 10 seconds. The direct URL is
@@ -382,7 +393,10 @@ cancellation or a reinstatement, and a new time or place. Other edits stay
 quiet. Events without a channel get none of this. The bot also keeps a
 **pinned live bracket**: posted when the bracket is drawn, edited after
 every result and revert, with the winners ticked and the champion on top,
-so latecomers see the standings without scrolling. A big event has it in
+so latecomers see the standings without scrolling. An event running more
+than one bracket gets one pinned message per bracket, each under its
+name, and every line the bot posts about a result says which draw it
+happened in. A big event has it in
 its `bracket` channel, where nobody else can write; a one-channel event
 has it pinned in its channel. The bracket also comes as a **picture**,
 drawn by the site itself in a pixel style: attached to the "bracket is

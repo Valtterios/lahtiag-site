@@ -23,6 +23,7 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
 
   const capacityRaw = String(form.get('capacity') ?? '').trim();
   const teamSizeRaw = String(form.get('team_size') ?? '').trim();
+  const reservesRaw = String(form.get('team_reserves') ?? '').trim();
   const organizers = String(form.get('organizers') ?? '').trim();
   const location = String(form.get('location') ?? '').trim();
   const linkUrl = String(form.get('link_url') ?? '').trim();
@@ -47,6 +48,7 @@ export const POST: APIRoute = async ({ request, redirect, url }) => {
         ends_at: endsAt,
         capacity: capacityRaw ? Number(capacityRaw) : null,
         team_size: teamSize,
+        team_reserves: reservesRaw ? Number(reservesRaw) : 0,
         organizers: organizers || null,
         location: location || null,
         link_url: linkUrl || null,

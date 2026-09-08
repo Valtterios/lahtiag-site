@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
-import { upsertMember, createEvent, setSignup, generateBracket, getBracket, setBracketWinner, setLeaderboardOptIn, isLeaderboardOptIn, leaderboard } from '../src/lib/db';
+import { upsertMember, createEvent, setSignup, addBracket, getBracket, goLiveBracket, setBracketWinner, setLeaderboardOptIn, isLeaderboardOptIn, leaderboard } from '../src/lib/db';
 
 // Everyone unless hidden, counted from past events and finals.
 
@@ -9,7 +9,7 @@ const db = () => env.DB;
 
 describe('leaderboard', () => {
   beforeEach(async () => {
-    for (const table of ['bracket_matches', 'signups', 'event_teams', 'events', 'members']) await db().prepare(`DELETE FROM ${table}`).run();
+    for (const table of ['bracket_matches', 'brackets', 'signups', 'event_teams', 'events', 'members']) await db().prepare(`DELETE FROM ${table}`).run();
     for (const p of ['host', '1', '2']) await upsertMember(db(), { discord_id: p, username: `p${p}`, avatar_hash: null }, NOW);
   });
 
@@ -17,9 +17,10 @@ describe('leaderboard', () => {
     const cup = await createEvent(db(), { title: 'Cup', description: null, starts_at: NOW + 10, capacity: null, created_by: 'host' }, NOW);
     await setSignup(db(), cup, '1', 'yes', NOW);
     await setSignup(db(), cup, '2', 'yes', NOW);
-    await generateBracket(db(), cup, NOW);
-    const final = (await getBracket(db(), cup))[0];
-    await setBracketWinner(db(), cup, 1, 0, 'u:2');
+    const bracket = await addBracket(db(), cup, null, NOW);
+    const final = (await getBracket(db(), bracket))[0];
+    await setBracketWinner(db(), bracket, 1, 0, 'u:2');
+    await goLiveBracket(db(), bracket, NOW); // a win counts once everyone can see it
     void final;
     const social = await createEvent(db(), { title: 'Social', description: null, starts_at: NOW + 20, capacity: null, created_by: 'host' }, NOW);
     await setSignup(db(), social, '1', 'yes', NOW);

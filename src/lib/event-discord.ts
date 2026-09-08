@@ -37,7 +37,7 @@ import {
   type RoleResult,
 } from './discord';
 import { formatHelsinkiRange } from './time';
-import { dropLiveBracket, refreshLiveBracket } from './event-channel';
+import { dropEventLiveBrackets, refreshEventBrackets } from './event-channel';
 
 export interface DiscordEnv {
   DISCORD_BOT_TOKEN?: string;
@@ -444,9 +444,9 @@ export async function upgradeEventDiscord(db: D1Database, env: DiscordEnv, event
   const made = await createChannelSet(db, env, botId, event, event.discord_role_id, category.value.id, new Set(['discussion']), url, now);
   if (made.ok) {
     await createTeamVoiceChannels(db, env, eventId, now);
-    // A live bracket pinned in discussion moves to the new bracket channel.
-    await dropLiveBracket(db, env, eventId);
-    await refreshLiveBracket(db, env, eventId, origin, now);
+    // Live brackets pinned in discussion move to the new bracket channel.
+    await dropEventLiveBrackets(db, env, eventId);
+    await refreshEventBrackets(db, env, eventId, origin, now);
   }
   return made.ok ? 'ok' : made.reason;
 }
