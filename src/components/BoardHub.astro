@@ -8,9 +8,11 @@ interface Props {
   events?: { id: number; title: string; starts_at: number }[];
   // Card payments taken with Tap to Pay and not attached to anything yet.
   payments?: number;
+  // Members who asked to be an active and are still waiting.
+  actives?: number;
 }
 
-const { events = [], payments = 0 } = Astro.props;
+const { events = [], payments = 0, actives = 0 } = Astro.props;
 ---
 <div class="paths board-links">
   <section class="path-card">
@@ -35,8 +37,16 @@ const { events = [], payments = 0 } = Astro.props;
   </section>
   <section class="path-card">
     <h2>Members</h2>
-    <p>Is someone a member? Name and status only.</p>
-    <p class="entry-actions"><a class="btn btn-primary" href="/register/lookup">Member check</a></p>
+    <p>Is someone a member? Name and status only. The actives — who they are, and who asked to become one — are a list any board member can open and decide on.</p>
+    {actives > 0 && (
+      <p class="board-alert">
+        <strong>{actives} actives request{actives === 1 ? '' : 's'}</strong> waiting for the board, on the <a href="/board/actives#waiting">actives page</a> or on the buttons in the board channel.
+      </p>
+    )}
+    <p class="entry-actions">
+      <a class="btn btn-primary" href="/register/lookup">Member check</a>
+      <a class="btn btn-ghost" href="/board/actives">Actives</a>
+    </p>
   </section>
   <section class="path-card">
     <h2>Run things</h2>

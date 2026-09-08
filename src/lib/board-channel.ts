@@ -1,6 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { getSettings, setSetting } from './db';
-import { fetchWebhookChannel, createChannelMessage, postWebhook, NO_MENTIONS, SUPPRESS_EMBEDS } from './discord';
+import { fetchWebhookChannel, createChannelMessage, postWebhook, activeNotice, NO_MENTIONS, SUPPRESS_EMBEDS } from './discord';
 
 // The board's channel: the one behind BOARD_WEBHOOK_URL, found once and
 // kept in settings. Lines that carry buttons (approve / decline) go there
@@ -48,6 +48,25 @@ export function approveButtons(kind: 'w' | 'a' | 'c', key: string): unknown[] {
       ],
     },
   ];
+}
+
+// A request to become an active, put to the board channel with its two
+// buttons. The same line wherever the request came from: the member's own
+// membership page, the box on the application form, or a board member
+// ticking it on a new entry. Without this the request only ever showed on
+// the register, which most of the board cannot open.
+export async function postActivesRequest(
+  db: D1Database,
+  env: BoardEnv,
+  entry: { id: number; full_name: string; telegram: string | null },
+  origin: string,
+): Promise<boolean> {
+  return postBoardLine(
+    db,
+    env,
+    activeNotice({ name: entry.full_name, telegram: entry.telegram, url: `${origin}/register/${entry.id}` }),
+    approveButtons('a', String(entry.id)),
+  );
 }
 
 // The line once someone pressed: the original text with the outcome under it.

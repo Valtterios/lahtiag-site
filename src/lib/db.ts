@@ -1931,6 +1931,42 @@ export async function listActiveRequests(db: D1Database): Promise<RegisterRow[]>
   return results.map(fromDb);
 }
 
+// The actives list as a board page shows it: who is one, who is waiting,
+// and nothing else about them. The full rows are the register's personal
+// data and stay behind the Google gate; a name, a handle to reach someone
+// by and a date are what the board channel already says out loud, so this
+// is what the wider board sees.
+export interface ActiveBrief {
+  id: number;
+  full_name: string;
+  telegram: string | null;
+  discord_id: string | null;
+  discord_name: string | null;
+  active_since: number | null;
+  asked_at: number; // when the request last moved: the entry's updated_at
+}
+
+const ACTIVE_BRIEF_COLUMNS =
+  'id, full_name, telegram, discord_id, discord_name, active_since, updated_at AS asked_at';
+
+export async function listActivesBrief(
+  db: D1Database,
+): Promise<{ actives: ActiveBrief[]; waiting: ActiveBrief[] }> {
+  const [approved, asked] = await db.batch<ActiveBrief>([
+    db.prepare(
+      `SELECT ${ACTIVE_BRIEF_COLUMNS} FROM register
+       WHERE status = 'member' AND is_active = 1
+       ORDER BY full_name COLLATE NOCASE ASC`,
+    ),
+    db.prepare(
+      `SELECT ${ACTIVE_BRIEF_COLUMNS} FROM register
+       WHERE status = 'member' AND wants_active = 1 AND is_active = 0
+       ORDER BY updated_at ASC`,
+    ),
+  ]);
+  return { actives: approved.results, waiting: asked.results };
+}
+
 // The board's decision. Approve records when and by whom; decline or
 // revoke clears both the approval and the request, so the person can ask
 // again later and it shows up as new.

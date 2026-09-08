@@ -51,6 +51,7 @@ shot('board-hub', '/board', 'admin', clip='.board-links', pad=16, hl=['.board-al
 shot('season-top', '/board/season', 'admin', clip='h1', skip=0, extend=700, hl=['.stat-tiles'])
 shot('season-ticks', '/board/season', 'admin', clip='#ticks', pad=12, hl=['text=Give tick', 'text=Add to the list'], nums=True)
 shot('season-claims', '/board/season', 'admin', clip='#claims', pad=12, hl=['text=Approve'])
+shot('board-actives', '/board/actives', 'admin', clip='.stat-tiles', skip=0, extend=570, hl=['#waiting', '#everyone'], nums=True)
 shot('event-ticks', '/events/2', 'admin', open=['details.admin-panel'], openText=['Participants'], clip='.ticks-box', pad=12, hl=['text=Give tick'])
 # Events
 shot('events-list', '/events', top=790, pad=0)

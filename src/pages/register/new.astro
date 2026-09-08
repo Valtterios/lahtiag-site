@@ -6,6 +6,7 @@ import BoardGate from '../../components/BoardGate.astro';
 import { ensureCsrf, checkCsrf, currentSession } from '../../lib/guard';
 import { requireBoard, boardStatus } from '../../lib/board';
 import { createBoardEntry, RuleError } from '../../lib/db';
+import { postActivesRequest } from '../../lib/board-channel';
 import {
   parseApplication,
   GAMES,
@@ -80,6 +81,14 @@ if (Astro.request.method === 'POST' && board.ok) {
           board.email,
           Math.floor(Date.now() / 1000),
         );
+        // Added as a member and wanting to be an active: that decision is
+        // still open, so the board channel gets it with its buttons. A
+        // pending entry waits — approving the membership posts it.
+        if (status === 'member' && parsed.value.wants_active) {
+          Astro.locals.cfContext.waitUntil(
+            postActivesRequest(env.DB, env, { id, full_name: parsed.value.full_name, telegram: parsed.value.telegram }, Astro.url.origin),
+          );
+        }
         return Astro.redirect(`/register/${id}?ok=created`, 303);
       } catch (error) {
         if (!(error instanceof RuleError)) throw error;

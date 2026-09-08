@@ -62,11 +62,12 @@ There are two logins.
 | Sign up, buy tickets, manage own membership | yes | yes | yes |
 | Create and publish events, sell tickets, run the door, shop, news | | yes | yes |
 | Check whether someone is a member (name and status) | | yes | yes |
+| See the actives and decide who becomes one | | yes | yes |
 | Open the full register, approve members, export | | | yes |
 
 ![Board tools](images/site/board-hub.png)
 
-*lahtiag.fi/board: every board page one click away. 1 card payments waiting to be attached, 2 the season page. Board login shows the same to a board member without register access.*
+*lahtiag.fi/board: every board page one click away. 1 card payments waiting to be attached, 2 the season page. Actives requests waiting for a decision show the same way, under Members. Board login shows the same to a board member without register access.*
 
 Board tools sit at the bottom of a page in a folded "Board tools" block,
 so nothing sensitive shows when a page is on a projector. A small pill at
@@ -94,7 +95,10 @@ the bottom right lets you view a page as a member or a visitor would.
   Approve and Reject. Approving gives the Member role on Discord (and
   Actives, if approved as an active) and posts a welcome in the general
   channel. The register shows a hint if the person may already be in it,
-  with the reason, and a Merge button.
+  with the reason, and a Merge button. If they ticked the actives box on
+  the form, approving the membership sends that request to the board
+  channel and the Actives page — it is a second decision, and the whole
+  board makes it.
 
 ![The register](images/site/register-toolbar.png)
 
@@ -124,6 +128,18 @@ the bottom right lets you view a page as a member or a visitor would.
 ![Actives on the membership page](images/site/membership-actives.png)
 
 *The Actives box on the membership page: ticking it sends a request to the register, unticking it leaves.*
+
+- **Actives.** Any board member: Board tools → Actives, or
+  lahtiag.fi/board/actives. Who the actives are, who has asked to become
+  one, and the two buttons that decide it. A name, a way to reach them and
+  a date is all it carries, which is what the board channel already says
+  out loud, so it opens with the Board role in Discord — the register and
+  its personal data still need register access. The same request also
+  arrives in the board channel with the same buttons.
+
+![The actives page](images/site/board-actives.png)
+
+*lahtiag.fi/board/actives: 1 who is waiting for a decision, 2 everyone the board has approved. Approving turns on the Actives role in Discord; taking someone off takes the role with it.*
 
 - **Member check.** Any board member: Board login → Member check. Type a
   name, see member or not. Nothing else.

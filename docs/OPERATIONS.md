@@ -490,14 +490,22 @@ Workspace accounts on the list; the register is only as safe as they are.
   requesting account: **Confirm link** when they match (or you know the
   person), **Dismiss** otherwise. Nothing tells the requester whether the
   email existed. Once linked, the member manages their own actives status.
-- **Actives**: a member ticks "I want to be an active" (on the form or,
-  once linked, on /join). That is a request: it shows under **Actives
-  requests** on /register with a board notice, and **Approve as active**
-  makes them one (or **Decline**). Approved actives with a linked Discord
-  account get the Actives role, which is what opens the actives channel;
-  gate the channel on that role in Discord. A member unticks the box to
-  leave, which drops the approval and the role. The **Actives** filter
-  lists approved actives.
+- **Actives**: a member ticks "I want to be an active" (on the
+  application form or, once linked, on their membership page). That is a
+  request, and it reaches the board three ways: a line in the board
+  channel with **Approve** / **Decline** buttons, the **Actives** page at
+  /board/actives, and **Actives requests** on /register. The first two
+  take the Discord Board role, so the whole board can decide; /register
+  needs register access. A request ticked on the application form waits
+  for the membership itself: approving the application posts it, and so
+  does adding someone by hand as a member with the box ticked — before
+  that they are not a member and there is nothing to approve. Approved
+  actives with a linked Discord account get the Actives role, which is
+  what opens the actives channel; gate the channel on that role in
+  Discord. A member unticks the box to leave, which drops the approval
+  and the role. The **Actives** filter on /register lists approved
+  actives; /board/actives is the same list carrying only a name, a handle
+  and a date.
 - **Discord roles**: linked members carry the Member role, approved
   actives the Actives role, set as decisions are made on the register.
   **Sync Discord roles** (bottom of /register) reconciles everyone, 40

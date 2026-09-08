@@ -1,0 +1,185 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import { ensureCsrf } from '../../lib/guard';
+import { requireAnyBoard } from '../../lib/board-access';
+import { listActivesBrief, type ActiveBrief } from '../../lib/db';
+import { rolesConfigured, loadRoleConfig } from '../../lib/roles';
+import { formatHelsinki, formatHelsinkiDate } from '../../lib/time';
+
+// Who the actives are, and who is waiting to become one. Open to every
+// board member, the Discord Board role included: it carries a name, a
+// handle to reach someone by and a date, which is what the board channel
+// already says out loud when a request comes in. The register's own
+// fields — email, domicile, school, the board's notes — stay behind the
+// Google gate on /register, and only an account with that access gets the
+// link into an entry from here.
+
+const access = await requireAnyBoard(Astro.request, env);
+Astro.response.status = access.ok ? 200 : access.status;
+const csrf = ensureCsrf(Astro.cookies);
+const { actives, waiting } = access.ok
+  ? await listActivesBrief(env.DB)
+  : { actives: [] as ActiveBrief[], waiting: [] as ActiveBrief[] };
+const rolesOn = access.ok ? rolesConfigured(await loadRoleConfig(env, env.DB)) : false;
+
+const FLASH: Record<string, string> = {
+  forbidden: 'That needs the Board role in Discord, or a register sign-in.',
+  unauthenticated: 'Sign in first.',
+  discord_down: "Discord didn't answer while checking your role. Try again.",
+  csrf: 'The form was stale. Try again.',
+  missing: 'That person is not a current member any more.',
+  bad_input: "That didn't work.",
+};
+const OK: Record<string, string> = {
+  approve: 'Approved as an active.',
+  revoke: 'No longer an active.',
+};
+const flash =
+  FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
+const rolesFailed = Astro.url.searchParams.get('roles') === 'failed';
+
+// What we can say about reaching someone, and whether the Discord role
+// can follow the decision at all: without a linked account it cannot.
+const contact = (p: ActiveBrief) => {
+  const parts: string[] = [];
+  if (p.discord_name) parts.push(`Discord ${p.discord_name}${p.discord_id ? '' : ' (not linked)'}`);
+  else if (p.discord_id) parts.push('Discord linked');
+  else parts.push('no Discord account linked');
+  if (p.telegram) parts.push(`Telegram @${p.telegram}`);
+  return parts.join(' · ');
+};
+---
+<Base title="Actives" description="The association's actives, and the members waiting to become one.">
+  <header class="page-head">
+    <h1>Actives</h1>
+    {access.ok && (
+      <div class="account-bar">
+        <span class="account-who">
+          Signed in as <strong>{access.who}</strong>{access.full ? ' · register access' : ' · Board role'}
+        </span>
+        <a class="btn btn-ghost btn-sm" href="/board">Board tools</a>
+        {access.full && <a class="btn btn-ghost btn-sm" href="/register?view=actives">Register</a>}
+      </div>
+    )}
+  </header>
+
+  {!access.ok ? (
+    <div class="paths">
+      <section class="path-card">
+        <h2>{access.reason === 'discord_down' ? 'Discord did not answer' : 'Board members only'}</h2>
+        {access.reason === 'discord_down' ? (
+          <p>Discord didn't answer while checking your role. Wait a moment and reload.</p>
+        ) : (
+          <>
+            <p>
+              The actives list is for the board. Sign in with Discord with the Board role; the
+              register accounts can use their Google sign-in as well.
+            </p>
+            <p class="entry-actions">
+              <a class="btn btn-primary" href="/login?next=/board/actives">Sign in with Discord</a>
+              <a class="btn btn-ghost" href="/auth/google">Register sign-in with Google</a>
+            </p>
+          </>
+        )}
+      </section>
+    </div>
+  ) : (
+    <>
+      <article class="prose">
+        <p>
+          An active is a member who wants to help run things. They ask on{' '}
+          <a href="/membership">their membership page</a> or on the application form, the board decides,
+          and an approval turns on the Actives role in Discord{rolesOn ? '' : ' (once the roles are configured on the register)'}.
+          The same two buttons sit under the request in the board channel — this page is the list they are missing.
+        </p>
+      </article>
+
+      {flash && <p class="flash">{flash}</p>}
+      {rolesFailed && <p class="flash">Saved, but Discord wouldn't take the role change. Check the roles on the register.</p>}
+
+      <ul class="stat-tiles">
+        <li><a href="#everyone"><strong>{actives.length}</strong><span>Actives</span></a></li>
+        <li class={waiting.length > 0 ? 'stat-attention' : ''}>
+          <a href="#waiting"><strong>{waiting.length}</strong><span>Waiting</span></a>
+        </li>
+      </ul>
+
+      <section class="panel-card" id="waiting">
+        <div class="card-head">
+          <div>
+            <h2>Waiting for a decision</h2>
+            <p>
+              Members who asked to be an active. Approving gives them the Actives role; declining clears
+              the request, so they can ask again later and it turns up here as new. Whoever decides, the
+              board channel hears about it.
+            </p>
+          </div>
+          <span class={`status-badge ${waiting.length > 0 ? 'status-pending' : 'status-member'}`}>
+            {waiting.length > 0 ? `${waiting.length} waiting` : 'Nothing waiting'}
+          </span>
+        </div>
+        {waiting.length === 0 ? (
+          <p class="app-empty">Nothing waiting. New requests land here and in the board channel.</p>
+        ) : (
+          <ul class="act-list">
+            {waiting.map((p) => (
+              <li class="act-row">
+                <span class="act-name">{p.full_name}</span>
+                <span class="act-row-meta">{contact(p)} · waiting since {formatHelsinki(p.asked_at)}</span>
+                <div class="act-do">
+                  {access.full && <a class="btn btn-ghost btn-sm" href={`/register/${p.id}`}>Entry</a>}
+                  <form method="post" action="/board/actives/decide" class="inline-form">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="approve" />
+                    <input type="hidden" name="id" value={p.id} />
+                    <button class="btn btn-primary btn-sm" type="submit">Approve</button>
+                  </form>
+                  <form method="post" action="/board/actives/decide" class="inline-form">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="revoke" />
+                    <input type="hidden" name="id" value={p.id} />
+                    <button class="btn btn-ghost btn-sm" type="submit" data-confirm="Decline this actives request?">Decline</button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section class="panel-card" id="everyone">
+        <div class="card-head">
+          <div>
+            <h2>The actives</h2>
+            <p>Everyone the board has approved. Taking someone off takes the Discord role with it.</p>
+          </div>
+          <span class="status-badge status-muted">{actives.length} {actives.length === 1 ? 'active' : 'actives'}</span>
+        </div>
+        {actives.length === 0 ? (
+          <p class="app-empty">Nobody yet.</p>
+        ) : (
+          <ul class="act-list">
+            {actives.map((p) => (
+              <li class="act-row">
+                <span class="act-name">{p.full_name}</span>
+                <span class="act-row-meta">
+                  {contact(p)}{p.active_since ? ` · since ${formatHelsinkiDate(p.active_since)}` : ''}
+                </span>
+                <div class="act-do">
+                  {access.full && <a class="btn btn-ghost btn-sm" href={`/register/${p.id}`}>Entry</a>}
+                  <form method="post" action="/board/actives/decide" class="inline-form">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="revoke" />
+                    <input type="hidden" name="id" value={p.id} />
+                    <button class="btn btn-ghost btn-sm" type="submit" data-confirm={`Take ${p.full_name} off the actives?`}>Take off</button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
+  )}
+</Base>

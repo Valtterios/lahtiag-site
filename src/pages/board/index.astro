@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import Base from '../../layouts/Base.astro';
 import BoardHub from '../../components/BoardHub.astro';
 import { requireAnyBoard } from '../../lib/board-access';
-import { listUpcomingEvents, listUnattachedDoorPayments } from '../../lib/db';
+import { listUpcomingEvents, listUnattachedDoorPayments, listActiveRequests } from '../../lib/db';
 
 // The board's front page: every board page one click away, for the
 // Discord Board role and the register accounts alike. The same hub shows
@@ -15,6 +15,8 @@ const now = Math.floor(Date.now() / 1000);
 const events = access.ok ? (await listUpcomingEvents(env.DB, now, true)).slice(0, 6) : [];
 // Card payments waiting to be attached, so the hub can say so.
 const payments = access.ok ? (await listUnattachedDoorPayments(env.DB, now - 12 * 3600)).length : 0;
+// Members waiting to be made an active: the same count the actives page shows.
+const actives = access.ok ? (await listActiveRequests(env.DB)).length : 0;
 ---
 <Base title="Board tools" description="The board's pages on lahtiag.fi, one click away." wide>
   <article class="prose">
@@ -37,7 +39,7 @@ const payments = access.ok ? (await listUnattachedDoorPayments(env.DB, now - 12 
           Signed in as <strong>{access.who}</strong>{access.full ? ' with register access' : ' with the Board role'}.
           {access.full ? ' The full register is under Register.' : ' The full register, with members\' personal data, opens only for the accounts with register access.'}
         </p>
-        <BoardHub events={events} payments={payments} />
+        <BoardHub events={events} payments={payments} actives={actives} />
         {access.full && <p class="queue-meta"><a href="/register">Open the register</a></p>}
       </>
     )}

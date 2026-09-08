@@ -15,8 +15,8 @@ import {
   LIMITS,
   type FieldError,
 } from '../lib/register';
-import { postWebhook, activeNotice, NO_MENTIONS } from '../lib/discord';
-import { postBoardLine, approveButtons } from '../lib/board-channel';
+import { postWebhook, NO_MENTIONS } from '../lib/discord';
+import { postActivesRequest } from '../lib/board-channel';
 import { applyRoles, loadRoleConfig } from '../lib/roles';
 import { formatHelsinkiDate, formatHelsinkiRange } from '../lib/time';
 import { listMinecraftNames, serversLabel, narrowed, SERVERS, FRIENDS_PER_MEMBER } from '../lib/minecraft';
@@ -72,9 +72,7 @@ if (Astro.request.method === 'POST' && session && entry) {
     const updated = await setOwnActive(env.DB, session.discordId, wants, normalizeHandle(telegramRaw), now);
     if (updated && wants && !entry.wants_active) {
       // The board's channel, with Approve / Decline for any board member.
-      Astro.locals.cfContext.waitUntil(
-        postBoardLine(env.DB, env, activeNotice({ name: updated.full_name, telegram: updated.telegram, url: `${Astro.url.origin}/register/${updated.id}` }), approveButtons('a', String(updated.id))),
-      );
+      Astro.locals.cfContext.waitUntil(postActivesRequest(env.DB, env, updated, Astro.url.origin));
     }
     // Leaving the actives takes the Discord role away at once.
     if (updated && entry.is_active && !updated.is_active) {

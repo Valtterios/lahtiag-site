@@ -16,7 +16,7 @@ import {
 import { parseApplication, LIMITS, MEMBER_TYPES, type MemberType } from '../../../lib/register';
 import { applyRoles, loadRoleConfig, type RoleOutcome } from '../../../lib/roles';
 import { postWebhook } from '../../../lib/discord';
-import { postBoardLine } from '../../../lib/board-channel';
+import { postBoardLine, postActivesRequest } from '../../../lib/board-channel';
 
 // A new member is welcomed in a public channel when WELCOME_WEBHOOK_URL is
 // set: a mention if their Discord is linked, their handle if they gave one,
@@ -41,7 +41,7 @@ async function welcome(id: number): Promise<void> {
 // there is reported, never blocks the register change. Google step-up
 // (board.ts) and CSRF checked, like every register route.
 
-export const POST: APIRoute = async ({ request, redirect, params, locals }) => {
+export const POST: APIRoute = async ({ request, redirect, params, url, locals }) => {
   const id = Number(params.id);
   const back = Number.isInteger(id) ? `/register/${id}` : '/register';
   const board = await requireBoard(request, env);
@@ -71,7 +71,15 @@ export const POST: APIRoute = async ({ request, redirect, params, locals }) => {
         await decideApplication(env.DB, id, 'approve', board.email, now);
         const roles = await sync();
         await welcome(id);
-        tellBoard(`✅ **${(await getRegisterEntry(env.DB, id))?.full_name ?? id}** approved as a member by ${board.email}.`);
+        const member = await getRegisterEntry(env.DB, id);
+        tellBoard(`✅ **${member?.full_name ?? id}** approved as a member by ${board.email}.`);
+        // They ticked "I'd like to be an active" on the application form:
+        // that is a second decision, still open, so it goes to the board
+        // channel with its buttons like any other actives request. Without
+        // this it only ever showed on the register.
+        if (member?.wants_active && !member.is_active) {
+          locals.cfContext.waitUntil(postActivesRequest(env.DB, env, member, url.origin));
+        }
         return done('/register?ok=approved', roles);
       }
       case 'reject': {

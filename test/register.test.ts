@@ -21,6 +21,7 @@ import {
   setOwnActive,
   refreshLinkedDiscordName,
   listActiveRequests,
+  listActivesBrief,
   setActive,
   mergeApplicationInto,
   updateOwnEntry,
@@ -498,6 +499,26 @@ describe('actives: request, decision, leaving', () => {
     expect(await listActiveRequests(db())).toEqual([]);
     expect((await registerStats(db())).actives).toBe(1);
     expect((await listRegister(db(), { activesOnly: true })).map((r) => r.id)).toEqual([a]);
+  });
+
+  it('the board page list carries names and handles only, actives by name and requests oldest first', async () => {
+    const zoe = await member('z@example.com', '1', true);
+    const alex = await member('x@example.com', '2', true);
+    const waiting = await member('w@example.com', '3', true);
+    await updateRegisterEntry(db(), zoe, application({ email: 'z@example.com', full_name: 'Zoe Salo', telegram: 'zoe_tg', wants_active: true }), EXTRA_FULL, NOW);
+    await updateRegisterEntry(db(), alex, application({ email: 'x@example.com', full_name: 'alex koski', wants_active: true }), EXTRA_FULL, NOW);
+    await setActive(db(), zoe, true, 'chair', NOW + 1);
+    await setActive(db(), alex, true, 'chair', NOW + 2);
+
+    const brief = await listActivesBrief(db());
+    // Sorted by name, ignoring case, so the list reads like a roll.
+    expect(brief.actives.map((p) => p.full_name)).toEqual(['alex koski', 'Zoe Salo']);
+    expect(brief.actives.find((p) => p.id === zoe)).toMatchObject({ telegram: 'zoe_tg', active_since: NOW + 1 });
+    expect(brief.waiting.map((p) => p.id)).toEqual([waiting]);
+    // Only what a board page shows: no email, domicile, school or note.
+    expect(Object.keys(brief.actives[0]).sort()).toEqual(
+      ['active_since', 'asked_at', 'discord_id', 'discord_name', 'full_name', 'id', 'telegram'],
+    );
   });
 
   it('decline and revoke clear both the approval and the request', async () => {

@@ -2,7 +2,7 @@
 # the LOCAL D1 file (never the remote database). Run from the repository
 # root after `npx wrangler d1 migrations apply lahtiag --local`; see
 # docs/OPERATIONS.md, "Editing this handbook". Every person here is made up.
-import sqlite3, random, unicodedata, io, glob
+import sqlite3, random, unicodedata, io, glob, time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
@@ -134,11 +134,15 @@ for i, (n, name, typ, src, checked, member) in enumerate(holders, start=1):
         c.execute('INSERT INTO signup_answers (question_id, event_id, discord_id, ticket_id, value, updated_at) VALUES (?,?,?,?,?,?)', (1, 1, did(5), i, 'M', created))
         c.execute('INSERT INTO signup_answers (question_id, event_id, discord_id, ticket_id, value, updated_at) VALUES (?,?,?,?,?,?)', (3, 1, did(5), i, 'yes', created))
 # Tap to Pay payments waiting to be attached: one at a ticket price, one
-# at a member's price (and a shop item's), one at neither.
+# at a member's price (and a shop item's), one at neither. These hang off
+# the real clock, not the story's: every page that lists them only looks
+# back twelve hours, so on the fictional NOW they would have aged out and
+# the pictures would come back empty whenever the handbook is reshot.
+REAL_NOW = int(time.time())
 c.executemany('INSERT INTO door_payments (stripe_payment_intent, amount_cents, created_at, ticket_id, note) VALUES (?,?,?,?,?)', [
-    ('pi_3R7Lk9QaX2mN0k9Qa', 800, NOW - 90, None, 'Pekka K'),
-    ('pi_3R7Lm2QaX2mN0kW3b', 1200, NOW - 480, None, 'Joonas V'),
-    ('pi_3R7Ln8QaX2mN0kZ7c', 500, NOW - 900, None, 'Sara K'),
+    ('pi_3R7Lk9QaX2mN0k9Qa', 800, REAL_NOW - 90, None, 'Pekka K'),
+    ('pi_3R7Lm2QaX2mN0kW3b', 1200, REAL_NOW - 480, None, 'Joonas V'),
+    ('pi_3R7Ln8QaX2mN0kZ7c', 500, REAL_NOW - 900, None, 'Sara K'),
 ])
 
 # --- news -----------------------------------------------------------------
