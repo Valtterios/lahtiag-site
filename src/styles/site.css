@@ -885,17 +885,39 @@ a:hover {
   pointer-events: none;
 }
 
-.id-card:hover .id-card-tilt,
-.id-card:focus-within .id-card-tilt {
-  --lift: -3px;
+@media (hover: hover) and (pointer: fine) {
+  .id-card:hover .id-card-tilt,
+  .id-card:focus-within .id-card-tilt {
+    --lift: -3px;
+  }
 }
 
 .id-card:hover .id-card-face::after,
-.id-card.is-shining .id-card-face::after {
+.id-card.is-shining-a .id-card-face::after {
   animation: id-shine 900ms ease-out;
 }
 
+.id-card.is-shining-b .id-card-face::after {
+  animation: id-shine-again 900ms ease-out;
+}
+
 @keyframes id-shine {
+  from {
+    transform: translateX(-60%);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(60%);
+    opacity: 0;
+  }
+}
+
+/* The same sweep under a second name: swapping between the two is what
+   makes a repeated turn start it over. */
+@keyframes id-shine-again {
   from {
     transform: translateX(-60%);
     opacity: 0;
@@ -962,9 +984,11 @@ a:hover {
   pointer-events: none;
 }
 
-.id-card:hover .id-card-glare,
-.id-card:focus-within .id-card-glare {
-  opacity: 1;
+@media (hover: hover) and (pointer: fine) {
+  .id-card:hover .id-card-glare,
+  .id-card:focus-within .id-card-glare {
+    opacity: 1;
+  }
 }
 
 .id-card-band {
@@ -1266,7 +1290,8 @@ a:hover {
     transition: none;
   }
   .id-card:hover .id-card-face::after,
-  .id-card.is-shining .id-card-face::after {
+  .id-card.is-shining-a .id-card-face::after,
+  .id-card.is-shining-b .id-card-face::after {
     animation: none;
   }
 }

@@ -199,9 +199,11 @@ const scale = name.length > 22 ? ' id-name-longer' : name.length > 14 ? ' id-nam
       level();
       // A phone has no pointer to catch the light with, so the light comes
       // to the turn instead: one sweep across the face as it comes round.
-      card.classList.remove('is-shining');
-      void card.offsetWidth; // so a second turn starts the sweep over
-      card.classList.add('is-shining');
+      // The two classes take turns, which is what makes the second turn
+      // start the sweep over rather than leaving it finished.
+      const wasA = card.classList.contains('is-shining-a');
+      card.classList.toggle('is-shining-a', !wasA);
+      card.classList.toggle('is-shining-b', wasA);
     };
     turn.addEventListener('click', flip);
     // Anywhere on the card turns it too, which is what a card invites.
