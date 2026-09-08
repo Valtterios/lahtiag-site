@@ -123,7 +123,14 @@ the bottom right lets you view a page as a member or a visitor would.
 
 ![The membership page](images/site/membership-top.png)
 
-*What a member sees: the card with their stats next to their status and season, 1 the leaderboard opt-out, 2 the tabs Membership, My events and Minecraft.*
+*What a member sees: 1 their membership card, next to the season so far, 2 the tabs Membership, My events and Minecraft.*
+
+![The membership card](images/site/membership-card.png)
+
+*The card itself. The stock says which they are — blue a member, ink an
+active, yellow the board — and it turns over for the rest of the record.
+An application still waiting shows the same card in pale stock, which is
+the clearest way to say the board has not decided yet.*
 
 ![Actives on the membership page](images/site/membership-actives.png)
 

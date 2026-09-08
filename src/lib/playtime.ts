@@ -100,6 +100,20 @@ export async function monthlyPlaytime(db: D1Database, discordId: string, unixSec
   return results;
 }
 
+// A member's whole play time across the servers, every season together,
+// under their own name only — the same rule the season uses.
+export async function lifetimePlaytime(db: D1Database, discordId: string): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(p.minutes), 0) AS minutes
+       FROM minecraft_playtime p
+       JOIN minecraft_names n ON n.uuid = p.uuid AND n.kind = 'own' AND n.discord_id = ?1`,
+    )
+    .bind(discordId)
+    .first<{ minutes: number }>();
+  return row?.minutes ?? 0;
+}
+
 // This season's play time per account, for the board's whitelist page:
 // the minutes played under each UUID and the last day it was seen. Keyed
 // by UUID, so a name with no UUID (added before the Mojang lookup) and a

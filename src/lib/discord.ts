@@ -211,9 +211,9 @@ export async function postWebhook(
 
 // CDN URL for a member's avatar; the index-based default avatar when they
 // have none. Both hosts are already in the CSP img-src allowlist.
-export function avatarUrl(discordId: string, avatarHash: string | null): string {
+export function avatarUrl(discordId: string, avatarHash: string | null, size = 64): string {
   if (avatarHash) {
-    return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=64`;
+    return `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=${size}`;
   }
   // Manually added participants have synthetic non-numeric ids ("manual-…"),
   // where the snowflake math would throw; hash the string instead.

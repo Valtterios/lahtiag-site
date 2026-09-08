@@ -660,10 +660,620 @@ a:hover {
   }
 }
 
-.member-hero .profile-card {
-  margin: 0;
-  max-width: none;
+/* The membership card (components/MemberCard.astro). Everything inside it
+   is sized in cqi — a share of the card's own width — so the card scales
+   as one piece instead of falling apart on a phone. The brand is flat and
+   crisp, so the faces stay flat at rest; the gloss is interaction only.
+
+   Four stocks, set by the tokens below: blue for a member, ink for an
+   active, yellow for the board, pale for a card not issued yet. */
+.id-card {
+  container-type: inline-size;
+  perspective: 1100px;
   align-self: start;
+  min-width: 0;
+  /* member, the default stock */
+  --card-bg: var(--blue);
+  --card-ink: #fff;
+  --card-rule: rgba(255, 255, 255, 0.3);
+  --card-ruling: rgba(255, 255, 255, 0.09);
+  --card-sheen: rgba(255, 255, 255, 0.34);
+  --card-glare: rgba(255, 255, 255, 0.4);
+  --card-glare-out: rgba(255, 255, 255, 0);
+  --card-blend: screen;
+  --card-accent: var(--yellow);
+  --card-accent-ink: var(--ink);
+  --card-mark: brightness(0) invert(1);
+  --card-panel: rgba(255, 255, 255, 0.9);
+  --card-panel-ink: var(--ink);
+  --card-stripe: rgba(0, 0, 0, 0.45);
+  --card-shadow: rgba(65, 105, 225, 0.55);
+  --card-edge: none;
+}
+
+.id-tier-active {
+  --card-bg: var(--ink);
+  --card-shadow: rgba(30, 30, 30, 0.5);
+}
+
+.id-tier-board {
+  --card-bg: var(--yellow);
+  --card-ink: var(--ink);
+  --card-rule: rgba(30, 30, 30, 0.28);
+  --card-ruling: rgba(30, 30, 30, 0.07);
+  --card-sheen: rgba(255, 255, 255, 0.55);
+  --card-glare: rgba(255, 255, 255, 0.55);
+  --card-glare-out: rgba(255, 255, 255, 0);
+  --card-blend: normal;
+  --card-accent: var(--blue);
+  --card-accent-ink: #fff;
+  --card-mark: none;
+  --card-panel: rgba(255, 255, 255, 0.75);
+  --card-stripe: var(--ink);
+  --card-shadow: rgba(30, 30, 30, 0.4);
+}
+
+/* Pale stock: an application still in the queue, or a membership that has
+   ended. The same card, plainly not a valid one. */
+.id-tier-pale {
+  --card-bg: var(--surface);
+  --card-ink: var(--ink);
+  --card-rule: var(--line);
+  --card-ruling: rgba(30, 30, 30, 0.05);
+  --card-sheen: rgba(65, 105, 225, 0.16);
+  --card-glare: rgba(65, 105, 225, 0.14);
+  --card-glare-out: rgba(65, 105, 225, 0);
+  --card-blend: normal;
+  --card-accent: var(--line);
+  --card-accent-ink: var(--muted);
+  --card-mark: none;
+  --card-panel: var(--bg);
+  --card-stripe: var(--line);
+  --card-shadow: rgba(30, 30, 30, 0.2);
+  --card-edge: 1px dashed var(--line);
+}
+
+/* Two wrappers, because the two movements want different speeds: the lean
+   follows the pointer and must keep up, the turn is a deliberate half
+   second. Both keep the 3D context so the back really is behind the front. */
+.id-card-tilt {
+  position: relative;
+  transform-style: preserve-3d;
+  transform: translateY(var(--lift, 0)) rotateX(var(--ry, 0deg)) rotateY(var(--rx, 0deg));
+  transition: transform 260ms ease;
+}
+
+.id-card-flip {
+  position: relative;
+  transform-style: preserve-3d;
+  transform: rotateY(var(--turn, 0deg));
+  transition: transform 620ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.id-card.is-turned .id-card-flip {
+  --turn: 180deg;
+}
+
+.id-card-face {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto auto;
+  gap: 2cqi 4.5cqi;
+  aspect-ratio: 1.586; /* ID-1, the size of a bank card */
+  padding: 4.5cqi 5.5cqi;
+  background: var(--card-bg);
+  color: var(--card-ink);
+  border: var(--card-edge);
+  /* Rounded like a real card, with the brand's one notch cut out of the
+     top-right corner. The notch is redeclared in the card's own units so
+     it grows with the card instead of sitting at a fixed 14px. */
+  --notch: 5cqi;
+  border-radius: 3.6cqi;
+  clip-path: var(--cut);
+  overflow: hidden;
+  backface-visibility: hidden;
+  transition: box-shadow 260ms ease;
+}
+
+/* The back sits on the same spot, already turned, so the flip reveals it. */
+.id-card-back {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.8cqi;
+  padding: 0 0 4.5cqi;
+  transform: rotateY(180deg);
+}
+
+/* Guilloche: the fine diagonal ruling a printed card is secured with. */
+.id-card-face::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(115deg, var(--card-ruling) 0 1px, transparent 1px 9px);
+  pointer-events: none;
+}
+
+/* The sweep: one pass of light across the card as the pointer arrives. */
+.id-card-face::after {
+  content: '';
+  position: absolute;
+  inset: -40% -60%;
+  background: linear-gradient(100deg, transparent 42%, var(--card-sheen) 50%, transparent 58%);
+  transform: translateX(-60%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.id-card:hover .id-card-tilt,
+.id-card:focus-within .id-card-tilt {
+  --lift: -3px;
+}
+
+.id-card:hover .id-card-face,
+.id-card:focus-within .id-card-face {
+  box-shadow: 0 18px 34px -18px var(--card-shadow);
+}
+
+.id-card:hover .id-card-face::after {
+  animation: id-shine 900ms ease-out;
+}
+
+@keyframes id-shine {
+  from {
+    transform: translateX(-60%);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(60%);
+    opacity: 0;
+  }
+}
+
+/* The mark, watermarked into the corner the way a printed card carries it.
+   The file is blue, so it is knocked out to white on the dark stocks. */
+.id-card-mark {
+  position: absolute;
+  right: -4cqi;
+  bottom: -5cqi;
+  width: 34cqi;
+  height: auto;
+  opacity: 0.14;
+  filter: var(--card-mark);
+  pointer-events: none;
+}
+
+.id-tier-board .id-card-mark,
+.id-tier-pale .id-card-mark {
+  opacity: 0.1;
+}
+
+.id-card-back .id-card-mark {
+  width: 26cqi;
+  right: -5cqi;
+  bottom: -6cqi;
+}
+
+/* The glare sits where the pointer is (MemberCard.astro sets --mx/--my);
+   with no pointer it rests in the middle and simply lifts on hover. */
+.id-card-glare {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(38% 55% at var(--mx, 50%) var(--my, 50%), var(--card-glare), var(--card-glare-out) 70%);
+  mix-blend-mode: var(--card-blend);
+  opacity: 0;
+  transition: opacity 260ms ease;
+  pointer-events: none;
+}
+
+.id-card:hover .id-card-glare,
+.id-card:focus-within .id-card-glare {
+  opacity: 1;
+}
+
+.id-card-band {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3cqi;
+}
+
+.id-card-logo {
+  width: 19cqi;
+  height: auto;
+}
+
+.id-card-kind {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 2.7cqi;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.id-card-photo {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+}
+
+.id-card-photo img {
+  display: block;
+  width: 22cqi;
+  height: 22cqi;
+  object-fit: cover;
+  background: rgba(127, 127, 127, 0.2);
+  border: 0.6cqi solid var(--card-rule);
+  clip-path: var(--cut-s);
+}
+
+.id-tier-pale .id-card-photo img {
+  filter: grayscale(1);
+}
+
+.id-card-who {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
+  min-width: 0;
+}
+
+.id-card-name {
+  margin: 0;
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 6.6cqi;
+  line-height: 1.05;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.id-card-class {
+  margin: 1.5cqi 0 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2cqi;
+  font-size: 3.2cqi;
+  opacity: 0.9;
+}
+
+.id-card-flag {
+  background: var(--card-accent);
+  color: var(--card-accent-ink);
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 2.5cqi;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.7cqi 1.6cqi;
+  clip-path: var(--cut-s);
+  opacity: 1;
+}
+
+/* The whole record, not one season: what makes the card worth showing. */
+.id-card-figures {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  margin: 0;
+  padding: 2cqi 0 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2cqi;
+  border-top: 1px solid var(--card-rule);
+}
+
+.id-card-figures li {
+  min-width: 0;
+}
+
+.id-card-figure {
+  display: block;
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 4.4cqi;
+  line-height: 1;
+}
+
+.id-card-figure-label {
+  display: block;
+  margin-top: 0.8cqi;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 2.2cqi;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.id-card-fields {
+  grid-column: 1 / -1;
+  grid-row: 4;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5cqi 7cqi;
+}
+
+.id-card-fields dt,
+.id-card-back-fields dt {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 2.4cqi;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.id-card-fields dd,
+.id-card-back-fields dd {
+  margin: 0.4cqi 0 0;
+  font-size: 3.4cqi;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* --- the back ------------------------------------------------------- */
+
+/* The dark band across the top, where a card of this shape carries its
+   stripe. */
+.id-card-stripe {
+  display: block;
+  height: 8cqi;
+  margin-top: 3cqi;
+  background: var(--card-stripe);
+  flex: none;
+}
+
+/* The panel a card asks to be signed on; here it states whose card it is. */
+.id-card-panel {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 3cqi;
+  margin: 0 5.5cqi;
+  padding: 1.1cqi 2.4cqi;
+  background: var(--card-panel);
+  color: var(--card-panel-ink);
+  clip-path: var(--cut-s);
+}
+
+.id-card-panel-name {
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 700;
+  font-size: 4cqi;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.id-card-panel-no {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 2.6cqi;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  flex: none;
+}
+
+.id-card-back-fields {
+  margin: 0 5.5cqi;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5cqi 7cqi;
+}
+
+/* The rest of the record, the part the front had no room for. */
+.id-card-record {
+  margin: 0 5.5cqi;
+  font-size: 2.6cqi;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.id-card-small {
+  margin: auto 5.5cqi 0;
+  font-size: 2.4cqi;
+  line-height: 1.45;
+  opacity: 0.75;
+}
+
+.id-card-url {
+  margin: 0 5.5cqi;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 2.6cqi;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+/* The turn: a real control under the card, so the card is not the button. */
+.id-card-turn {
+  display: block;
+  margin: 0.5rem 0 0 auto;
+  padding: 0.3rem 0.6rem;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.id-card-turn:hover {
+  color: var(--blue);
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .id-card-tilt {
+    transform: none;
+    transition: none;
+  }
+  .id-card-flip {
+    transition: none;
+  }
+  .id-card:hover .id-card-face::after {
+    animation: none;
+  }
+}
+
+/* Narrow enough and the card stands on its end, the way a real one sits in
+   a wallet: same ID-1 proportions turned over, the photo at ID size, the
+   figures two by two. A container query, so it follows the card's own
+   width rather than the window's. */
+@container (max-width: 26rem) {
+  .id-card-face {
+    aspect-ratio: 0.631;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr auto auto;
+    gap: 4cqi 0;
+    padding: 6cqi 6.5cqi;
+    --notch: 7cqi;
+    border-radius: 5cqi;
+  }
+
+  .id-card-back {
+    display: flex;
+    padding: 0 0 6cqi;
+    gap: 4cqi;
+  }
+
+  .id-card-band {
+    grid-column: 1;
+  }
+
+  .id-card-logo {
+    width: 30cqi;
+  }
+
+  .id-card-kind {
+    font-size: 3.4cqi;
+  }
+
+  .id-card-photo {
+    grid-column: 1;
+    grid-row: 2;
+    align-items: flex-start;
+  }
+
+  .id-card-photo img {
+    width: 42cqi;
+    height: 42cqi;
+    border-width: 0.9cqi;
+  }
+
+  .id-card-who {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: end;
+  }
+
+  .id-card-name {
+    font-size: 9.5cqi;
+  }
+
+  .id-card-class {
+    margin-top: 2.5cqi;
+    font-size: 4.4cqi;
+    gap: 3cqi;
+  }
+
+  .id-card-flag {
+    font-size: 3.4cqi;
+    padding: 1cqi 2.4cqi;
+  }
+
+  .id-card-figures {
+    grid-column: 1;
+    grid-row: 4;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 3.5cqi 4cqi;
+    padding-top: 4cqi;
+  }
+
+  .id-card-figure {
+    font-size: 7cqi;
+  }
+
+  .id-card-figure-label {
+    font-size: 3.1cqi;
+  }
+
+  .id-card-fields {
+    grid-column: 1;
+    grid-row: 5;
+    gap: 3cqi 8cqi;
+    padding-top: 4cqi;
+    border-top: 1px solid var(--card-rule);
+  }
+
+  .id-card-fields dt,
+  .id-card-back-fields dt {
+    font-size: 3.1cqi;
+  }
+
+  .id-card-fields dd,
+  .id-card-back-fields dd {
+    font-size: 4.4cqi;
+  }
+
+  .id-card-stripe {
+    height: 14cqi;
+    margin-top: 9cqi;
+  }
+
+  .id-card-panel,
+  .id-card-back-fields,
+  .id-card-small,
+  .id-card-url {
+    margin-left: 6.5cqi;
+    margin-right: 6.5cqi;
+  }
+
+  .id-card-panel-name {
+    font-size: 5.4cqi;
+  }
+
+  .id-card-panel-no,
+  .id-card-url {
+    font-size: 3.4cqi;
+  }
+
+  .id-card-small {
+    font-size: 3.2cqi;
+  }
+
+  .id-card-record {
+    font-size: 3.6cqi;
+  }
+
+  .id-card-back .id-card-mark {
+    width: 72cqi;
+    right: -12cqi;
+    bottom: 26cqi;
+  }
+
+  .id-card-mark {
+    width: 55cqi;
+    right: -9cqi;
+    bottom: -9cqi;
+  }
 }
 
 .member-status {
@@ -676,30 +1286,6 @@ a:hover {
   clip-path: var(--cut);
   padding: 1rem 1.3rem 0.9rem;
   min-width: 0;
-}
-
-.member-status-line {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  margin: 0;
-}
-
-.member-since {
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-.member-name {
-  font-family: var(--display);
-  font-style: italic;
-  font-weight: 700;
-  font-size: 1.5rem;
-  line-height: 1.1;
-  text-transform: uppercase;
-  margin: 0;
-  overflow-wrap: anywhere;
 }
 
 .member-meta {
@@ -715,6 +1301,13 @@ a:hover {
   display: grid;
   gap: 0.4rem;
   font-size: 0.9rem;
+}
+
+/* A member's panel opens on the season, with nothing above to rule off. */
+.season-facts:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .season-facts > div {

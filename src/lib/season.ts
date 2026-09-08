@@ -4,8 +4,8 @@
 // board has settled the rules; until then the raw numbers show. The season
 // is the academic year, from 1 September (see activity.ts).
 import type { D1Database } from '@cloudflare/workers-types';
-import { seasonActivity, seasonLabel, seasonStartYear, voiceLabel } from './activity';
-import { seasonPlaytime } from './playtime';
+import { lifetimeActivity, seasonActivity, seasonLabel, seasonStartYear, voiceLabel } from './activity';
+import { lifetimePlaytime, seasonPlaytime } from './playtime';
 import { listMinecraftNames } from './minecraft';
 import { memberSeasonTicks, tickList, tickXp, type SeasonTick } from './ticks';
 import { memberPendingClaims } from './claims';
@@ -63,6 +63,23 @@ export async function seasonSummary(db: D1Database, discordId: string, now: numb
     tick_xp: tickXp(ticks),
     claims_pending,
   };
+}
+
+export interface LifetimeTotals {
+  messages: number;
+  voice_minutes: number;
+  minecraft_minutes: number;
+}
+
+// Everything a member has to show, every season together. The membership
+// card carries these rather than the season's, so a card is worth having
+// in September as well as in May.
+export async function lifetimeTotals(db: D1Database, discordId: string): Promise<LifetimeTotals> {
+  const [activity, minecraft_minutes] = await Promise.all([
+    lifetimeActivity(db, discordId),
+    lifetimePlaytime(db, discordId),
+  ]);
+  return { messages: activity.messages, voice_minutes: activity.voice_minutes, minecraft_minutes };
 }
 
 // The Minecraft line: the time played under the member's own name, or the

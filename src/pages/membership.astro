@@ -15,13 +15,14 @@ import {
   LIMITS,
   type FieldError,
 } from '../lib/register';
-import { postWebhook, NO_MENTIONS } from '../lib/discord';
+import { postWebhook, NO_MENTIONS, avatarUrl } from '../lib/discord';
+import MemberCard from '../components/MemberCard.astro';
 import { postActivesRequest } from '../lib/board-channel';
 import { applyRoles, loadRoleConfig } from '../lib/roles';
 import { formatHelsinkiDate, formatHelsinkiRange } from '../lib/time';
 import { listMinecraftNames, serversLabel, narrowed, SERVERS, FRIENDS_PER_MEMBER } from '../lib/minecraft';
 import { voiceLabel } from '../lib/activity';
-import { seasonSummary, minecraftLine } from '../lib/season';
+import { seasonSummary, minecraftLine, lifetimeTotals } from '../lib/season';
 import { tickList } from '../lib/ticks';
 
 // A member's own page: their status, the actives request, and every
@@ -37,16 +38,44 @@ const myEvents = session ? await listMyEvents(env.DB, session.discordId, Math.fl
 const stats = session ? await memberStats(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : null;
 // The season so far (src/lib/season.ts): Discord activity from the listener, Minecraft play time from the servers.
 const season = session ? await seasonSummary(env.DB, session.discordId, Math.floor(Date.now() / 1000)) : null;
+// The card carries the whole record rather than the season's, so it is
+// worth showing in September as well as in May.
+const lifetime = session ? await lifetimeTotals(env.DB, session.discordId) : null;
 const isMember = entry?.status === 'member';
 const onLeaderboard = session ? await isLeaderboardOptIn(env.DB, session.discordId) : false;
 const mcNames = session ? await listMinecraftNames(env.DB, session.discordId) : [];
 const mcOwn = mcNames.find((n) => n.kind === 'own') ?? null;
 const mcFriends = mcNames.filter((n) => n.kind === 'friend');
-// The badge on the status panel: the class for members, otherwise where the entry stands.
-const STATUS_CLASS: Record<string, string> = { member: 'status-member', pending: 'status-pending', former: 'status-former' };
+// The line under the name on the membership card: the class for members,
+// otherwise where the entry stands.
 const statusLabel = entry ? (entry.status === 'member' ? MEMBER_TYPE_LABELS[entry.member_type] : entry.status === 'pending' ? 'Application pending' : 'Former member') : '';
 const RELATION: Record<string, string> = { ticket: 'Ticket', going: 'Going', maybe: 'Maybe', waitlist: 'On the waitlist', interested: 'Interested' };
 const pendingLink = session && !entry ? await getPendingLinkByDiscord(env.DB, session.discordId) : null;
+
+// Four figures for the card, in the order they read best: what they turned
+// up to, what they won, and how much of each place they have used. Only on
+// an issued card; before that there is nothing to put on it.
+const figures =
+  isMember && stats && lifetime
+    ? [
+        { label: 'Events', value: String(stats.attended) },
+        { label: 'Wins', value: String(stats.wins) },
+        { label: 'Messages', value: String(lifetime.messages) },
+        { label: 'Minecraft', value: lifetime.minecraft_minutes > 0 ? voiceLabel(lifetime.minecraft_minutes) : '—' },
+      ]
+    : [];
+
+// The rest of the record goes on the back, where there is room for the
+// figures that would not earn a tile of their own on the front.
+const record =
+  isMember && stats && lifetime
+    ? [
+        `Tournaments ${stats.tournaments}`,
+        `In voice ${lifetime.voice_minutes > 0 ? voiceLabel(lifetime.voice_minutes) : 'none yet'}`,
+        stats.first_event_at ? `First event ${formatHelsinkiDate(stats.first_event_at)}` : null,
+        stats.last_win ? `Last win ${stats.last_win.title}` : null,
+      ].filter((line): line is string => line !== null)
+    : [];
 
 let errors: FieldError[] = [];
 let problem: 'csrf' | 'duplicate' | null = null;
@@ -202,19 +231,29 @@ const MESSAGES: Record<FieldError, string> = {
       {note && <p class="flash">{note}</p>}
 
       <section class="member-hero" id="my-stats">
-        {stats && <img class="profile-card" src="/membership/card.png" alt="Your stats card" width="900" height="536" />}
+        <MemberCard
+          name={entry.full_name}
+          number={entry.id}
+          klass={statusLabel}
+          status={entry.status}
+          since={entry.status === 'pending' ? entry.applied_at : (entry.decided_at ?? entry.applied_at)}
+          discord={entry.discord_name ?? session.username}
+          avatar={avatarUrl(session.discordId, session.avatarHash, 128)}
+          active={entry.is_active}
+          board={session.isAdmin}
+          figures={figures}
+          minecraft={mcOwn?.name ?? null}
+          telegram={entry.telegram}
+          record={record}
+        />
         <div class="member-status">
-          <p class="member-status-line">
-            <span class={`status-badge ${STATUS_CLASS[entry.status] ?? ''}`}>{statusLabel}</span>
-            {entry.status === 'member' && <span class="member-since">since {formatHelsinkiDate(entry.decided_at ?? entry.applied_at)}</span>}
-            {entry.status === 'pending' && <span class="member-since">applied {formatHelsinkiDate(entry.applied_at)}</span>}
-          </p>
-          <h2 class="member-name">{entry.full_name}</h2>
-          <p class="member-meta">
-            Linked to <strong>{session.username}</strong> on Discord.
-            {entry.status === 'pending' && <> The board decides on applications at its next meeting.</>}
-            {entry.status === 'former' && <> You're listed as a former member; email the board to rejoin.</>}
-          </p>
+          {entry.status !== 'member' && (
+            <p class="member-meta">
+              {entry.status === 'pending'
+                ? 'The board decides on applications at its next meeting. Your card is issued the moment it does.'
+                : "You're listed as a former member; email the board to rejoin."}
+            </p>
+          )}
 
           {season && isMember && (
             <dl class="season-facts">
@@ -243,18 +282,10 @@ const MESSAGES: Record<FieldError, string> = {
             </dl>
           )}
           <p class="member-foot">
-            Discord counts only channels every member can see. <code>/profile</code> in Discord posts the card for everyone, <code>/season</code> shows this season to you.
+            Discord counts only channels every member can see. <code>/season</code> in Discord shows this season to you.
           </p>
         </div>
       </section>
-
-      {stats && (
-        <form method="post" action="/membership/leaderboard" class="leaderboard-optin">
-          <input type="hidden" name="csrf" value={csrf} />
-          <label class="check"><input type="checkbox" name="hide" checked={!onLeaderboard} /> <span>Hide me from the public leaderboard on the <a href="/history">history page</a> and keep my season off my profile card. Everyone is on both unless hidden.</span></label>
-          <button class="btn btn-ghost btn-sm" type="submit">Save</button>
-        </form>
-      )}
 
       <nav class="tabs" data-tabs aria-label="Membership sections">
         <a class="tab" href="#membership" role="tab" aria-selected="true">Membership</a>
@@ -264,6 +295,26 @@ const MESSAGES: Record<FieldError, string> = {
       <noscript><style>{'.tab-panel[hidden]{display:block} .tabs{display:none}'}</style></noscript>
 
       <section class="tab-panel" id="membership" data-tab-panel>
+        {stats && (
+          <section class="panel-card">
+            <div class="card-head">
+              <div>
+                <h2>Your profile card</h2>
+                <p>
+                  Your season as a picture, for sharing: <code>/profile</code> in Discord posts this one for
+                  everyone to see. It is not your membership card and carries none of your details.
+                </p>
+              </div>
+            </div>
+            <img class="profile-card" src="/membership/card.png" alt="Your stats card" width="900" height="536" />
+            <form method="post" action="/membership/leaderboard" class="leaderboard-optin">
+              <input type="hidden" name="csrf" value={csrf} />
+              <label class="check"><input type="checkbox" name="hide" checked={!onLeaderboard} /> <span>Hide me from the public leaderboard on the <a href="/history">history page</a> and keep my season off my profile card. Everyone is on both unless hidden.</span></label>
+              <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+            </form>
+          </section>
+        )}
+
         <section class="panel-card">
           <div class="card-head">
             <div>

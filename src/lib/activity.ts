@@ -254,6 +254,19 @@ export async function seasonActivity(db: D1Database, discordId: string, unixSeco
   return { messages: row?.messages ?? 0, voice_minutes: row?.voice_minutes ?? 0 };
 }
 
+// A member's whole record on Discord, every season together: the figure
+// their membership card carries, where one season would read as thin.
+export async function lifetimeActivity(db: D1Database, discordId: string): Promise<{ messages: number; voice_minutes: number }> {
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(SUM(messages), 0) AS messages, COALESCE(SUM(voice_minutes), 0) AS voice_minutes
+       FROM discord_activity WHERE discord_id = ?1`,
+    )
+    .bind(discordId)
+    .first<{ messages: number; voice_minutes: number }>();
+  return { messages: row?.messages ?? 0, voice_minutes: row?.voice_minutes ?? 0 };
+}
+
 // A member's season by month, oldest first: what a monthly rule looks at.
 export async function monthlyActivity(db: D1Database, discordId: string, unixSeconds: number): Promise<{ month: string; messages: number; voice_minutes: number }[]> {
   const { from, to } = seasonDays(unixSeconds);

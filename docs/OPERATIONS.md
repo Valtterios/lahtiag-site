@@ -230,9 +230,17 @@ included.
 
 *The post form under Board tools on the news page: 1 the cover, 2 the ping, 3 the schedule.*
 
-**Stats and the profile card.** The membership page shows each member's
-events attended, tournaments played and won, with a card picture drawn
-by the site. In Discord, `/profile` posts the card for everyone to see
+**The membership card.** The membership page heads with the member's own ID
+card (`src/components/MemberCard.astro`): name, number (the register id),
+class, member since, and four figures from the whole record, not one season
+(`lifetimeTotals` in `src/lib/season.ts`). The stock is the tier — blue a
+member, ink an active, yellow the board, pale for an application still in
+the queue or a membership that has ended. It turns over for the rest. All of
+it is CSS in `site.css`; nothing is rendered to an image, so it costs no
+worker time.
+
+**Stats and the profile card.** The profile card is the other card: a
+picture, drawn by the site, of events attended, tournaments played and won. In Discord, `/profile` posts the card for everyone to see
 (`/profile user:@someone` for another member's). The command is
 registered with `scripts/register-commands.mjs` like the others. The card also carries the season so far as a second row of tiles
 (`src/lib/profile-card.ts`: events, messages, voice, Minecraft; a dash on

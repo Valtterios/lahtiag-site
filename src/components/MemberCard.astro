@@ -1,0 +1,172 @@
+---
+import { formatHelsinkiDate } from '../lib/time';
+import type { RegisterStatus } from '../lib/register';
+
+// The membership card on a member's own page: the association's ID for
+// them, carrying what an ID carries — who they are, which class of member,
+// their number, and since when. It replaces the badge-and-name block that
+// used to head the page, so nothing here is said twice.
+//
+// The stock says what they are, which is half the point of having one:
+// blue for a member, ink for an active, yellow for the board. An
+// application still in the queue, or a membership that has ended, gets the
+// same card in pale stock: real enough to see what is coming, plainly not
+// a valid one.
+//
+// It turns over. The back carries what a card's back carries — whose it
+// is, what to do if you find it — and the small print that would crowd
+// the front.
+
+export interface CardFigure {
+  label: string;
+  value: string;
+}
+
+interface Props {
+  name: string;
+  number: number; // the register entry's id, which is the member number
+  klass: string; // "Full member", "Application pending", …
+  status: RegisterStatus;
+  since: number; // approved on, or applied on while it is pending
+  discord: string;
+  avatar: string;
+  active: boolean;
+  board?: boolean;
+  figures?: CardFigure[]; // the whole record, four at most; none before the card is issued
+  minecraft?: string | null;
+  telegram?: string | null;
+  record?: string[]; // the rest of the record, for the back
+}
+
+const {
+  name,
+  number,
+  klass,
+  status,
+  since,
+  discord,
+  avatar,
+  active,
+  board = false,
+  figures = [],
+  minecraft = null,
+  telegram = null,
+  record = [],
+} = Astro.props;
+
+const issued = status === 'member';
+const tier = !issued ? 'pale' : board ? 'board' : active ? 'active' : 'member';
+// The yellow and the pale stock take the blue wordmark; the other two are
+// dark enough for the white one.
+const light = tier === 'board' || tier === 'pale';
+const KIND: Record<RegisterStatus, string> = {
+  member: 'Member card',
+  pending: 'Not issued yet',
+  former: 'Expired',
+};
+const role = board ? 'Board' : active ? 'Active' : null;
+const no = String(number).padStart(4, '0');
+const wordmark = light ? '/brand/wordmark-blue.png' : '/brand/wordmark-white.png';
+---
+<div class={`id-card id-tier-${tier}`} data-id-card>
+  <div class="id-card-tilt">
+    <div class="id-card-flip">
+      <div class="id-card-face">
+        <div class="id-card-band">
+          <img class="id-card-logo" src={wordmark} alt="LahtiAG" width="514" height="160" />
+          <span class="id-card-kind">{KIND[status]}</span>
+        </div>
+        <div class="id-card-photo">
+          <img src={avatar} alt="" width="128" height="128" loading="lazy" />
+        </div>
+        <div class="id-card-who">
+          <p class="id-card-name">{name}</p>
+          <p class="id-card-class">{klass}{role && <span class="id-card-flag">{role}</span>}</p>
+        </div>
+        {figures.length > 0 && (
+          <ul class="id-card-figures">
+            {figures.map((f) => (
+              <li>
+                <span class="id-card-figure">{f.value}</span>
+                <span class="id-card-figure-label">{f.label}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <dl class="id-card-fields">
+          <div><dt>No.</dt><dd>{no}</dd></div>
+          <div><dt>{status === 'pending' ? 'Applied' : 'Member since'}</dt><dd>{formatHelsinkiDate(since)}</dd></div>
+          <div><dt>Discord</dt><dd>{discord}</dd></div>
+        </dl>
+        <img class="id-card-mark" src="/brand/mark-blue.png" alt="" width="512" height="512" aria-hidden="true" />
+        <span class="id-card-glare" aria-hidden="true"></span>
+      </div>
+
+      <div class="id-card-face id-card-back">
+        <span class="id-card-stripe" aria-hidden="true"></span>
+        <div class="id-card-panel">
+          <span class="id-card-panel-name">{name}</span>
+          <span class="id-card-panel-no">No. {no}</span>
+        </div>
+        <dl class="id-card-back-fields">
+          <div><dt>Discord</dt><dd>{discord}</dd></div>
+          {minecraft && <div><dt>Minecraft</dt><dd>{minecraft}</dd></div>}
+          {telegram && <div><dt>Telegram</dt><dd>{telegram}</dd></div>}
+        </dl>
+        {record.length > 0 && <p class="id-card-record">{record.join(' · ')}</p>}
+        <p class="id-card-small">
+          Lahti Association of Gaming LAG ry, domiciled in Lahti. Personal and not transferable.
+          Found it? Tell us at board@lahtiag.fi.
+        </p>
+        <p class="id-card-url">lahtiag.fi/membership</p>
+        <img class="id-card-mark" src="/brand/mark-blue.png" alt="" width="512" height="512" aria-hidden="true" />
+        <span class="id-card-glare" aria-hidden="true"></span>
+      </div>
+    </div>
+  </div>
+  <button class="id-card-turn" type="button" data-id-turn aria-pressed="false">Turn over</button>
+</div>
+
+<script>
+  // The card leans away from the pointer, its glare follows it, and it
+  // turns over when asked. The lean is only ever custom properties, so the
+  // CSS decides what to do with them: a card without JavaScript still
+  // lifts and shines on hover, and one on a touch screen is left alone.
+  // The turn is a class on the card, so the button works either way.
+  const still = matchMedia('(prefers-reduced-motion: reduce)');
+  for (const card of document.querySelectorAll<HTMLElement>('[data-id-card]')) {
+    const tilt = card.querySelector<HTMLElement>('.id-card-tilt');
+    const turn = card.querySelector<HTMLButtonElement>('[data-id-turn]');
+    if (!tilt || !turn) continue;
+
+    const clear = () => {
+      for (const prop of ['--mx', '--my', '--rx', '--ry']) tilt.style.removeProperty(prop);
+    };
+    card.addEventListener('pointermove', (e) => {
+      if (still.matches || e.pointerType !== 'mouse') return;
+      const box = card.getBoundingClientRect();
+      const x = (e.clientX - box.left) / box.width;
+      const y = (e.clientY - box.top) / box.height;
+      // Turned over, the card's own left is under the pointer's right.
+      const lean = card.classList.contains('is-turned') ? -1 : 1;
+      tilt.style.setProperty('--mx', `${(x * 100).toFixed(1)}%`);
+      tilt.style.setProperty('--my', `${(y * 100).toFixed(1)}%`);
+      tilt.style.setProperty('--rx', `${((x - 0.5) * 13 * lean).toFixed(2)}deg`);
+      tilt.style.setProperty('--ry', `${((0.5 - y) * 9).toFixed(2)}deg`);
+    });
+    card.addEventListener('pointerleave', clear);
+    card.addEventListener('pointercancel', clear);
+
+    const flip = () => {
+      const turned = card.classList.toggle('is-turned');
+      turn.setAttribute('aria-pressed', String(turned));
+      turn.textContent = turned ? 'Turn back' : 'Turn over';
+    };
+    turn.addEventListener('click', flip);
+    // Anywhere on the card turns it too, which is what a card invites.
+    card.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('a, button')) return;
+      flip();
+    });
+  }
+</script>
