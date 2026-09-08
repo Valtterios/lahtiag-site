@@ -234,3 +234,63 @@ charged.
    Payouts land in the Holvi account; the treasurer books Stripe's monthly
    report. Tap to Pay at the door: install the **Stripe Dashboard** app
    on the board member's phone and sign in with the live account.
+
+## 11. Sending mail as noreply@lahtiag.fi
+
+The site writes to people Discord cannot reach — an applicant who joined
+without linking an account, chiefly. It sends through Gmail's API as one
+Workspace account, so the domain's own SPF and DKIM cover it and nothing
+in DNS changes (the zone's MX and TXT records are Google's and stay as
+they are).
+
+1. **Make the address.** `https://admin.google.com/ac/users` → Add new
+   user: `noreply@lahtiag.fi`. A real user, not an alias — it has to sign
+   in once to consent. Keep the password in the Bitwarden note.
+
+2. **Let the client ask for it.**
+   `https://console.cloud.google.com/auth/scopes` (project `lahtiag-site`)
+   → **Add or remove scopes** → filter for `gmail.send` and tick
+   `https://www.googleapis.com/auth/gmail.send`. Update, then Save. The
+   app is Internal, so no Google verification is involved.
+
+3. **Let the token come back to your machine.**
+   `https://console.cloud.google.com/auth/clients` → the `lahtiag.fi`
+   client → Authorised redirect URIs → Add URI:
+
+   ```
+   http://localhost:8975/oauth2
+   ```
+
+   Save. This is only for the one-time consent below; you can take it out
+   afterwards.
+
+4. **Get the refresh token.** From the repository directory:
+
+   ```
+   node scripts/gmail-token.mjs
+   ```
+
+   It asks for the client id and secret (from the Bitwarden note), prints
+   a URL, and waits. Open the URL **signed in as noreply@lahtiag.fi**,
+   allow it, and the terminal prints the refresh token once. If Google
+   hands back no refresh token, the account has consented before: remove
+   the app at `https://myaccount.google.com/permissions` as that account
+   and run it again.
+
+5. **Put the three values into the Worker** (each prompts for the value):
+
+   ```
+   npx wrangler secret put GMAIL_REFRESH_TOKEN
+   npx wrangler secret put GMAIL_SENDER      # noreply@lahtiag.fi
+   npx wrangler secret put MAIL_REPLY_TO     # board@lahtiag.fi
+   ```
+
+   Into Bitwarden as well. Until all of them exist the site sends no
+   email at all, and the register's correction panel says so instead of
+   promising one.
+
+6. **Test.** On a pending application without a linked Discord account,
+   write a correction and send it. The flash says it was emailed, the
+   board channel says the same with the address, and the letter arrives
+   from noreply@ with replies going to board@. `npx wrangler tail` shows
+   `mail:` lines if Google refuses.

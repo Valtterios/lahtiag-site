@@ -279,16 +279,11 @@ turn instead: one sweep across the face as the card comes round.
 `noreply@lahtiag.fi` through Gmail's API (`src/lib/mail.ts`) — not SMTP,
 which a Worker cannot speak, and not an outside sender, which would need
 DKIM records on a zone whose mail is already Google's. One Workspace
-account does the sending and its refresh token is a Worker secret. To set
-it up: create the address in the Workspace admin console, then in the
-Google Cloud console, on the same OAuth client the register's sign-in
-uses, add `http://localhost:8975/oauth2` to the redirect URIs and the
-scope `https://www.googleapis.com/auth/gmail.send`. Then run
-`node scripts/gmail-token.mjs`, sign in as that account, and put what it
-prints into `GMAIL_REFRESH_TOKEN`, with `GMAIL_SENDER` (the address) and
-`MAIL_REPLY_TO` (`board@lahtiag.fi`, where answers go). Until all three
-exist `mailConfigured()` is false and the site sends no email at all,
-exactly as before.
+account does the sending and its refresh token is a Worker secret; the
+click-by-click setup, with the console links, is step 11 of
+docs/register-access-setup.md. Until `GMAIL_SENDER` and
+`GMAIL_REFRESH_TOKEN` exist `mailConfigured()` is false and the site
+sends no email at all, exactly as before.
 
 **Asking an applicant for a correction.** `register.fix_note` (with
 `fix_asked_at` and `fix_asked_by`) is the board's question to the person
