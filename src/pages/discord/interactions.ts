@@ -921,18 +921,28 @@ async function profileCard(env: WorkerEnv, interaction: Interaction, targetId: s
   const invoker = interaction.member?.user;
   const resolved = interaction.data?.resolved?.users?.[targetId];
   const who = resolved ?? (targetId === invoker?.id ? invoker : undefined);
+  // A button press carries no resolved user — Discord sends that only with
+  // a command — so turning the card over knew neither the face's avatar nor
+  // its name, and the card came back with the grey default on it. The cache
+  // answers both, whoever is pressing.
+  const cached = await cachedMember(env, targetId);
   const candidates = [
     targetId === invoker?.id ? interaction.member?.nick : interaction.data?.resolved?.members?.[targetId]?.nick,
     who?.global_name,
     who?.username,
-    await memberName(env, targetId),
+    cached?.username,
   ].filter((n): n is string => Boolean(n));
   const name = candidates.find((n) => cleanText(n) === n.trim()) ?? candidates.map(cleanText).find((n) => n.length > 0) ?? 'Member';
   const roles = targetId === invoker?.id ? (interaction.member?.roles ?? []) : (interaction.data?.resolved?.members?.[targetId]?.roles ?? []);
   try {
     const face = await cardFace(
       env.DB,
-      { discordId: targetId, name, avatarHash: who?.avatar ?? null, board: hasAdminRole(roles, env.ADMIN_ROLE_ID) },
+      {
+        discordId: targetId,
+        name,
+        avatarHash: who?.avatar ?? cached?.avatar_hash ?? null,
+        board: hasAdminRole(roles, env.ADMIN_ROLE_ID),
+      },
       Math.floor(Date.now() / 1000),
     );
     return await memberCardPng(face, back, origin);
@@ -941,9 +951,13 @@ async function profileCard(env: WorkerEnv, interaction: Interaction, targetId: s
   }
 }
 
-async function memberName(env: WorkerEnv, discordId: string): Promise<string | null> {
-  const row = await env.DB.prepare('SELECT username FROM members WHERE discord_id = ?1').bind(discordId).first<{ username: string }>();
-  return row?.username ?? null;
+// The member cache, kept fresh on every sign-in and every roster touch.
+// It is the fallback for both the name and the avatar when the
+// interaction does not carry them, which is most of the time.
+async function cachedMember(env: WorkerEnv, discordId: string): Promise<{ username: string; avatar_hash: string | null } | null> {
+  return env.DB.prepare('SELECT username, avatar_hash FROM members WHERE discord_id = ?1')
+    .bind(discordId)
+    .first<{ username: string; avatar_hash: string | null }>();
 }
 
 // --- /board interactive panel ----------------------------------------------

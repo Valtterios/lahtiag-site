@@ -375,11 +375,21 @@ export async function cardFace(
   };
 }
 
-// The avatar, or nothing: a card without a photograph is still a card, and
-// Discord's CDN is not worth failing a command over.
+// The avatar. A hash goes stale the moment someone changes their picture,
+// and the CDN then answers 404 — so a refused hash falls back to the
+// account's default avatar rather than leaving the card with an empty
+// well. Nothing at all only if Discord cannot be reached twice, since a
+// card without a photograph is still a card and this is not worth failing
+// a command over.
 async function fetchAvatar(discordId: string, avatarHash: string | null): Promise<Uint8Array | null> {
+  const bytes = await tryFetch(avatarUrl(discordId, avatarHash, 256));
+  if (bytes || avatarHash === null) return bytes;
+  return tryFetch(avatarUrl(discordId, null));
+}
+
+async function tryFetch(url: string): Promise<Uint8Array | null> {
   try {
-    const response = await fetch(avatarUrl(discordId, avatarHash, 256));
+    const response = await fetch(url);
     if (!response.ok) return null;
     const bytes = new Uint8Array(await response.arrayBuffer());
     return bytes.length > 0 && bytes.length < 4_000_000 ? bytes : null;
