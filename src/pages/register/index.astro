@@ -488,15 +488,17 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                     ))}
                   </select>
                 </label>
-                <label>
-                  Pinged when an event is published
-                  <select name="event_ping_roles" multiple size="5">
-                    <option value="everyone" selected={eventPingRoles.has('everyone')}>@everyone</option>
-                    {guildRoles.filter((r) => !r.managed && r.name !== '@everyone').map((r) => (
-                      <option value={r.id} selected={eventPingRoles.has(r.id)}>{r.name}</option>
-                    ))}
-                  </select>
-                </label>
+                <fieldset class="ping-pick">
+                  <legend>Pinged when an event is published</legend>
+                  <label class="check">
+                    <input type="checkbox" name="event_ping_roles" value="everyone" checked={eventPingRoles.has('everyone')} /> <span>@everyone</span>
+                  </label>
+                  {guildRoles.filter((r) => !r.managed && r.name !== '@everyone').map((r) => (
+                    <label class="check">
+                      <input type="checkbox" name="event_ping_roles" value={r.id} checked={eventPingRoles.has(r.id)} /> <span>{r.name}</span>
+                    </label>
+                  ))}
+                </fieldset>
                 <button class="btn btn-ghost" type="submit">Save roles</button>
               </form>
               <p class="queue-meta">
