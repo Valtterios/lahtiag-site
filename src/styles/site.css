@@ -791,8 +791,7 @@ a:hover {
 }
 
 .id-card:hover .id-card-shade,
-.id-card:focus-within .id-card-shade,
-.id-card.is-lit .id-card-shade {
+.id-card:focus-within .id-card-shade {
   opacity: 0.5;
   transform: translateY(11px) scale(0.96);
 }
@@ -875,12 +874,12 @@ a:hover {
 }
 
 .id-card:hover .id-card-tilt,
-.id-card:focus-within .id-card-tilt,
-.id-card.is-lit .id-card-tilt {
+.id-card:focus-within .id-card-tilt {
   --lift: -3px;
 }
 
-.id-card:hover .id-card-face::after {
+.id-card:hover .id-card-face::after,
+.id-card.is-shining .id-card-face::after {
   animation: id-shine 900ms ease-out;
 }
 
@@ -952,8 +951,7 @@ a:hover {
 }
 
 .id-card:hover .id-card-glare,
-.id-card:focus-within .id-card-glare,
-.id-card.is-lit .id-card-glare {
+.id-card:focus-within .id-card-glare {
   opacity: 1;
 }
 
@@ -1251,7 +1249,8 @@ a:hover {
   .id-card-flip {
     transition: none;
   }
-  .id-card:hover .id-card-face::after {
+  .id-card:hover .id-card-face::after,
+  .id-card.is-shining .id-card-face::after {
     animation: none;
   }
 }

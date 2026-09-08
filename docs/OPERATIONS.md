@@ -241,9 +241,9 @@ role, not a class, so it is a chip struck in foil rather than a stock. It turns 
 carries the mark stamped in foil — the brand file used as a mask over a
 metallic gradient that slides as the pointer moves. All of it is CSS in
 `site.css`; nothing is rendered to an image, so it costs no worker time.
-Where there is no pointer the card takes its cue from the scroll instead,
-leaning as it crosses the viewport; `prefers-reduced-motion` stops all of
-it.
+Where there is no pointer, the light comes to the
+turn instead: one sweep across the face as the card comes round.
+`prefers-reduced-motion` stops all of it.
 
 **Stats and the profile card.** The profile card is the other card: a
 picture, drawn by the site, of events attended, tournaments played and won. In Discord, `/profile` posts the card for everyone to see

@@ -3,15 +3,15 @@ import { Canvas, cleanText, drawable } from '../src/lib/raster';
 import { bracketPng, bracketPictureSize, roundTitle } from '../src/lib/bracket-image';
 import type { BracketMatch } from '../src/lib/db';
 
-// The Worker's own picture drawing: a valid PNG comes out, sized by the
-// bracket, with the right palette.
+// The Worker's own picture drawing: a valid truecolour PNG comes out,
+// sized by the bracket.
 
 function u32(bytes: Uint8Array, at: number): number {
   return ((bytes[at] << 24) | (bytes[at + 1] << 16) | (bytes[at + 2] << 8) | bytes[at + 3]) >>> 0;
 }
 
 describe('Canvas', () => {
-  it('encodes an indexed PNG with the right header and dimensions', async () => {
+  it('encodes a truecolour PNG with the right header and dimensions', async () => {
     const c = new Canvas(30, 20, 0xf5f5f5);
     c.rect(2, 2, 10, 5, 0x4169e1);
     c.text(1, 8, 'Hi ✓', 0x1e1e1e, 's');
@@ -21,7 +21,7 @@ describe('Canvas', () => {
     expect(u32(png, 16)).toBe(30);
     expect(u32(png, 20)).toBe(20);
     expect(png[24]).toBe(8); // bit depth
-    expect(png[25]).toBe(3); // indexed colour
+    expect(png[25]).toBe(6); // truecolour with alpha
     expect(String.fromCharCode(...png.subarray(png.length - 8, png.length - 4))).toBe('IEND');
     expect(Canvas.textWidth('abc')).toBeGreaterThan(20);
     expect(Canvas.textWidth('abc', 'l')).toBeGreaterThan(Canvas.textWidth('abc'));
@@ -36,9 +36,22 @@ describe('Canvas', () => {
   it('clips drawing to the canvas', () => {
     const c = new Canvas(4, 4, 0x000000);
     c.rect(-5, -5, 100, 100, 0xffffff);
-    expect([...new Set(c.pixels)]).toEqual([1]);
+    expect([...new Set(c.pixels)]).toEqual([255]);
     c.rect(10, 10, 5, 5, 0x123456);
-    expect(c.pixels.every((p) => p === 1)).toBe(true);
+    expect(c.pixels.every((p) => p === 255)).toBe(true);
+    expect(c.colorAt(0, 0)).toBe(0xffffff);
+    expect(c.alphaAt(0, 0)).toBe(255);
+  });
+
+  it('blends a colour over what is already there', () => {
+    const c = new Canvas(2, 1, 0x000000);
+    c.blend(0, 0, 0xffffff, 0.5);
+    expect(c.colorAt(0, 0)).toBe(0x808080);
+    c.blend(1, 0, 0xff0000);
+    expect(c.colorAt(1, 0)).toBe(0xff0000);
+    c.blend(5, 0, 0xff0000); // off the canvas, ignored
+    c.clear(0, 0);
+    expect(c.alphaAt(0, 0)).toBe(0);
   });
 });
 

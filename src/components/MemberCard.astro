@@ -153,7 +153,8 @@ const scale = name.length > 22 ? ' id-name-longer' : name.length > 14 ? ' id-nam
   // The card leans away from the pointer, its glare follows it, and it
   // turns over when asked. The lean is only ever custom properties, so the
   // CSS decides what to do with them: a card without JavaScript still
-  // lifts and shines on hover, and one on a touch screen is left alone.
+  // lifts and shines on hover, and one on a touch screen is left alone
+  // until it is turned, which is when the light sweeps across it.
   // The turn is a class on the card, so the button works either way.
   const still = matchMedia('(prefers-reduced-motion: reduce)');
   for (const card of document.querySelectorAll<HTMLElement>('[data-id-card]')) {
@@ -182,43 +183,16 @@ const scale = name.length > 22 ? ' id-name-longer' : name.length > 14 ? ' id-nam
     card.addEventListener('pointerleave', level);
     card.addEventListener('pointercancel', level);
 
-    // No pointer to follow on a phone, so the card takes its cue from the
-    // scroll instead: it leans as it crosses the viewport and the glare
-    // travels down it. Only while the card is on screen, and not at all
-    // when the visitor has asked for less movement.
-    const touch = matchMedia('(hover: none)');
-    if (touch.matches && !still.matches) {
-      let frame = 0;
-      const lean = () => {
-        frame = 0;
-        const box = card.getBoundingClientRect();
-        const middle = (box.top + box.height / 2) / window.innerHeight;
-        const t = Math.max(-1, Math.min(1, (middle - 0.5) * 2));
-        tilt.style.setProperty('--rx', '0deg');
-        tilt.style.setProperty('--ry', `${(t * 7).toFixed(2)}deg`);
-        tilt.style.setProperty('--mx', '50%');
-        tilt.style.setProperty('--my', `${(50 - t * 42).toFixed(1)}%`);
-      };
-      const onScroll = () => {
-        if (!frame) frame = requestAnimationFrame(lean);
-      };
-      new IntersectionObserver((entries) => {
-        for (const entry of entries) {
-          card.classList.toggle('is-lit', entry.isIntersecting);
-          if (entry.isIntersecting) {
-            window.addEventListener('scroll', onScroll, { passive: true });
-            lean();
-          } else {
-            window.removeEventListener('scroll', onScroll);
-          }
-        }
-      }).observe(card);
-    }
-
     const flip = () => {
       const turned = card.classList.toggle('is-turned');
       turn.setAttribute('aria-pressed', String(turned));
       turn.textContent = turned ? 'Turn back' : 'Turn over';
+      level();
+      // A phone has no pointer to catch the light with, so the light comes
+      // to the turn instead: one sweep across the face as it comes round.
+      card.classList.remove('is-shining');
+      void card.offsetWidth; // so a second turn starts the sweep over
+      card.classList.add('is-shining');
     };
     turn.addEventListener('click', flip);
     // Anywhere on the card turns it too, which is what a card invites.

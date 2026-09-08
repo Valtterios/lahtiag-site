@@ -3,6 +3,10 @@
 // no image library, so this is filled rectangles, a pixel font, and a PNG
 // encoder. Indexed colour (one byte per pixel, a palette of at most 256)
 // keeps the raw image small, and the runtime's own deflate does the rest.
+// Truecolour with alpha rather than a palette: a photograph — a member's
+// avatar on their card — has more colours in it than a palette holds, and
+// so does a metallic sweep, while the alpha is what lets a card have
+// rounded corners and a cut one on whatever Discord puts behind it.
 
 import { FONTS, type FontSize } from './font';
 
@@ -68,37 +72,64 @@ function levels(size: FontSize, ch: string): { w: number; px: Uint8Array } {
 }
 
 export class Canvas {
-  readonly pixels: Uint8Array;
-  private readonly palette: number[] = [];
-  private readonly slots = new Map<number, number>(); // colour -> palette index
+  readonly pixels: Uint8Array; // four bytes a pixel, R G B A
 
   constructor(
     readonly width: number,
     readonly height: number,
     background: number,
   ) {
-    this.pixels = new Uint8Array(width * height);
-    this.pixels.fill(this.index(background));
-  }
-
-  // Colours are 0xRRGGBB; each new one takes a palette slot.
-  index(rgb: number): number {
-    const known = this.slots.get(rgb);
-    if (known !== undefined) return known;
-    if (this.palette.length >= 256) throw new Error('palette full');
-    this.palette.push(rgb);
-    this.slots.set(rgb, this.palette.length - 1);
-    return this.palette.length - 1;
+    this.pixels = new Uint8Array(width * height * 4);
+    this.rect(0, 0, width, height, background);
   }
 
   rect(x: number, y: number, w: number, h: number, rgb: number): void {
-    const color = this.index(rgb);
+    const r = (rgb >> 16) & 0xff;
+    const g = (rgb >> 8) & 0xff;
+    const b = rgb & 0xff;
     const x0 = Math.max(0, x);
     const x1 = Math.min(this.width, x + w);
     if (x1 <= x0) return;
     for (let row = Math.max(0, y); row < Math.min(this.height, y + h); row++) {
-      this.pixels.fill(color, row * this.width + x0, row * this.width + x1);
+      let at = (row * this.width + x0) * 4;
+      for (let col = x0; col < x1; col++) {
+        this.pixels[at++] = r;
+        this.pixels[at++] = g;
+        this.pixels[at++] = b;
+        this.pixels[at++] = 0xff;
+      }
     }
+  }
+
+  // One pixel, blended over what is there. Alpha 1 replaces it. Painting
+  // onto a cleared pixel takes the colour rather than muddying it with
+  // whatever was underneath, which is what a card's cut corner wants.
+  blend(x: number, y: number, rgb: number, alpha = 1): void {
+    if (alpha <= 0 || x < 0 || y < 0 || x >= this.width || y >= this.height) return;
+    const at = (y * this.width + x) * 4;
+    const was = this.pixels[at + 3] / 255;
+    const now = alpha + was * (1 - alpha);
+    for (let c = 0; c < 3; c++) {
+      const fg = (rgb >> (16 - 8 * c)) & 0xff;
+      this.pixels[at + c] = Math.round((fg * alpha + this.pixels[at + c] * was * (1 - alpha)) / (now || 1));
+    }
+    this.pixels[at + 3] = Math.round(now * 255);
+  }
+
+  // Rub a pixel out, wholly or partly: how the corners are cut.
+  clear(x: number, y: number, alpha = 1): void {
+    if (x < 0 || y < 0 || x >= this.width || y >= this.height) return;
+    const at = (y * this.width + x) * 4;
+    this.pixels[at + 3] = Math.round(this.pixels[at + 3] * (1 - Math.min(1, Math.max(0, alpha))));
+  }
+
+  colorAt(x: number, y: number): number {
+    const at = (y * this.width + x) * 4;
+    return (this.pixels[at] << 16) | (this.pixels[at + 1] << 8) | this.pixels[at + 2];
+  }
+
+  alphaAt(x: number, y: number): number {
+    return this.pixels[(y * this.width + x) * 4 + 3];
   }
 
   // Anti-aliased text: each glyph pixel carries one of four levels, and
@@ -106,7 +137,6 @@ export class Canvas {
   // edges look smooth on any background. Unknown characters become '?'.
   text(x: number, y: number, text: string, rgb: number, size: FontSize = 's'): void {
     const font = FONTS[size];
-    const solid = this.index(rgb);
     let cx = x;
     for (const ch of text.normalize('NFKC')) {
       if (!(ch in font.glyphs)) continue;
@@ -117,10 +147,7 @@ export class Canvas {
         for (let gx = 0; gx < w; gx++, i++) {
           const level = glyph[i];
           if (level === 0) continue;
-          const px = cx + gx;
-          if (px < 0 || py < 0 || px >= this.width || py >= this.height) continue;
-          const at = py * this.width + px;
-          this.pixels[at] = level === 3 ? solid : this.blended(rgb, this.palette[this.pixels[at]], level / 3);
+          this.blend(cx + gx, py, rgb, level / 3);
         }
       }
       cx += w;
@@ -146,17 +173,6 @@ export class Canvas {
     return `${chars.join('')}..`;
   }
 
-  // The colour between two, by alpha; a full palette falls back to the text colour.
-  private blended(fg: number, bg: number, alpha: number): number {
-    const mix = (shift: number) => Math.round(((bg >> shift) & 0xff) * (1 - alpha) + ((fg >> shift) & 0xff) * alpha);
-    const rgb = (mix(16) << 16) | (mix(8) << 8) | mix(0);
-    try {
-      return this.index(rgb);
-    } catch {
-      return this.index(fg);
-    }
-  }
-
   // A small bitmap (rows of '1'/'.') drawn at a scale, for marks the font
   // lacks, like the winner's tick.
   glyph(x: number, y: number, rows: string[], rgb: number, scale = 2): void {
@@ -168,27 +184,32 @@ export class Canvas {
   }
 
   async png(): Promise<Uint8Array> {
-    const raw = new Uint8Array((this.width + 1) * this.height);
+    const stride = this.width * 4;
+    // Filter 2 (up) on every row but the first: a card is bands of flat
+    // colour, so most rows subtract to zero and deflate eats them.
+    const raw = new Uint8Array((stride + 1) * this.height);
     for (let row = 0; row < this.height; row++) {
-      raw[row * (this.width + 1)] = 0; // filter: none
-      raw.set(this.pixels.subarray(row * this.width, (row + 1) * this.width), row * (this.width + 1) + 1);
+      const to = row * (stride + 1);
+      const from = row * stride;
+      if (row === 0) {
+        raw[to] = 0;
+        raw.set(this.pixels.subarray(0, stride), to + 1);
+        continue;
+      }
+      raw[to] = 2;
+      for (let i = 0; i < stride; i++) {
+        raw[to + 1 + i] = (this.pixels[from + i] - this.pixels[from - stride + i]) & 0xff;
+      }
     }
     const header = new Uint8Array(13);
     const view = new DataView(header.buffer);
     view.setUint32(0, this.width);
     view.setUint32(4, this.height);
     header[8] = 8; // bit depth
-    header[9] = 3; // indexed colour
-    const plte = new Uint8Array(this.palette.length * 3);
-    this.palette.forEach((rgb, i) => {
-      plte[i * 3] = (rgb >> 16) & 0xff;
-      plte[i * 3 + 1] = (rgb >> 8) & 0xff;
-      plte[i * 3 + 2] = rgb & 0xff;
-    });
+    header[9] = 6; // truecolour with alpha
     const parts = [
       new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
       chunk('IHDR', header),
-      chunk('PLTE', plte),
       chunk('IDAT', await deflate(raw)),
       chunk('IEND', new Uint8Array(0)),
     ];
