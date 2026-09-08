@@ -98,9 +98,12 @@ if (Astro.request.method === 'POST') {
     } else {
       // A signed-in applicant's Discord identity comes from the session,
       // never from the form.
+      // Being an active is a Discord role in a Discord channel: without an
+      // account to give it to there is nothing to ask for, whatever the
+      // form was made to say.
       const input = session
         ? { ...parsed.value, discord_name: session.handle ?? session.username }
-        : parsed.value;
+        : { ...parsed.value, wants_active: false };
       try {
         await applyForMembership(env.DB, input, session?.discordId ?? null, now);
       } catch (error) {
@@ -320,14 +323,22 @@ const FIELD_MESSAGES: Record<FieldError, string> = {
           </label>
         </fieldset>
 
-        <label class="check check-standalone">
-          <input type="checkbox" name="wants_active" checked={wantsActive} />
-          <span>
-            <strong>I want to be an active.</strong> Actives hear about event ideas, planning and
-            meetings first, in the actives channel on Discord. The board approves actives. It commits
-            you to nothing.
-          </span>
-        </label>
+        {session ? (
+          <label class="check check-standalone">
+            <input type="checkbox" name="wants_active" checked={wantsActive} />
+            <span>
+              <strong>I want to be an active.</strong> Actives hear about event ideas, planning and
+              meetings first, in the actives channel on Discord. The board approves actives. It commits
+              you to nothing.
+            </span>
+          </label>
+        ) : (
+          <p class="queue-meta">
+            Actives talk in their own channel on Discord and are given the role there, so asking to be one
+            needs the account it would be given to. Sign in with Discord above and the box appears — or ask
+            the board later from your membership page.
+          </p>
+        )}
 
         <label class={bad('message')}>
           Questions or a message to the board
@@ -341,6 +352,24 @@ const FIELD_MESSAGES: Record<FieldError, string> = {
             handle my information according to the <a href="/privacy">privacy policy</a>. *
           </span>
         </label>
+
+        {!session && (
+          <div class="join-signin">
+            <p>
+              <strong>You are not signed in with Discord.</strong> Signing in first is the difference between
+              an application that finds you and one the board has to match up by hand: the member role in the
+              server comes on its own, you can ask to be an active, and you get a membership page of your own
+              to fix your details on. It takes one click and brings you back here with the form as you left it.
+            </p>
+            <p class="entry-actions">
+              <a class="btn btn-primary" href="/login?next=/join">Sign in with Discord</a>
+            </p>
+            <p class="queue-meta">
+              You can send it without signing in — nobody is turned away for it, and the board links your
+              account later.
+            </p>
+          </div>
+        )}
 
         <button class="btn btn-cta" type="submit">Send application</button>
       </form>

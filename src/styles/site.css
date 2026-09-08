@@ -2330,8 +2330,26 @@ a:hover {
   margin: 1.4rem 0;
 }
 
-.publish-ping,
-.ping-pick {
+/* The last word before the application goes: signing in with Discord
+   first is worth a paragraph where the button is, not only at the top of
+   the page where it was read five minutes ago (join.astro). */
+.join-signin {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--blue);
+  background: var(--bg);
+  padding: 1rem 1.1rem;
+  margin: 0.5rem 0 0.2rem;
+}
+
+.join-signin p {
+  margin: 0 0 0.6rem;
+}
+
+.join-signin p:last-child {
+  margin-bottom: 0;
+}
+
+.publish-ping {
   border: 0;
   margin: 0;
   padding: 0;
@@ -2341,8 +2359,7 @@ a:hover {
   overflow-y: auto;
 }
 
-.publish-ping legend,
-.ping-pick legend {
+.publish-ping legend {
   padding: 0;
   margin-bottom: 0.2rem;
 }

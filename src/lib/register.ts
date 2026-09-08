@@ -117,6 +117,32 @@ function optional(form: FormData, name: string, max: number): string | null {
 
 // Telegram and Discord handles: people paste "@name", "name", or a full
 // t.me link. Keep what they typed minus a leading @ and surrounding noise.
+// The corrections the board asks for over and over, in the association's
+// own voice and with the reason it has to ask. The board picks one and
+// edits it before it goes; nothing is sent that nobody read.
+export const FIX_PRESETS: { label: string; text: string }[] = [
+  {
+    label: 'Full name (first and last)',
+    text: "The Associations Act requires the association to record each member's full name and home municipality, so we need your surname as well as your first name. Add it under Your details and save — that is all we need.",
+  },
+  {
+    label: 'Home municipality',
+    text: "The Associations Act requires the association to record each member's full name and home municipality (kotikunta). Could you fill your municipality in under Your details?",
+  },
+  {
+    label: 'Email address',
+    text: 'The email address on your application looks like it might have a typo in it, and it is how the association reaches you about meetings and membership. Could you check it under Your details?',
+  },
+  {
+    label: 'Discord handle',
+    text: 'We could not find the Discord account your application gives. Could you check the handle under Your details? It is what gets you the member role in the server.',
+  },
+  {
+    label: 'Where you study',
+    text: 'Could you check where you study and which student union you belong to? It decides which class of member you are, and we would rather ask than guess.',
+  },
+];
+
 export function normalizeHandle(raw: string): string | null {
   const value = raw.replace(/\s+/g, ' ').trim();
   if (value === '') return null;

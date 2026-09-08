@@ -15,6 +15,7 @@ import {
   MEMBER_TYPES,
   MEMBER_TYPE_LABELS,
   LIMITS,
+  FIX_PRESETS,
   sameHandle,
 } from '../../../lib/register';
 import { formatHelsinkiDate } from '../../../lib/time';
@@ -169,8 +170,15 @@ const SOURCE: Record<string, string> = {
               <form method="post" action={`/register/${entry.id}/action`} class="app-form">
                 <input type="hidden" name="csrf" value={csrf} />
                 <label>
+                  A common reason
+                  <select data-fix-preset>
+                    <option value="">Write your own…</option>
+                    {FIX_PRESETS.map((p) => <option value={p.text}>{p.label}</option>)}
+                  </select>
+                </label>
+                <label>
                   What needs fixing (they read this)
-                  <textarea name="fix_note" rows="2" maxlength="400" required placeholder="The association needs your full name, first and last — could you add your surname?"></textarea>
+                  <textarea name="fix_note" rows="3" maxlength="400" required data-fix-note placeholder="Could you add your surname? The association has to have your full name."></textarea>
                 </label>
                 <button class="btn btn-ghost" name="action" value="fix" type="submit">Ask for a correction</button>
               </form>
@@ -277,3 +285,15 @@ const SOURCE: Record<string, string> = {
     </>
   )}
 </Base>
+
+<script>
+  // The common reasons fill the box rather than being sent as they are:
+  // whatever reaches the applicant is something the board looked at.
+  const preset = document.querySelector<HTMLSelectElement>('[data-fix-preset]');
+  const note = document.querySelector<HTMLTextAreaElement>('[data-fix-note]');
+  preset?.addEventListener('change', () => {
+    if (!note || preset.value === '') return;
+    note.value = preset.value;
+    note.focus();
+  });
+</script>
