@@ -2532,6 +2532,11 @@ a:hover {
   gap: 0.3rem;
   font-size: 0.85rem;
   color: var(--muted);
+  /* A grid item is as wide as its widest child unless told otherwise, and
+     a <select> is as wide as its longest option — so "KOE (LAB student
+     union)" pushed the right-hand column of a two-column form past the
+     card's edge. Both the label and the control give up that claim. */
+  min-width: 0;
 }
 
 .app-form input,
@@ -2542,6 +2547,8 @@ a:hover {
   background: var(--bg);
   border: 1px solid var(--line);
   padding: 0.5rem 0.7rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .app-form input:focus,
