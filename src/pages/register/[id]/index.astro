@@ -164,9 +164,21 @@ const SOURCE: Record<string, string> = {
             <>
               <p class="queue-intro">
                 For an application that is nearly right — a first name where the association needs the full one, an
-                address with a typo. The application stays in the queue; they get this on Discord if their account is
-                linked, and see it on their membership page either way.
+                address with a typo. The application stays in the queue either way.
               </p>
+              {entry.discord_id ? (
+                <p class="queue-intro">
+                  They get it as a Discord message, and it sits on their own membership page above the form that
+                  answers it. Saving their details clears it and puts the application back in front of you.
+                </p>
+              ) : (
+                <p class="queue-intro warn-tag">
+                  This application has no Discord account linked, so the site cannot reach them and cannot give them a
+                  page to fix it on: <strong>nothing is sent</strong>. Write to {entry.email} yourself. Saving the note
+                  here marks the application <em>waiting on them</em> so the queue remembers, and their answer is yours
+                  to type into the fields above.
+                </p>
+              )}
               <form method="post" action={`/register/${entry.id}/action`} class="app-form">
                 <input type="hidden" name="csrf" value={csrf} />
                 <label>

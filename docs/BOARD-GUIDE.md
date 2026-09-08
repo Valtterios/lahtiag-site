@@ -113,6 +113,14 @@ the bottom right lets you view a page as a member or a visitor would.
   Nobody is rejected for a typo, and nobody on the board has to guess at
   a surname.
 
+- **An applicant without Discord** has no membership page and cannot be
+  messaged, so nothing is sent and the panel says so: write to the email
+  on the application, and type their answer into the fields yourself.
+  Saving the note still marks the application *waiting on them* so the
+  queue remembers where it stands. If they later sign in with Discord and
+  claim the entry with that same email (the join page), the page becomes
+  theirs and they keep it current themselves.
+
 ![Asking an applicant for a correction](images/site/register-fix-ask.png)
 
 *Under the application on its own page: 1 a common reason fills the box — edit it, it is your words that go — then 2 send it. The application keeps its place in the queue.*
