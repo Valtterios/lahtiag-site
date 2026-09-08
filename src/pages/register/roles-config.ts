@@ -6,8 +6,9 @@ import { setSetting } from '../../lib/db';
 import { listGuildRoles } from '../../lib/discord';
 import { DISCORD_GUILD_ID } from '../../lib/config';
 
-// Which Discord roles the register mirrors, chosen from the server's own
-// list so a stray id cannot be typed in.
+// Which Discord roles the register mirrors, and who an event's
+// announcement pings by default — all chosen from the server's own list,
+// so a stray id cannot be typed in.
 
 export const POST: APIRoute = async ({ request, redirect }) => {
   const board = await requireBoard(request, env);
@@ -29,11 +30,16 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   const champion = pick('champion_role_id');
   const participant = pick('participant_role_id');
   if (member === null || actives === null || champion === null || participant === null) return redirect('/register?err=bad_role', 303);
+  // The standing choice for events: any number of roles, or everyone.
+  const wanted = form.getAll('event_ping_roles').map(String).filter((v) => v !== '');
+  if (wanted.some((v) => v !== 'everyone' && !known.has(v))) return redirect('/register?err=bad_role', 303);
+  const eventPing = wanted.includes('everyone') ? 'everyone' : [...new Set(wanted)].join(',');
 
   const now = Math.floor(Date.now() / 1000);
   await setSetting(env.DB, 'member_role_id', member, board.email, now);
   await setSetting(env.DB, 'actives_role_id', actives, board.email, now);
   await setSetting(env.DB, 'champion_role_id', champion, board.email, now);
   await setSetting(env.DB, 'participant_role_id', participant, board.email, now);
+  await setSetting(env.DB, 'event_ping_roles', eventPing, board.email, now);
   return redirect('/register?ok=roles_saved#roles', 303);
 };

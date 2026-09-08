@@ -2314,17 +2314,21 @@ a:hover {
 }
 
 /* Who the announcement pings, chosen with the Publish button rather than
-   buried in the event's own fields: it is a decision about this moment. */
+   buried in the event's own fields: it is a decision about this moment.
+   Several may be ticked, and the board's standing choice comes ticked. */
 .publish-ping {
+  border: 0;
+  margin: 0;
+  padding: 0;
   display: grid;
-  gap: 0.2rem;
-  font-size: 0.9rem;
-  color: var(--muted);
+  gap: 0.35rem;
+  max-height: 11rem;
+  overflow-y: auto;
 }
 
-.publish-ping select {
-  justify-self: start;
-  min-width: 12rem;
+.publish-ping legend {
+  padding: 0;
+  margin-bottom: 0.2rem;
 }
 
 .signup-bar .btn[disabled] {

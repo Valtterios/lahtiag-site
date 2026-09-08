@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { upsertMember, createAnnouncement, listAnnouncements, deleteAnnouncement, getAnnouncement, updateAnnouncement, getAnnouncementCover, setAnnouncementCover, deleteAnnouncementCover, COVER_MAX_BYTES } from '../src/lib/db';
-import { newsCoverFile, newsText, newsParts, newsMessages, pingMentions, parsePing, pingLabel } from '../src/lib/news';
+import { newsCoverFile, newsText, newsParts, newsMessages, pingMentions, parsePing, parsePings, pingLabel } from '../src/lib/news';
 import { publishAnnouncement, unpublishAnnouncement, setAnnouncementMessages } from '../src/lib/db';
 
 // A news post's cover: saved, listed as a version, attached for Discord,
@@ -32,6 +32,17 @@ describe('news covers', () => {
     expect(pingLabel('42', new Map([['42', 'Minecraft']]))).toBe('@Minecraft');
     expect(pingLabel('everyone', new Map())).toBe('@everyone');
     expect(pingLabel(null, new Map())).toBeNull();
+    // Several roles live in the one column, comma by comma; @everyone
+    // reaches everybody a role would, so it takes the others' place.
+    expect(parsePings([])).toBeNull();
+    expect(parsePings(['', 'none'])).toBeNull();
+    expect(parsePings(['42000000000000000', '43000000000000000'])).toBe('42000000000000000,43000000000000000');
+    expect(parsePings(['42000000000000000', '42000000000000000'])).toBe('42000000000000000');
+    expect(parsePings(['42000000000000000', 'everyone'])).toBe('everyone');
+    expect(() => parsePings(['42000000000000000', 'nonsense'])).toThrow();
+    expect(pingMentions('42,43')).toEqual({ parse: [], roles: ['42', '43'] });
+    expect(newsParts({ title: 'T', body_md: 'B', ping: '42,43' })).toEqual(['<@&42> <@&43> 📣 **T**\nB']);
+    expect(pingLabel('42,43', new Map([['42', 'Minecraft'], ['43', 'CS2']]))).toBe('@Minecraft @CS2');
     const id = await createAnnouncement(db(), { title: 'Ping', body_md: 'x', author_id: 'board', source: 'web', draft: true, ping: 'everyone' }, NOW);
     expect((await getAnnouncement(db(), id))?.ping).toBe('everyone');
     expect((await updateAnnouncement(db(), id, { title: 'Ping', body_md: 'x', ping: '42' }))?.ping).toBe('42');

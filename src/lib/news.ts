@@ -48,21 +48,37 @@ export function newsExcerpt(post: Pick<AnnouncementRow, 'body_md'>, max = 160): 
   return `${(space > max - 30 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
 
+// One choice or several, in the one column: role ids separated by
+// commas, the word 'everyone', or nothing. A single id — which is all
+// this ever held before — reads the same either way. @everyone reaches
+// everybody a role would, so choosing it drops the roles.
+export function parsePings(raw: (string | null | undefined)[]): string | null {
+  const values = raw.map((v) => (v ?? '').trim()).filter((v) => v !== '' && v !== 'none');
+  if (values.includes('everyone')) return 'everyone';
+  const ids = [...new Set(values)];
+  if (ids.length === 0) return null;
+  if (ids.some((id) => !/^\d{17,20}$/.test(id))) throw new RuleError('bad_input', 'Unknown ping choice.');
+  return ids.join(',');
+}
+
 export function parsePing(raw: string | null | undefined): string | null {
-  const text = (raw ?? '').trim();
-  if (text === '' || text === 'none') return null;
-  if (text === 'everyone') return 'everyone';
-  if (/^\d{17,20}$/.test(text)) return text;
-  throw new RuleError('bad_input', 'Unknown ping choice.');
+  return parsePings([raw]);
+}
+
+export function pingRoles(ping: string | null): string[] {
+  return ping && ping !== 'everyone' ? ping.split(',').filter(Boolean) : [];
 }
 
 export function pingPrefix(ping: string | null): string {
-  return ping === 'everyone' ? '@everyone ' : ping ? `<@&${ping}> ` : '';
+  if (ping === 'everyone') return '@everyone ';
+  const roles = pingRoles(ping);
+  return roles.length > 0 ? `${roles.map((id) => `<@&${id}>`).join(' ')} ` : '';
 }
 
 export function pingMentions(ping: string | null): { parse: string[]; roles?: string[] } {
   if (ping === 'everyone') return { parse: ['everyone'] };
-  if (ping) return { parse: [], roles: [ping] };
+  const roles = pingRoles(ping);
+  if (roles.length > 0) return { parse: [], roles };
   return NO_MENTIONS;
 }
 
@@ -109,7 +125,8 @@ export function newsParts(post: Pick<AnnouncementRow, 'title' | 'body_md' | 'pin
 export function pingLabel(ping: string | null, roleNames: Map<string, string>): string | null {
   if (!ping) return null;
   if (ping === 'everyone') return '@everyone';
-  return `@${roleNames.get(ping) ?? 'a role'}`;
+  const roles = pingRoles(ping);
+  return roles.length > 0 ? roles.map((id) => `@${roleNames.get(id) ?? 'a role'}`).join(' ') : null;
 }
 
 export async function newsCoverFile(db: D1Database, id: number): Promise<MessageFile | null> {

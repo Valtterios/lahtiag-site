@@ -5,6 +5,7 @@ import SessionBox from '../../../components/SessionBox.astro';
 import { currentSession, ensureCsrf, viewAs } from '../../../lib/guard';
 import ViewAs from '../../../components/ViewAs.astro';
 import {
+  getSettings,
   getEvent,
   listSignups,
   listEventTeams,
@@ -86,12 +87,15 @@ const sales = event && session?.isAdmin && types.length > 0 ? await salesSummary
 const botOn = Boolean(env.DISCORD_BOT_TOKEN);
 // Who the announcement may ping, asked for only on the Publish card of a
 // draft — the one moment the choice is made, and the only page render
-// worth a round trip to Discord for the role list.
+// worth a round trip to Discord for the role list. Most events want the
+// same roles, so the board's standing choice comes ticked and can be
+// unticked; an event that has been published once keeps its own.
 const pingRoles = draft && session?.isAdmin && env.DISCORD_BOT_TOKEN
   ? ((await listGuildRoles(env.DISCORD_BOT_TOKEN, DISCORD_GUILD_ID)) ?? [])
       .filter((r) => r.name !== '@everyone' && !r.managed)
       .sort((a, b) => a.name.localeCompare(b.name))
   : [];
+const pingNow = new Set((event?.ping ?? (draft ? ((await getSettings(env.DB)).event_ping_roles ?? '') : '')).split(',').filter(Boolean));
 const discordParticipants = event ? participantIds(signups).length : 0;
 const discordGrants = event && session?.isAdmin && event.discord_role_id ? await countGrants(env.DB, event.id) : 0;
 const eventChannels = event && session?.isAdmin && (event.discord_category_id || event.discord_channel_id) ? await listEventChannels(env.DB, event.id) : [];
@@ -394,14 +398,13 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 <label class="check"><input type="radio" name="discord_setup" value="none" /> <span>Nothing beyond the event list</span></label>
               </fieldset>
             )}
-            <label class="publish-ping">
-              Ping on Discord
-              <select name="ping">
-                <option value="" selected={!event.ping}>Nobody</option>
-                <option value="everyone" selected={event.ping === 'everyone'}>@everyone</option>
-                {pingRoles.map((r) => <option value={r.id} selected={event.ping === r.id}>@{r.name}</option>)}
-              </select>
-            </label>
+            <fieldset class="publish-ping">
+              <legend class="queue-meta">Ping on Discord (as many as you like):</legend>
+              <label class="check"><input type="checkbox" name="ping" value="everyone" checked={pingNow.has('everyone')} /> <span>@everyone</span></label>
+              {pingRoles.map((r) => (
+                <label class="check"><input type="checkbox" name="ping" value={r.id} checked={pingNow.has(r.id)} /> <span>@{r.name}</span></label>
+              ))}
+            </fieldset>
             <button class="btn btn-cta" type="submit" data-confirm="Publish this event? It goes on Discord right away.">Publish</button>
           </form>
         </div>
