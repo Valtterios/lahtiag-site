@@ -3,7 +3,6 @@ import type { APIRoute } from 'astro';
 import {
   editInteractionReply,
   editInteractionReplyWithFile,
-  eventAnnouncement,
   fetchGuildMemberRoles,
   hasAdminRole,
   postWebhook,

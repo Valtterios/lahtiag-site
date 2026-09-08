@@ -51,14 +51,22 @@ export function countsLine(event: Pick<EventWithCounts, 'yes_count' | 'maybe_cou
 // stays visible in the message, and editing it later notifies nobody
 // again — only the first posting rings.
 export function announcementText(event: EventWithCounts, origin: string): string {
-  return `${pingPrefix(event.ping)}${eventAnnouncement({
+  const ping = pingPrefix(event.ping);
+  const counts = countsLine(event);
+  // Discord holds 2000 characters; the description takes what the rest
+  // of the message leaves, with a little room to spare.
+  const room = 1900 - ping.length - counts.length;
+  return `${ping}${eventAnnouncement({
     title: event.title,
     startsAt: event.starts_at,
     endsAt: event.ends_at,
     organizers: event.organizers,
     teamSize: event.team_size,
+    location: event.location,
+    description: event.description,
+    room,
     url: `${origin}/events/${event.id}`,
-  })}\n${countsLine(event)}`;
+  })}\n${counts}`;
 }
 
 // Buttons: signups for a plain event, a link to the tickets for a ticketed

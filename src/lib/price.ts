@@ -29,11 +29,17 @@ export function ticketRange(event: EventWithCounts): { price: string; member: st
   return { price, member: from === to ? `members ${euro(from)}` : `members ${euro(from)} – ${euro(to)}` };
 }
 
-// How many places are left, and whether that is none.
+// How many places are left for a person, and whether that is none. A
+// team event's capacity counts teams, but nobody signing up thinks in
+// teams: what they want to know is whether there is room for them, so
+// the team slots are multiplied out into the places they hold — the
+// line-up and the bench of every team the event can still field — and
+// everyone already signed up is taken off, whether or not they have
+// found a team yet.
 export function seatsLeft(event: EventWithCounts): number | null {
   if (event.capacity === null) return null;
-  const taken = event.team_size !== null ? event.teams_count : event.yes_count;
-  return Math.max(0, event.capacity - taken);
+  if (event.team_size === null) return Math.max(0, event.capacity - event.yes_count);
+  return Math.max(0, event.capacity * (event.team_size + (event.team_reserves ?? 0)) - event.yes_count);
 }
 
 export function isFull(event: EventWithCounts): boolean {

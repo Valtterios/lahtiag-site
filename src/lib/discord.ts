@@ -7,8 +7,24 @@ const API = 'https://discord.com/api/v10';
 
 import { formatHelsinkiRange } from './time';
 
+// As much of the event's own words as there is room for, cut at a
+// paragraph if it can be, at a sentence or a word if it cannot. A run of
+// blank lines closes up: the channel is not the page.
+export function blurb(description: string | null | undefined, room: number): string {
+  const text = (description ?? '').replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  if (!text || room < 80) return '';
+  if (text.length <= room) return text;
+  const cut = text.slice(0, room - 1);
+  const at = Math.max(cut.lastIndexOf('\n\n'), cut.lastIndexOf('. ') + 1, cut.lastIndexOf('\n'));
+  return `${(at > room * 0.4 ? cut.slice(0, at) : cut.slice(0, cut.lastIndexOf(' '))).trimEnd()}…`;
+}
+
 // The one true shape of an event announcement, shared by create (web and
 // slash command) and edit so an edited event's message stays consistent.
+// It reads like a news post: the headline, when and where, then the
+// event's own description, then the way in. `room` is what Discord's
+// 2000 characters leave for the description once the caller's ping and
+// counts are accounted for; without it the description is left off.
 export function eventAnnouncement(input: {
   title: string;
   startsAt: number;
@@ -16,10 +32,17 @@ export function eventAnnouncement(input: {
   organizers: string | null;
   teamSize: number | null;
   url: string;
+  location?: string | null;
+  description?: string | null;
+  room?: number;
 }): string {
+  const where = input.location?.trim() ? ` · ${input.location.trim()}` : '';
   const byLine = input.organizers ? `\nOrganized by ${input.organizers}` : '';
   const teamsLine = input.teamSize ? `\nTeams of ${input.teamSize}, form yours on the site!` : '';
-  return `📅 **${input.title.trim()}**\n${formatHelsinkiRange(input.startsAt, input.endsAt)}${byLine}${teamsLine}\nSign up: ${input.url}`;
+  const head = `📅 **${input.title.trim()}**\n${formatHelsinkiRange(input.startsAt, input.endsAt)}${where}${byLine}${teamsLine}`;
+  const tail = `\nSign up: ${input.url}`;
+  const body = blurb(input.description, (input.room ?? 0) - head.length - tail.length - 2);
+  return `${head}${body ? `\n\n${body}\n` : ''}${tail}`;
 }
 
 // Heads-up to the board's private channel when someone applies for

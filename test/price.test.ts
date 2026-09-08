@@ -11,6 +11,7 @@ const event = (over: Partial<EventWithCounts> = {}): EventWithCounts =>
     title: 'LAN',
     capacity: null,
     team_size: null,
+    team_reserves: 0,
     members_only: 0,
     yes_count: 0,
     maybe_count: 0,
@@ -50,10 +51,17 @@ describe('what a ticket costs', () => {
     });
   });
 
-  it('counts the seats left, teams for a team event', () => {
+  it('counts the places left for a person, teams multiplied out', () => {
     expect(seatsLeft(event())).toBeNull();
     expect(seatsLeft(event({ capacity: 38, yes_count: 12 }))).toBe(38 - 12);
-    expect(seatsLeft(event({ capacity: 8, teams_count: 4, yes_count: 16, team_size: 5 }))).toBe(4);
+    // Eight teams of five: forty places, sixteen of them taken. Whether
+    // those sixteen have found a team yet makes no difference.
+    expect(seatsLeft(event({ capacity: 8, teams_count: 4, yes_count: 16, team_size: 5 }))).toBe(24);
+    // Four teams of two, nobody signed up: eight places, which is what
+    // a capacity of four teams actually means to somebody reading it.
+    expect(seatsLeft(event({ capacity: 4, teams_count: 0, yes_count: 0, team_size: 2 }))).toBe(8);
+    // A bench is a place too.
+    expect(seatsLeft(event({ capacity: 4, teams_count: 0, yes_count: 0, team_size: 2, team_reserves: 1 }))).toBe(12);
     // Over capacity (the board let someone in anyway) is none left, never negative.
     expect(seatsLeft(event({ capacity: 12, yes_count: 13 }))).toBe(0);
     expect(isFull(event({ capacity: 12, yes_count: 12 }))).toBe(true);

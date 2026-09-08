@@ -84,7 +84,7 @@ const flash =
               {event.members_only === 1 && <span class="status-badge status-member">Members only</span>}
               {isFull(event) && <span class="status-badge status-muted">{event.ticket_types > 0 ? 'Sold out' : 'Full'}</span>}
               {!isFull(event) && seatsLeft(event) !== null && seatsLeft(event)! <= 5 && (
-                <span class="status-badge status-pending">{seatsLeft(event)} {event.team_size !== null ? 'team slots left' : 'left'}</span>
+                <span class="status-badge status-pending">{seatsLeft(event)} left</span>
               )}
             </p>
           </div>
