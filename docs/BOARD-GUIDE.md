@@ -100,6 +100,19 @@ the bottom right lets you view a page as a member or a visitor would.
   channel and the Actives page — it is a second decision, and the whole
   board makes it.
 
+- **An application that is nearly right.** Somebody applies as "Nina"
+  when the association has to record a full name, or mistypes their
+  address. On the entry's own page, under the application, there is *Ask
+  them to put something right*: pick one of the common reasons — full
+  name, home municipality, email, Discord handle, where you study, each
+  with the reason the association has to ask — or write your own, and
+  send it. They get it as a Discord message when their account is linked,
+  and either way it sits on their own membership page above the form that
+  answers it. The application stays in the queue, marked *waiting on
+  them*, and the note clears itself the moment they save their details.
+  Nobody is rejected for a typo, and nobody on the board has to guess at
+  a surname.
+
 ![The register](images/site/register-toolbar.png)
 
 *The register's toolbar: 1 Add entry, 2 Venue lookup (the member check), 3 Access, 4 Export CSV. The tiles count members, pending applications, actives and former members.*
@@ -307,15 +320,6 @@ at the door.*
 ![The Hall of Fame](images/site/history-hall.png)
 
 *The history page: the Hall of Fame with the final bracket picture, and the leaderboard.*
-
-- **An application that is nearly right.** On the entry's own page there
-  is *Ask them to put something right*: write what needs fixing — a first
-  name where the association needs the full one, an address with a typo —
-  and the applicant gets it on Discord (when their account is linked) and
-  on their own membership page, beside the form that answers it. The
-  application stays in the queue, marked "waiting on them", and the note
-  clears itself the moment they save their details. Nobody is rejected
-  for a typo, and the board doesn't have to guess at somebody's surname.
 
 - **Signups open and close by the clock.** Both are fields on the event:
   leave the opening empty and signups open when you publish, leave the
