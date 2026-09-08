@@ -4,6 +4,7 @@ import {
   editInteractionReply,
   editInteractionReplyWithFile,
   eventAnnouncement,
+  fetchGuildMemberRoles,
   hasAdminRole,
   postWebhook,
   verifyInteractionSignature,
@@ -941,7 +942,12 @@ async function profileCard(env: WorkerEnv, interaction: Interaction, targetId: s
     cached?.username,
   ].filter((n): n is string => Boolean(n));
   const name = candidates.find((n) => cleanText(n) === n.trim()) ?? candidates.map(cleanText).find((n) => n.length > 0) ?? 'Member';
-  const roles = targetId === invoker?.id ? (interaction.member?.roles ?? []) : (interaction.data?.resolved?.members?.[targetId]?.roles ?? []);
+  // Whose roles the interaction carries: the presser's always, the
+  // picked user's with a command. Turning somebody else's card over
+  // carries neither, and without them a board member's card came back in
+  // the ordinary blue — so the bot is asked instead.
+  const carried = targetId === invoker?.id ? interaction.member?.roles : interaction.data?.resolved?.members?.[targetId]?.roles;
+  const roles = carried ?? (env.DISCORD_BOT_TOKEN ? ((await fetchGuildMemberRoles(env.DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, targetId)) ?? []) : []);
   try {
     const face = await cardFace(
       env.DB,

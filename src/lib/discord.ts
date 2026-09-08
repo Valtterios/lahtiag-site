@@ -405,6 +405,23 @@ export async function listGuildMemberRoles(botToken: string, guildId: string): P
   return { ok: true, roles, members };
 }
 
+// One member's roles, asked of the bot. An interaction carries them for
+// whoever typed the command and for the user they picked — and for
+// nobody else, which is why a card turned over by somebody else came
+// back without the board's own stock on it.
+export async function fetchGuildMemberRoles(botToken: string, guildId: string, userId: string): Promise<string[] | null> {
+  try {
+    const response = await fetch(`${API}/guilds/${guildId}/members/${userId}`, {
+      headers: { authorization: `Bot ${botToken}` },
+    });
+    if (!response.ok) return null;
+    const member = (await response.json()) as { roles?: string[] };
+    return member.roles ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export interface GuildRole {
   id: string;
   name: string;
