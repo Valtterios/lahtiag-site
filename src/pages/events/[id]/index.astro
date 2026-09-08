@@ -26,7 +26,8 @@ import {
   type TicketTypeWithSales,
 } from '../../../lib/db';
 import { channelUrl, scheduledEventUrl, countGrants, participantIds, listEventChannels, syncInterestInBackground, EVENT_CATEGORY_NAME } from '../../../lib/event-discord';
-import { avatarUrl } from '../../../lib/discord';
+import { avatarUrl, listGuildRoles } from '../../../lib/discord';
+import { DISCORD_GUILD_ID } from '../../../lib/config';
 import { questionOptions, answersComplete, QUESTION_KINDS } from '../../../lib/questions';
 import { purchaseOffer, pendingPurchaseFor, resumablePurchase } from '../../../lib/purchases';
 import { readBasket, basketCount } from '../../../lib/basket';
@@ -83,6 +84,14 @@ const access = event && session ? await signupAccess(env.DB, event, session.disc
 const sales = event && session?.isAdmin && types.length > 0 ? await salesSummary(env.DB, event.id) : null;
 // The event's own Discord role and channel (board tools): who holds the role.
 const botOn = Boolean(env.DISCORD_BOT_TOKEN);
+// Who the announcement may ping, asked for only on the Publish card of a
+// draft — the one moment the choice is made, and the only page render
+// worth a round trip to Discord for the role list.
+const pingRoles = draft && session?.isAdmin && env.DISCORD_BOT_TOKEN
+  ? ((await listGuildRoles(env.DISCORD_BOT_TOKEN, DISCORD_GUILD_ID)) ?? [])
+      .filter((r) => r.name !== '@everyone' && !r.managed)
+      .sort((a, b) => a.name.localeCompare(b.name))
+  : [];
 const discordParticipants = event ? participantIds(signups).length : 0;
 const discordGrants = event && session?.isAdmin && event.discord_role_id ? await countGrants(env.DB, event.id) : 0;
 const eventChannels = event && session?.isAdmin && (event.discord_category_id || event.discord_channel_id) ? await listEventChannels(env.DB, event.id) : [];
@@ -385,6 +394,14 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 <label class="check"><input type="radio" name="discord_setup" value="none" /> <span>Nothing beyond the event list</span></label>
               </fieldset>
             )}
+            <label class="publish-ping">
+              Ping on Discord
+              <select name="ping">
+                <option value="" selected={!event.ping}>Nobody</option>
+                <option value="everyone" selected={event.ping === 'everyone'}>@everyone</option>
+                {pingRoles.map((r) => <option value={r.id} selected={event.ping === r.id}>@{r.name}</option>)}
+              </select>
+            </label>
             <button class="btn btn-cta" type="submit" data-confirm="Publish this event? It goes on Discord right away.">Publish</button>
           </form>
         </div>
@@ -950,7 +967,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               </label>
               <label>
                 Seats reserved for members
-                <input name="member_slots" type="number" min="1" value={event.member_slots ?? ''} placeholder="empty = none; only with a capacity" />
+                <input name="member_slots" type="number" min="1" value={event.member_slots ?? ''} placeholder="empty = none; needs a capacity, individual events only" />
               </label>
               <label>Signups open on <input name="open_date" type="date" value={event.signups_open_at !== null ? unixToHelsinkiInputs(event.signups_open_at).date : ''} /></label>
               <label>Signups open at (Helsinki) <input name="open_time" type="time" value={event.signups_open_at !== null ? unixToHelsinkiInputs(event.signups_open_at).time : ''} placeholder="empty = when published" /></label>

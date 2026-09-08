@@ -78,6 +78,7 @@ export interface EventRow {
   published_at: number | null; // null: a draft only the board sees
   link_url: string | null; // optional stream/info link
   display_note: string | null; // live message for the venue display
+  ping: string | null; // who the announcement pings: null, 'everyone', or a role id
   photo_credit: string | null; // who took the photos, shown under them
   cancel_message_id: string | null; // the Discord "cancelled" post, removed on reinstate
   members_only: number; // 1 = signups and tickets need a linked, current member
@@ -498,6 +499,12 @@ export async function deleteEvent(db: D1Database, id: number): Promise<EventRow>
     db.prepare('DELETE FROM events WHERE id = ?1').bind(id),
   ]);
   return event;
+}
+
+// Who the announcement pings, chosen on the Publish card and kept for a
+// repost. Validated by the caller (src/lib/news.ts, parsePing).
+export async function setEventPing(db: D1Database, id: number, ping: string | null): Promise<void> {
+  await db.prepare('UPDATE events SET ping = ?2 WHERE id = ?1').bind(id, ping).run();
 }
 
 export async function setEventMessageId(db: D1Database, id: number, messageId: string): Promise<void> {

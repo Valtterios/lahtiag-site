@@ -56,7 +56,7 @@ export function parsePing(raw: string | null | undefined): string | null {
   throw new RuleError('bad_input', 'Unknown ping choice.');
 }
 
-function pingPrefix(ping: string | null): string {
+export function pingPrefix(ping: string | null): string {
   return ping === 'everyone' ? '@everyone ' : ping ? `<@&${ping}> ` : '';
 }
 

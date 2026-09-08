@@ -1,7 +1,8 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { publishEvent, RuleError } from '../../../lib/db';
+import { publishEvent, setEventPing, RuleError } from '../../../lib/db';
+import { parsePing } from '../../../lib/news';
 import { syncScheduledEvent, setUpEventDiscord } from '../../../lib/event-discord';
 import { postEventAnnouncement } from '../../../lib/announce';
 
@@ -18,6 +19,9 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
   const form = await request.formData();
   if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf`, 303);
   try {
+    // Who to ping is chosen on the Publish card, saved before the post
+    // goes out, and kept: reposting the announcement rings the same bell.
+    await setEventPing(env.DB, id, parsePing(String(form.get('ping') ?? '')));
     const event = await publishEvent(env.DB, id, Math.floor(Date.now() / 1000));
     void event;
     // The announcement, with the cover and the signup buttons.

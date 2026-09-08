@@ -87,6 +87,17 @@ returns to the categories):
 *`/board` in Discord: Event, Bracket and Announce & screen open the buttons; Whitelist, Register and News link to the site. Only the person who typed it sees the panel.*
 
 
+0. **Publishing and the ping.** The Publish card on a draft's page asks
+   who the announcement should ping: nobody (the default), `@everyone`,
+   or one of the server's roles — the same three choices a news post has.
+   The mention is part of the announcement's own text, so editing the
+   post later (a new time, the counts) rings nobody a second time;
+   reposting it from Board tools → Discord does, with the same choice.
+   The announcement itself is a headline, not the event: title, when,
+   organizers, team size, the sign-up link, the counts and the cover
+   picture. The description stays on the site — unlike a news post,
+   whose whole body goes to Discord.
+
 1. **📅 Create event** (Event) — fill the form. A team size makes it a
    tournament-style event where members form their own teams on the site;
    empty means individual signups. On the site's form there is also

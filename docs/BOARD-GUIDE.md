@@ -308,6 +308,13 @@ at the door.*
 
 *The history page: the Hall of Fame with the final bracket picture, and the leaderboard.*
 
+- **Pinging when you publish.** The Publish card asks who to ping:
+  nobody, `@everyone`, or a role. Only the first posting rings — later
+  edits to the announcement (a new time, the counts going up) notify
+  nobody. The announcement is a headline and a link, not the whole event:
+  the description stays on the site, where a news post's body would have
+  gone to Discord in full.
+
 - **On Discord.** Publishing puts the event on Discord's event list
   (cover, blurb, place, link) and asks what else it gets: a role with
   one channel under Events (the usual), or for a big event its own

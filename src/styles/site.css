@@ -2313,6 +2313,20 @@ a:hover {
   margin-bottom: 0.2rem;
 }
 
+/* Who the announcement pings, chosen with the Publish button rather than
+   buried in the event's own fields: it is a decision about this moment. */
+.publish-ping {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.publish-ping select {
+  justify-self: start;
+  min-width: 12rem;
+}
+
 .signup-bar .btn[disabled] {
   opacity: 0.5;
   cursor: not-allowed;

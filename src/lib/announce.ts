@@ -22,6 +22,7 @@ import {
   NO_MENTIONS,
 } from './discord';
 import { coverFile } from './event-discord';
+import { pingPrefix, pingMentions } from './news';
 
 export interface AnnounceEnv {
   DISCORD_BOT_TOKEN?: string;
@@ -46,8 +47,11 @@ export function countsLine(event: Pick<EventWithCounts, 'yes_count' | 'maybe_cou
   return `👥 ${parts.join(' · ')}`;
 }
 
+// The ping rides in the text, the way a news post's does: the mention
+// stays visible in the message, and editing it later notifies nobody
+// again — only the first posting rings.
 export function announcementText(event: EventWithCounts, origin: string): string {
-  return `${eventAnnouncement({
+  return `${pingPrefix(event.ping)}${eventAnnouncement({
     title: event.title,
     startsAt: event.starts_at,
     endsAt: event.ends_at,
@@ -86,14 +90,19 @@ export async function postEventAnnouncement(db: D1Database, env: AnnounceEnv, ev
   let messageId: string | null = null;
   if (channel && env.DISCORD_BOT_TOKEN) {
     const components = announcementComponents(event, await isTicketed(db, eventId), origin);
+    const mentions = pingMentions(event.ping);
     const made = cover
-      ? await createChannelMessageWithFile(env.DISCORD_BOT_TOKEN, channel, text, cover, NO_MENTIONS, SUPPRESS_EMBEDS, components)
-      : await createChannelMessage(env.DISCORD_BOT_TOKEN, channel, text, NO_MENTIONS, cover ? SUPPRESS_EMBEDS : 0, components);
+      ? await createChannelMessageWithFile(env.DISCORD_BOT_TOKEN, channel, text, cover, mentions, SUPPRESS_EMBEDS, components)
+      : await createChannelMessage(env.DISCORD_BOT_TOKEN, channel, text, mentions, cover ? SUPPRESS_EMBEDS : 0, components);
     if (made.ok) messageId = made.value.id;
     else console.warn(`announcement: the bot could not post in channel ${channel} (${made.reason}); falling back to the webhook`);
   }
   // The bot could not post there (no token, or no Send Messages in that channel): the webhook, buttons excluded.
-  if (!messageId) messageId = cover ? await postWebhookWithFile(env.DISCORD_WEBHOOK_URL, text, cover) : await postWebhook(env.DISCORD_WEBHOOK_URL, text);
+  if (!messageId) {
+    messageId = cover
+      ? await postWebhookWithFile(env.DISCORD_WEBHOOK_URL, text, cover, pingMentions(event.ping))
+      : await postWebhook(env.DISCORD_WEBHOOK_URL, text, pingMentions(event.ping));
+  }
   if (messageId) await setEventMessageId(db, eventId, messageId);
 }
 

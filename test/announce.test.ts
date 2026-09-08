@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { countsLine, announcementComponents } from '../src/lib/announce';
+import { countsLine, announcementComponents, announcementText } from '../src/lib/announce';
+import { pingMentions } from '../src/lib/news';
+import type { EventWithCounts } from '../src/lib/db';
 
 // What the announcement carries: counts and buttons by the event's state.
 
@@ -7,6 +9,16 @@ describe('announcement', () => {
   it('counts going, maybe and interest, teams for team events', () => {
     expect(countsLine({ yes_count: 12, maybe_count: 2, interest_count: 5, team_size: null, teams_count: 0, capacity: 20 })).toBe('👥 12 / 20 going · 2 maybe · ♡ 5 interested');
     expect(countsLine({ yes_count: 9, maybe_count: 0, interest_count: 0, team_size: 3, teams_count: 3, capacity: null })).toBe('👥 3 teams, 9 players');
+  });
+
+  it('leads with the ping it was published with, and with nothing when it pings nobody', () => {
+    const base = { id: 7, title: 'LAN', starts_at: 1_760_000_000, ends_at: null, organizers: null, team_size: null, teams_count: 0, yes_count: 0, maybe_count: 0, interest_count: 0, capacity: null } as unknown as EventWithCounts;
+    expect(announcementText({ ...base, ping: null }, 'https://x')).toMatch(/^📅 \*\*LAN\*\*/);
+    expect(announcementText({ ...base, ping: 'everyone' }, 'https://x')).toMatch(/^@everyone 📅/);
+    expect(announcementText({ ...base, ping: '1234567890123456789' }, 'https://x')).toMatch(/^<@&1234567890123456789> 📅/);
+    // …and the mention is allowed through only for the one it names.
+    expect(pingMentions('1234567890123456789')).toEqual({ parse: [], roles: ['1234567890123456789'] });
+    expect(pingMentions(null)).toEqual({ parse: [] });
   });
 
   it('offers signup buttons on a plain event, a ticket link on a ticketed one, none when cancelled', () => {
