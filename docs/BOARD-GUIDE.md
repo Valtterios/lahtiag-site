@@ -113,6 +113,10 @@ the bottom right lets you view a page as a member or a visitor would.
   Nobody is rejected for a typo, and nobody on the board has to guess at
   a surname.
 
+![Asking an applicant for a correction](images/site/register-fix-ask.png)
+
+*Under the application on its own page: 1 a common reason fills the box — edit it, it is your words that go — then 2 send it. The application keeps its place in the queue.*
+
 ![The register](images/site/register-toolbar.png)
 
 *The register's toolbar: 1 Add entry, 2 Venue lookup (the member check), 3 Access, 4 Export CSV. The tiles count members, pending applications, actives and former members.*

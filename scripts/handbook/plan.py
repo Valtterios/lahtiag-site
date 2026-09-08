@@ -40,6 +40,7 @@ shot('register-list', '/register', 'admin', clip='section.list', top=470, hl=['.
 shot('register-numbers', '/register', 'admin', clip='section.numbers')
 shot('register-entry', '/register/11', 'admin', clip='h1', pad=20, extend=170, hl=['text=Approve membership', 'text=Reject and delete'], nums=True)
 shot('register-member-entry', '/register/2', 'admin', clip='h1', pad=20, extend=170, hl=['text=Mark as former member'])
+shot('register-fix-ask', '/register/11', 'admin', clip='section.entry-fix', hl=['[data-fix-preset]', 'text=Ask for a correction'], pad=26, nums=True)
 shot('register-access', '/register/access', 'admin', clip='h1', skip=-10, extend=400, hl=['text=Grant access'])
 shot('lookup', '/register/lookup?q=mikko', 'admin', device='mobile', clip='h1', skip=-10, extend=560)
 shot('membership-top', '/membership', 'admin', clip='.page-head', skip=-10, extend=560, hl=['.id-card', 'nav.tabs'], nums=True)
