@@ -115,8 +115,12 @@ the bottom right lets you view a page as a member or a visitor would.
 
 - **An applicant without Discord** has no membership page to fix
   anything on, so the correction goes to them by email from the
-  association's own address, and their reply comes to the board — you
-  type the answer into the fields yourself. If the sending address is not
+  association's own address and carries a **private link**: it opens
+  their own entry, shows what you asked, and takes the answer straight
+  into the register. It works for a fortnight, dies when the application
+  is decided or the question is withdrawn, and asking again sends a new
+  one and stops the old working. They can also simply reply, and you type
+  the answer in yourself. If the sending address is not
   set up (OPERATIONS, "Email from the association's own address"), the
   panel says plainly that nothing was sent and leaves the writing to
   you.

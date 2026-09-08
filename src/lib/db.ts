@@ -1912,6 +1912,7 @@ export async function decideApplication(
     throw new RuleError('missing', 'No pending application with that id.');
   }
   if (decision === 'reject') {
+    await db.prepare('DELETE FROM register_edit_links WHERE register_id = ?1').bind(id).run();
     await db.prepare('DELETE FROM register WHERE id = ?1').bind(id).run();
     return;
   }
@@ -1922,6 +1923,8 @@ export async function decideApplication(
     )
     .bind(id, now, deciderId)
     .run();
+  // A decided application is not one anybody is still fixing.
+  await revokeEditLinks(db, id);
 }
 
 // Board edit of every applicant-supplied field plus the Discord link and
@@ -2145,6 +2148,95 @@ export async function mergeApplicationInto(
 // A linked member editing their own details on /membership: everything
 // they supplied on the application, with the same validation and the same
 // email uniqueness; never status, class, or the Discord link.
+// --- the private link ------------------------------------------------------
+// Somebody who applied without Discord has no page of their own, so the
+// board can send them one: a link that opens their own entry and nothing
+// else. What is kept is the hash of the token, never the token, so this
+// table on its own opens nothing.
+
+export const EDIT_LINK_DAYS = 14;
+
+async function hashToken(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// The token is returned once, to be put in the letter. Asking again mints
+// a new one and drops the old, so a link that went astray stops working.
+export async function createEditLink(db: D1Database, registerId: number, by: string, now: number): Promise<string> {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  const token = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  await db.prepare('DELETE FROM register_edit_links WHERE register_id = ?1').bind(registerId).run();
+  await db
+    .prepare('INSERT INTO register_edit_links (token_hash, register_id, created_at, created_by, expires_at) VALUES (?1, ?2, ?3, ?4, ?5)')
+    .bind(await hashToken(token), registerId, now, by, now + EDIT_LINK_DAYS * 86400)
+    .run();
+  return token;
+}
+
+export async function revokeEditLinks(db: D1Database, registerId: number): Promise<void> {
+  await db.prepare('DELETE FROM register_edit_links WHERE register_id = ?1').bind(registerId).run();
+}
+
+export async function editLinkStatus(db: D1Database, registerId: number): Promise<{ expires_at: number; used_at: number | null } | null> {
+  return db
+    .prepare('SELECT expires_at, used_at FROM register_edit_links WHERE register_id = ?1')
+    .bind(registerId)
+    .first<{ expires_at: number; used_at: number | null }>();
+}
+
+// Whose entry a link opens, if it is still good for anything.
+export async function entryByEditToken(db: D1Database, token: string, now: number): Promise<RegisterRow | null> {
+  if (!token || token.length < 20) return null;
+  const row = await db
+    .prepare('SELECT register_id FROM register_edit_links WHERE token_hash = ?1 AND expires_at > ?2')
+    .bind(await hashToken(token), now)
+    .first<{ register_id: number }>();
+  return row ? getRegisterEntry(db, row.register_id) : null;
+}
+
+// The same save the membership page makes, by the same rules: their own
+// details, nothing the board decides, and the board's question answered.
+export async function updateEntryByToken(
+  db: D1Database,
+  token: string,
+  input: ApplicationInput,
+  now: number,
+): Promise<RegisterRow | null> {
+  const entry = await entryByEditToken(db, token, now);
+  if (!entry) return null;
+  const clash = await db
+    .prepare('SELECT id FROM register WHERE id != ?1 AND email = ?2 COLLATE NOCASE LIMIT 1')
+    .bind(entry.id, input.email)
+    .first();
+  if (clash) throw new RuleError('duplicate', 'Another entry already has that email.');
+  await db
+    .prepare(
+      `UPDATE register SET full_name = ?2, domicile = ?3, email = ?4, student_status = ?5,
+         union_member = ?6, telegram = ?7, games = ?8, message = ?9,
+         fix_note = NULL, fix_asked_at = NULL, fix_asked_by = NULL,
+         updated_at = ?10, search_key = ?11
+       WHERE id = ?1`,
+    )
+    .bind(
+      entry.id,
+      input.full_name,
+      input.domicile,
+      input.email,
+      input.student_status,
+      input.union_member,
+      input.telegram,
+      input.games,
+      input.message,
+      now,
+      searchKey([input.full_name, input.email, input.telegram, entry.discord_name]),
+    )
+    .run();
+  await db.prepare('UPDATE register_edit_links SET used_at = ?2 WHERE register_id = ?1').bind(entry.id, now).run();
+  return getRegisterEntry(db, entry.id);
+}
+
 // The board asks for a correction: the entry stays where it is, and the
 // note is the applicant's to read and answer by saving their details.
 export async function askForCorrection(db: D1Database, id: number, note: string, by: string, now: number): Promise<RegisterRow | null> {

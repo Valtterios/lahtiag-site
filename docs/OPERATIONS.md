@@ -293,8 +293,16 @@ person actually is: a DM when the entry has a linked `discord_id`, an
 email to `register.email` when it has not and the sender is configured,
 and neither (with the board told to write themselves) when it has
 neither. A linked applicant also sees it on their own membership page
-above the details form; an unlinked one has no such page, which is why
-the letter asks for a reply instead. Any save through `updateOwnEntry` clears all
+above the details form; an unlinked one has no such page, so the letter
+carries a private link instead (`/fix/<token>`, `register_edit_links`).
+Only the token's SHA-256 is stored, so the table opens nothing on its
+own; a link lasts `EDIT_LINK_DAYS`, is replaced whenever the board asks
+again, and is deleted when the question is withdrawn or the application
+decided. The page it opens shows one entry and takes exactly the fields
+`parseApplication` reads — never the class, the status or the board's own
+note — and is served no-store and noindex. It needs `/fix/*` in
+`run_worker_first` (both blocks of wrangler.toml) or the asset router
+answers it with the 404 page and the Worker never runs. Any save through `updateOwnEntry` clears all
 three columns in the same statement that writes the details, so answering
 is the same action as fixing. The entry never leaves `pending`: the queue
 marks it "waiting on them" and the board decides when the answer comes.

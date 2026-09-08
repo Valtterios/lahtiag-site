@@ -5,7 +5,7 @@ import RegisterToolbar from '../../../components/RegisterToolbar.astro';
 import BoardGate from '../../../components/BoardGate.astro';
 import { ensureCsrf, currentSession } from '../../../lib/guard';
 import { requireBoard, boardStatus } from '../../../lib/board';
-import { getRegisterEntry, findSimilarEntries } from '../../../lib/db';
+import { getRegisterEntry, findSimilarEntries, editLinkStatus } from '../../../lib/db';
 import {
   GAMES,
   STUDENT_STATUSES,
@@ -31,6 +31,10 @@ const board = await requireBoard(Astro.request, env);
 // Whether there is an address to send from at all, which decides what the
 // correction panel can promise.
 const canMail = mailConfigured(env);
+// A private link the board has sent, if one is still good. The token
+// itself is not kept, so there is nothing here to copy — asking again
+// sends a fresh one.
+const editLink = entry ? await editLinkStatus(env.DB, entry.id) : null;
 Astro.response.status = boardStatus(board);
 const discordSession = board.ok ? null : await currentSession(Astro.request, env);
 const csrf = ensureCsrf(Astro.cookies);
@@ -163,6 +167,13 @@ const SOURCE: Record<string, string> = {
                 membership page beside the form that answers it, and clears itself when they save their details.
               </p>
               <blockquote class="entry-fix-note">{entry.fix_note}</blockquote>
+              {editLink && (
+                <p class="queue-meta">
+                  A private link went with it, good until {formatHelsinkiDate(editLink.expires_at)}
+                  {editLink.used_at !== null ? `, opened ${formatHelsinkiDate(editLink.used_at)}` : ', not opened yet'}. Asking
+                  again sends a new one and stops this working.
+                </p>
+              )}
               <form method="post" action={`/register/${entry.id}/action`} class="entry-actions">
                 <input type="hidden" name="csrf" value={csrf} />
                 <button class="btn btn-ghost btn-sm" name="action" value="fix_clear" type="submit">Withdraw the request</button>

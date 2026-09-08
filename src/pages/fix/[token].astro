@@ -1,0 +1,168 @@
+---
+import { env } from 'cloudflare:workers';
+import Base from '../../layouts/Base.astro';
+import { ensureCsrf, checkCsrf } from '../../lib/guard';
+import { entryByEditToken, updateEntryByToken, RuleError } from '../../lib/db';
+import { postBoardLine } from '../../lib/board-channel';
+import {
+  parseApplication,
+  GAMES,
+  STUDENT_STATUSES,
+  STUDENT_STATUS_LABELS,
+  UNIONS,
+  UNION_LABELS,
+  LIMITS,
+  type FieldError,
+} from '../../lib/register';
+
+// The private link. Somebody who applied without a Discord account has no
+// page of their own, so the board sends them this: it opens their own
+// entry, shows what was asked, and takes the answer. Nothing else is on
+// it — not the register, not the board's own note, not another soul's
+// details — and the link is the whole of the credential, so the page is
+// kept out of caches and out of search.
+
+const token = String(Astro.params.token ?? '');
+const now = Math.floor(Date.now() / 1000);
+const csrf = ensureCsrf(Astro.cookies);
+Astro.response.headers.set('cache-control', 'no-store');
+Astro.response.headers.set('x-robots-tag', 'noindex, nofollow');
+
+let entry = await entryByEditToken(env.DB, token, now);
+let errors: FieldError[] = [];
+let problem: 'csrf' | 'duplicate' | null = null;
+let saved = false;
+const values: Record<string, string> = {};
+let pickedGames: string[] | null = null;
+
+if (Astro.request.method === 'POST' && entry) {
+  const form = await Astro.request.formData();
+  for (const name of ['full_name', 'domicile', 'email', 'telegram', 'games_other', 'message']) {
+    values[name] = String(form.get(name) ?? '');
+  }
+  pickedGames = form.getAll('games').map(String);
+  // Being an active is asked for on Discord, where the role lives; a save
+  // through the link leaves that as the board found it.
+  if (entry.wants_active) form.set('wants_active', 'on');
+  if (!(await checkCsrf(Astro.request, form))) {
+    problem = 'csrf';
+  } else {
+    const parsed = parseApplication(form, false);
+    if (!parsed.ok) {
+      errors = parsed.errors;
+    } else {
+      try {
+        const before = entry;
+        const updated = await updateEntryByToken(env.DB, token, parsed.value, now);
+        if (updated) {
+          saved = true;
+          entry = updated;
+          Astro.locals.cfContext.waitUntil(
+            postBoardLine(
+              env.DB,
+              env,
+              `✅ **${updated.full_name}** answered through their link${before.full_name !== updated.full_name ? ` (was ${before.full_name})` : ''}. ${Astro.url.origin}/register/${updated.id}`,
+            ),
+          );
+        }
+      } catch (error) {
+        if (!(error instanceof RuleError)) throw error;
+        problem = 'duplicate';
+      }
+    }
+  }
+  if (!saved) Astro.response.status = 422;
+}
+
+if (!entry) Astro.response.status = 404;
+
+const gamesList = entry?.games ? entry.games.split(',').map((g) => g.trim()) : [];
+const known = pickedGames ?? gamesList.filter((g) => (GAMES as readonly string[]).includes(g));
+const other = pickedGames !== null ? (values.games_other ?? '') : gamesList.filter((g) => !(GAMES as readonly string[]).includes(g)).join(', ');
+const field = (name: string, fallback: string | null) => values[name] ?? fallback ?? '';
+const bad = (name: FieldError) => (errors.includes(name) ? 'field-bad' : undefined);
+const MESSAGES: Record<string, string> = {
+  full_name: 'A full name, first and last.',
+  domicile: 'Your home municipality (kotikunta).',
+  email: "That email address doesn't look right.",
+  student_status: 'Pick where you study.',
+  union_member: 'Pick your student union, or none.',
+  telegram: 'That Telegram username is too long.',
+  games: 'That list of games is too long.',
+  message: 'That message is too long.',
+};
+---
+<Base title="Your membership application" description="Put your own application right.">
+  {!entry ? (
+    <article class="prose">
+      <h1>This link has expired</h1>
+      <p>
+        A link the board sends lasts a fortnight, and stops working once the application is decided or a newer
+        link is sent. Write to <a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a> and the board will send
+        another.
+      </p>
+    </article>
+  ) : (
+    <article class="prose">
+      <h1>Your membership application</h1>
+      {saved ? (
+        <p class="flash">
+          Thank you — saved, and the board can see it. You can close this page; the link keeps working for a
+          fortnight if you want to change something else.
+        </p>
+      ) : entry.fix_note !== null ? (
+        <div class="flash flash-ask">
+          <p><strong>The board asked about your application:</strong></p>
+          <blockquote>{entry.fix_note}</blockquote>
+          <p>Put it right below and save. Nothing else about your application changes, and it keeps its place in the queue.</p>
+        </div>
+      ) : (
+        <p>These are the details the association has for you. Change what needs changing and save.</p>
+      )}
+      {problem === 'csrf' && <p class="flash">The form was stale. Please send it again.</p>}
+      {problem === 'duplicate' && <p class="flash">Another entry already uses that email address.</p>}
+      {errors.length > 0 && (
+        <ul class="flash flash-list">
+          {errors.filter((e) => MESSAGES[e]).map((e) => <li>{MESSAGES[e]}</li>)}
+        </ul>
+      )}
+      <form method="post" class="app-form join-form" novalidate>
+        <input type="hidden" name="csrf" value={csrf} />
+        <div class="form-grid">
+          <label class={bad('full_name')}>Full name *<input name="full_name" required maxlength={LIMITS.full_name} value={field('full_name', entry.full_name)} /></label>
+          <label class={bad('domicile')}>Home municipality (kotikunta) *<input name="domicile" required maxlength={LIMITS.domicile} value={field('domicile', entry.domicile)} /></label>
+          <label class={bad('email')}>Email *<input name="email" type="email" required maxlength={LIMITS.email} value={field('email', entry.email)} /></label>
+          <label class={bad('telegram')}>Telegram username<input name="telegram" maxlength={LIMITS.telegram} value={field('telegram', entry.telegram)} /></label>
+          <label class={bad('student_status')}>
+            Where you study *
+            <select name="student_status" required>
+              {STUDENT_STATUSES.map((s) => <option value={s} selected={entry!.student_status === s}>{STUDENT_STATUS_LABELS[s]}</option>)}
+            </select>
+          </label>
+          <label class={bad('union_member')}>
+            Student union *
+            <select name="union_member" required>
+              {UNIONS.map((u) => <option value={u} selected={entry!.union_member === u}>{UNION_LABELS[u]}</option>)}
+            </select>
+          </label>
+        </div>
+        <fieldset class="checkbox-grid">
+          <legend>Games you play</legend>
+          {GAMES.map((game) => (
+            <label class="check"><input type="checkbox" name="games" value={game} checked={known.includes(game)} /> {game}</label>
+          ))}
+          <label class="check-other">Other<input name="games_other" maxlength={LIMITS.games_other} value={other} /></label>
+        </fieldset>
+        <label class={bad('message')}>
+          Message to the board
+          <textarea name="message" rows="3" maxlength={LIMITS.message}>{field('message', entry.message)}</textarea>
+        </label>
+        <button class="btn btn-cta" type="submit">Save</button>
+      </form>
+      <p class="queue-meta">
+        This link is yours alone — anyone who has it can change these details, so don't pass it on. It stops
+        working a fortnight after it was sent.
+      </p>
+    </article>
+  )}
+</Base>

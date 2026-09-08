@@ -11,6 +11,8 @@ import {
   setActive,
   askForCorrection,
   clearCorrection,
+  createEditLink,
+  revokeEditLinks,
   getRegisterEntry,
   mergeApplicationInto,
   RuleError,
@@ -118,11 +120,16 @@ export const POST: APIRoute = async ({ request, redirect, params, url, locals })
           );
         } else if (mailConfigured(env)) {
           sent = 'email';
+          // No Discord account means no page of their own, so the letter
+          // carries a private one: a link to their own entry and nothing
+          // else, good for a fortnight. Asking again mints a new one and
+          // drops this, so a link that went astray stops working.
+          const link = `${url.origin}/fix/${await createEditLink(env.DB, id, board.email, now)}`;
           locals.cfContext.waitUntil(
             sendMail(env, {
               to: entry.email,
               subject: 'Your LahtiAG membership application',
-              text: `Hello ${entry.full_name},\n\nThe board has a question about your membership application:\n\n  ${asked.replace(/\n/g, '\n  ')}\n\nJust reply to this message and we will put it right — nothing else about your application changes, and it keeps its place in the queue.\n\nLahti Association of Gaming LAG ry\n${url.origin}\n`,
+              text: `Hello ${entry.full_name},\n\nThe board has a question about your membership application:\n\n  ${asked.replace(/\n/g, '\n  ')}\n\nYou can put it right yourself here:\n\n  ${link}\n\nThe link is yours alone and works for two weeks — don't pass it on. Or simply reply to this message and we will do it for you. Either way your application keeps its place in the queue.\n\nLahti Association of Gaming LAG ry\n${url.origin}\n`,
             }).then(() => undefined),
           );
         }
@@ -131,6 +138,8 @@ export const POST: APIRoute = async ({ request, redirect, params, url, locals })
       }
       case 'fix_clear': {
         await clearCorrection(env.DB, id, now);
+        // Withdrawing the question closes the door it was sent through.
+        await revokeEditLinks(env.DB, id);
         return redirect(`${back}?ok=fix_cleared`, 303);
       }
       case 'link_confirm':
