@@ -126,14 +126,14 @@ function cutShape(c: Canvas, radius: number, notch: number): void {
   }
 }
 
-// The fine diagonal ruling a printed card is secured with. The web card
-// rules it every 9px on a card 544 wide; this one is 900 wide, so the
-// spacing and the line are scaled to match — copying the pixel values
-// would give a ruling half as coarse, which then disappears altogether
-// wherever the picture is shown smaller than it was drawn, which is
-// everywhere.
-const RULE_GAP = Math.round((9 / 544) * W);
-const RULE_WIDTH = (1 / 544) * W;
+// The diagonal ruling a printed card is secured with. Set by measuring:
+// counted along a plain band with both cards scaled to the same width, the
+// web card rules about 38 lines across itself, and these numbers put the
+// drawn one at the same. Reasoning from the stylesheet's own 9px instead
+// gave half again as many lines, each too thin to survive the picture
+// being shown smaller than it was drawn — which is everywhere.
+const RULE_GAP = 21;
+const RULE_WIDTH = 2.6;
 
 function guilloche(c: Canvas, rgb: number, alpha: number): void {
   const nx = Math.cos((25 * Math.PI) / 180);
