@@ -126,17 +126,22 @@ function cutShape(c: Canvas, radius: number, notch: number): void {
   }
 }
 
-// The fine diagonal ruling a printed card is secured with: unbroken lines
-// a pixel wide, nine apart, leaning the way the web card's do. Drawn from
-// the distance along the lines' own normal, so they stay continuous
-// instead of breaking into dots.
+// The fine diagonal ruling a printed card is secured with. The web card
+// rules it every 9px on a card 544 wide; this one is 900 wide, so the
+// spacing and the line are scaled to match — copying the pixel values
+// would give a ruling half as coarse, which then disappears altogether
+// wherever the picture is shown smaller than it was drawn, which is
+// everywhere.
+const RULE_GAP = Math.round((9 / 544) * W);
+const RULE_WIDTH = (1 / 544) * W;
+
 function guilloche(c: Canvas, rgb: number, alpha: number): void {
   const nx = Math.cos((25 * Math.PI) / 180);
   const ny = Math.sin((25 * Math.PI) / 180);
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
-      const across = (x * nx + y * ny) % 9;
-      if (across < 1) c.blend(x, y, rgb, alpha * (1 - across));
+      const across = (x * nx + y * ny) % RULE_GAP;
+      if (across < RULE_WIDTH) c.blend(x, y, rgb, alpha * Math.min(1, RULE_WIDTH - across));
     }
   }
 }
