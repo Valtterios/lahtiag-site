@@ -289,10 +289,12 @@ sends no email at all, exactly as before.
 `fix_asked_at` and `fix_asked_by`) is the board's question to the person
 who applied, written to be read by them — unlike `board_note`, which is
 never shown. It is set from the entry page and sent to wherever the
-person actually is: a DM when the entry has a linked `discord_id`, an
-email to `register.email` when it has not and the sender is configured,
-and neither (with the board told to write themselves) when it has
-neither. A linked applicant also sees it on their own membership page
+person actually is: a DM when the entry has a linked `discord_id`, and an
+email to `register.email` when there is no account — or when Discord
+refuses the DM, which it does for somebody who has left the server or
+keeps their DMs shut. The delivery is awaited in the background so the
+line in the board channel says which of the three actually happened,
+including "nothing could be delivered". A linked applicant also sees it on their own membership page
 above the details form; an unlinked one has no such page, so the letter
 carries a private link instead (`/fix/<token>`, `register_edit_links`).
 Only the token's SHA-256 is stored, so the table opens nothing on its

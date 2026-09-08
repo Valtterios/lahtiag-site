@@ -105,36 +105,54 @@ export const POST: APIRoute = async ({ request, redirect, params, url, locals })
         const note = String(form.get('fix_note') ?? '');
         const entry = await askForCorrection(env.DB, id, note, board.email, now);
         if (!entry) return redirect('/register?err=missing', 303);
-        // Discord for the linked, email for everybody else. The two never
-        // both go: one message, to wherever the person actually is.
         const asked = entry.fix_note ?? '';
-        let sent: 'discord' | 'email' | 'nobody' = 'nobody';
-        if (entry.discord_id && env.DISCORD_BOT_TOKEN) {
-          sent = 'discord';
-          locals.cfContext.waitUntil(
-            dmUser(
-              env.DISCORD_BOT_TOKEN,
-              entry.discord_id,
-              `📝 The board has a question about your LahtiAG membership application:\n\n> ${asked.replace(/\n/g, '\n> ')}\n\nPut it right under **Your details** at ${url.origin}/membership — that is all it takes; nothing else about your application changes.`,
-            ).then(() => undefined),
-          );
-        } else if (mailConfigured(env)) {
-          sent = 'email';
-          // No Discord account means no page of their own, so the letter
-          // carries a private one: a link to their own entry and nothing
-          // else, good for a fortnight. Asking again mints a new one and
-          // drops this, so a link that went astray stops working.
-          const link = `${url.origin}/fix/${await createEditLink(env.DB, id, board.email, now)}`;
-          locals.cfContext.waitUntil(
-            sendMail(env, {
-              to: entry.email,
-              subject: 'Your LahtiAG membership application',
-              text: `Hello ${entry.full_name},\n\nThe board has a question about your membership application:\n\n  ${asked.replace(/\n/g, '\n  ')}\n\nYou can put it right yourself here:\n\n  ${link}\n\nThe link is yours alone and works for two weeks — don't pass it on. Or simply reply to this message and we will do it for you. Either way your application keeps its place in the queue.\n\nLahti Association of Gaming LAG ry\n${url.origin}\n`,
-            }).then(() => undefined),
-          );
-        }
-        tellBoard(`📝 **${entry.full_name}** was asked to fix something by ${board.email}${sent === 'nobody' ? ' (no Discord account and no email set up, so tell them yourself)' : sent === 'email' ? ` (emailed to ${entry.email})` : ''}: ${asked}`);
-        return redirect(`${back}?ok=fix_${sent}`, 303);
+        const canEmail = mailConfigured(env);
+        // Wherever the person actually is. Discord refuses a DM to
+        // somebody who has left the server or keeps their DMs shut, and
+        // it says so plainly — an answer worth waiting for, since a
+        // letter can still reach them and the board would otherwise be
+        // told the message went when it did not.
+        locals.cfContext.waitUntil(
+          (async () => {
+            let by: 'discord' | 'email' | 'nobody' = 'nobody';
+            if (entry.discord_id && env.DISCORD_BOT_TOKEN) {
+              const dm = await dmUser(
+                env.DISCORD_BOT_TOKEN,
+                entry.discord_id,
+                `📝 The board has a question about your LahtiAG membership application:\n\n> ${asked.replace(/\n/g, '\n> ')}\n\nPut it right under **Your details** at ${url.origin}/membership — that is all it takes; nothing else about your application changes.`,
+              );
+              if (dm) by = 'discord';
+            }
+            if (by === 'nobody' && canEmail) {
+              // Somebody with an account has a page of their own to fix
+              // it on; somebody without gets a private link to their own
+              // entry instead, good for a fortnight. Asking again mints a
+              // new one, so a link that went astray stops working.
+              const where = entry.discord_id
+                ? `${url.origin}/membership`
+                : `${url.origin}/fix/${await createEditLink(env.DB, id, board.email, now)}`;
+              const how = entry.discord_id
+                ? `You can put it right yourself under Your details:\n\n  ${where}\n\nOr simply reply to this message and we will do it for you.`
+                : `You can put it right yourself here:\n\n  ${where}\n\nThe link is yours alone and works for two weeks — don't pass it on. Or simply reply to this message and we will do it for you.`;
+              const sent = await sendMail(env, {
+                to: entry.email,
+                subject: 'Your LahtiAG membership application',
+                text: `Hello ${entry.full_name},\n\nThe board has a question about your membership application:\n\n  ${asked.replace(/\n/g, '\n  ')}\n\n${how} Either way your application keeps its place in the queue.\n\nLahti Association of Gaming LAG ry\n${url.origin}\n`,
+              });
+              if (sent) by = 'email';
+            }
+            const how =
+              by === 'discord'
+                ? ''
+                : by === 'email'
+                  ? entry.discord_id
+                    ? ` (Discord would not take the message, so it went to ${entry.email})`
+                    : ` (emailed to ${entry.email})`
+                  : ' — and nothing could be delivered, so tell them yourself';
+            await postBoardLine(env.DB, env, `📝 **${entry.full_name}** was asked to fix something by ${board.email}${how}: ${asked}`);
+          })(),
+        );
+        return redirect(`${back}?ok=fix_${entry.discord_id ? 'discord' : canEmail ? 'email' : 'nobody'}`, 303);
       }
       case 'fix_clear': {
         await clearCorrection(env.DB, id, now);

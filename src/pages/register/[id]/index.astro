@@ -57,8 +57,8 @@ const FLASH: Record<string, string> = {
   former: 'Marked as a former member.',
   member: 'Membership reinstated.',
   approved: 'Application approved.',
-  fix_discord: 'Asked, and sent to them on Discord. The entry stays in the queue until they answer.',
-  fix_email: 'Asked, and emailed to them. Their reply comes to the board address; the entry stays in the queue.',
+  fix_discord: 'Asked. It goes to them on Discord, or by email if Discord will not take it — the board channel says which. The entry stays in the queue until they answer.',
+  fix_email: 'Asked, and emailed to them with a private link to their own entry. Their reply comes to the board address; the entry stays in the queue.',
   fix_nobody: 'Saved. There is no Discord account and no email sender set up, so nobody has told them yet.',
   fix_cleared: 'The request is withdrawn.',
   active_approve: 'Approved as an active.',
@@ -187,8 +187,9 @@ const SOURCE: Record<string, string> = {
               </p>
               {entry.discord_id ? (
                 <p class="queue-intro">
-                  They get it as a Discord message, and it sits on their own membership page above the form that
-                  answers it. Saving their details clears it and puts the application back in front of you.
+                  They get it as a Discord message{canMail ? ', or by email if Discord will not take one from us' : ''}, and it sits on
+                  their own membership page above the form that answers it. Saving their details clears it and puts
+                  the application back in front of you.
                 </p>
               ) : canMail ? (
                 <p class="queue-intro">

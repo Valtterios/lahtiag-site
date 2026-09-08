@@ -108,7 +108,9 @@ the bottom right lets you view a page as a member or a visitor would.
   with the reason the association has to ask — or write your own, and
   send it. They get it as a Discord message when their account is linked,
   and either way it sits on their own membership page above the form that
-  answers it. The application stays in the queue, marked *waiting on
+  answers it. If Discord will not take the message — they have left the
+  server, or keep their DMs shut — it goes to them by email instead, and
+  the board channel says so. The application stays in the queue, marked *waiting on
   them*, and the note clears itself the moment they save their details.
   Nobody is rejected for a typo, and nobody on the board has to guess at
   a surname.
