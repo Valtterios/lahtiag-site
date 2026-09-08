@@ -308,6 +308,15 @@ at the door.*
 
 *The history page: the Hall of Fame with the final bracket picture, and the leaderboard.*
 
+- **An application that is nearly right.** On the entry's own page there
+  is *Ask them to put something right*: write what needs fixing — a first
+  name where the association needs the full one, an address with a typo —
+  and the applicant gets it on Discord (when their account is linked) and
+  on their own membership page, beside the form that answers it. The
+  application stays in the queue, marked "waiting on them", and the note
+  clears itself the moment they save their details. Nobody is rejected
+  for a typo, and the board doesn't have to guess at somebody's surname.
+
 - **Signups open and close by the clock.** Both are fields on the event:
   leave the opening empty and signups open when you publish, leave the
   closing empty and they stay open until you press Close signups. With a

@@ -45,6 +45,9 @@ const FLASH: Record<string, string> = {
   former: 'Marked as a former member.',
   member: 'Membership reinstated.',
   approved: 'Application approved.',
+  fix_asked: 'Asked, and sent to them on Discord. The entry stays in the queue until they answer.',
+  fix_saved: "Saved. They have no Discord account linked, so nobody has told them yet — their email is above.",
+  fix_cleared: 'The request is withdrawn.',
   active_approve: 'Approved as an active.',
   active_revoke: 'No longer an active.',
   duplicate: 'Another entry already uses that email or Discord account.',
@@ -84,6 +87,7 @@ const SOURCE: Record<string, string> = {
         <p class="entry-badges">
           {entry.status === 'member' && <span class="status-badge status-member">{MEMBER_TYPE_LABELS[entry.member_type]}</span>}
           {entry.status === 'pending' && <span class="status-badge status-pending">Pending application</span>}
+          {entry.fix_note !== null && <span class="status-badge status-pending">waiting on the applicant</span>}
           {entry.status === 'former' && <span class="status-badge status-former">Former member</span>}
           {entry.discord_id && <span class="status-badge">Discord linked</span>}
           {entry.founder && <span class="status-badge status-member">founder</span>}
@@ -138,6 +142,41 @@ const SOURCE: Record<string, string> = {
             <button class="btn btn-ghost" name="action" value="link_dismiss" type="submit">Dismiss</button>
           </form>
         </div>
+      )}
+
+      {entry.status === 'pending' && (
+        <section class="entry-fix">
+          <h2 class="section-label">Ask them to put something right</h2>
+          {entry.fix_note !== null ? (
+            <>
+              <p class="queue-intro">
+                Asked {entry.fix_asked_at !== null ? formatHelsinkiDate(entry.fix_asked_at) : ''}{entry.fix_asked_by ? ` by ${entry.fix_asked_by}` : ''}. It shows on their own
+                membership page beside the form that answers it, and clears itself when they save their details.
+              </p>
+              <blockquote class="entry-fix-note">{entry.fix_note}</blockquote>
+              <form method="post" action={`/register/${entry.id}/action`} class="entry-actions">
+                <input type="hidden" name="csrf" value={csrf} />
+                <button class="btn btn-ghost btn-sm" name="action" value="fix_clear" type="submit">Withdraw the request</button>
+              </form>
+            </>
+          ) : (
+            <>
+              <p class="queue-intro">
+                For an application that is nearly right — a first name where the association needs the full one, an
+                address with a typo. The application stays in the queue; they get this on Discord if their account is
+                linked, and see it on their membership page either way.
+              </p>
+              <form method="post" action={`/register/${entry.id}/action`} class="app-form">
+                <input type="hidden" name="csrf" value={csrf} />
+                <label>
+                  What needs fixing (they read this)
+                  <textarea name="fix_note" rows="2" maxlength="400" required placeholder="The association needs your full name, first and last — could you add your surname?"></textarea>
+                </label>
+                <button class="btn btn-ghost" name="action" value="fix" type="submit">Ask for a correction</button>
+              </form>
+            </>
+          )}
+        </section>
       )}
 
       <form method="post" action={`/register/${entry.id}/action`} class="entry-actions">

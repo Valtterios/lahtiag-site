@@ -275,6 +275,16 @@ Where there is no pointer, the light comes to the
 turn instead: one sweep across the face as the card comes round.
 `prefers-reduced-motion` stops all of it.
 
+**Asking an applicant for a correction.** `register.fix_note` (with
+`fix_asked_at` and `fix_asked_by`) is the board's question to the person
+who applied, written to be read by them — unlike `board_note`, which is
+never shown. It is set from the entry page, sent as a DM when the entry
+has a linked `discord_id`, and shown on the applicant's own membership
+page above the details form. Any save through `updateOwnEntry` clears all
+three columns in the same statement that writes the details, so answering
+is the same action as fixing. The entry never leaves `pending`: the queue
+marks it "waiting on them" and the board decides when the answer comes.
+
 **The card in Discord.** `/profile` posts the membership card — the same
 code the page draws with (`src/lib/member-card.ts`), so the preview on the
 membership page cannot drift from what the channel sees. Two buttons sit

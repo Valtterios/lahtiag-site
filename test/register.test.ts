@@ -25,6 +25,8 @@ import {
   setActive,
   mergeApplicationInto,
   updateOwnEntry,
+  askForCorrection,
+  clearCorrection,
   createBoardEntry,
   findSimilarEntries,
   registerStats,
@@ -362,6 +364,28 @@ describe('self-service actives flag', () => {
     expect((await listRegister(db(), { activesOnly: true })).map((r) => r.id)).toEqual([id]);
     await setOwnActive(db(), '77', false, null, NOW + 11);
     expect(await listRegister(db(), { activesOnly: true })).toEqual([]);
+  });
+});
+
+describe('asking an applicant to put something right', () => {
+  it('keeps the entry pending, shows them the note, and clears it when they answer', async () => {
+    const id = await applyForMembership(db(), { ...application(), full_name: 'Nina' }, '88', NOW);
+    const asked = await askForCorrection(db(), id, '  The association needs your full name.  ', 'chair@lahtiag.fi', NOW + 5);
+    expect(asked).toMatchObject({
+      id,
+      status: 'pending', // still in the queue: nothing was decided
+      fix_note: 'The association needs your full name.',
+      fix_asked_at: NOW + 5,
+      fix_asked_by: 'chair@lahtiag.fi',
+    });
+    await expect(askForCorrection(db(), id, '   ', 'chair@lahtiag.fi', NOW + 5)).rejects.toMatchObject({ code: 'bad_input' });
+    // Saving their own details is the answer, whatever they changed.
+    const answered = await updateOwnEntry(db(), '88', { ...application(), full_name: 'Nina Korhonen' }, NOW + 9);
+    expect(answered).toMatchObject({ full_name: 'Nina Korhonen', fix_note: null, fix_asked_at: null, fix_asked_by: null, status: 'pending' });
+    // The board can also take the question back.
+    await askForCorrection(db(), id, 'Actually, the address.', 'chair@lahtiag.fi', NOW + 10);
+    await clearCorrection(db(), id, NOW + 11);
+    expect(await getRegisterEntry(db(), id)).toMatchObject({ fix_note: null, fix_asked_by: null });
   });
 });
 

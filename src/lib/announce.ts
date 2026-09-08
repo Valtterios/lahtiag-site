@@ -99,9 +99,12 @@ export async function postEventAnnouncement(db: D1Database, env: AnnounceEnv, ev
   if (channel && env.DISCORD_BOT_TOKEN) {
     const components = announcementComponents(event, await isTicketed(db, eventId), origin);
     const mentions = pingMentions(event.ping);
+    // No link preview, ever: the announcement already carries the cover
+    // picture, the buttons and the event's own words, and Discord's card
+    // for the same link underneath is the fourth copy of it.
     const made = cover
       ? await createChannelMessageWithFile(env.DISCORD_BOT_TOKEN, channel, text, cover, mentions, SUPPRESS_EMBEDS, components)
-      : await createChannelMessage(env.DISCORD_BOT_TOKEN, channel, text, mentions, cover ? SUPPRESS_EMBEDS : 0, components);
+      : await createChannelMessage(env.DISCORD_BOT_TOKEN, channel, text, mentions, SUPPRESS_EMBEDS, components);
     if (made.ok) messageId = made.value.id;
     else console.warn(`announcement: the bot could not post in channel ${channel} (${made.reason}); falling back to the webhook`);
   }
@@ -109,7 +112,7 @@ export async function postEventAnnouncement(db: D1Database, env: AnnounceEnv, ev
   if (!messageId) {
     messageId = cover
       ? await postWebhookWithFile(env.DISCORD_WEBHOOK_URL, text, cover, pingMentions(event.ping))
-      : await postWebhook(env.DISCORD_WEBHOOK_URL, text, pingMentions(event.ping));
+      : await postWebhook(env.DISCORD_WEBHOOK_URL, text, pingMentions(event.ping), SUPPRESS_EMBEDS);
   }
   if (messageId) await setEventMessageId(db, eventId, messageId);
 }
@@ -126,7 +129,9 @@ export async function refreshEventAnnouncement(db: D1Database, env: AnnounceEnv,
     const channel = await announceChannel(db, env);
     if (channel) {
       const components = announcementComponents(event, await isTicketed(db, eventId), origin);
-      const edited = await editChannelMessage(env.DISCORD_BOT_TOKEN, channel, event.discord_message_id, text, undefined, components);
+      // The flags go with every edit: leaving them off turned the link
+      // preview back on after the first click changed the counts.
+      const edited = await editChannelMessage(env.DISCORD_BOT_TOKEN, channel, event.discord_message_id, text, SUPPRESS_EMBEDS, components);
       if (edited.ok) return;
     }
   }

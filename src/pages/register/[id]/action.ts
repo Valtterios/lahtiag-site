@@ -9,13 +9,15 @@ import {
   eraseRegisterEntry,
   resolveLinkRequest,
   setActive,
+  askForCorrection,
+  clearCorrection,
   getRegisterEntry,
   mergeApplicationInto,
   RuleError,
 } from '../../../lib/db';
 import { parseApplication, LIMITS, MEMBER_TYPES, type MemberType } from '../../../lib/register';
 import { applyRoles, loadRoleConfig, type RoleOutcome } from '../../../lib/roles';
-import { postWebhook } from '../../../lib/discord';
+import { postWebhook, dmUser } from '../../../lib/discord';
 import { postBoardLine, postActivesRequest } from '../../../lib/board-channel';
 
 // A new member is welcomed in a public channel when WELCOME_WEBHOOK_URL is
@@ -90,6 +92,31 @@ export const POST: APIRoute = async ({ request, redirect, params, url, locals })
           ? await applyRoles(roleCfg, { status: 'former', is_active: false, discord_id: before.discord_id })
           : undefined;
         return done('/register?ok=rejected', roles);
+      }
+      // Something on the application needs putting right — a first name
+      // where the association needs the full one, an address with a typo.
+      // The note is written to be read by the applicant: it shows on their
+      // own membership page, next to the form that answers it, and reaches
+      // them on Discord when their account is linked.
+      case 'fix': {
+        const note = String(form.get('fix_note') ?? '');
+        const entry = await askForCorrection(env.DB, id, note, board.email, now);
+        if (!entry) return redirect('/register?err=missing', 303);
+        if (entry.discord_id && env.DISCORD_BOT_TOKEN) {
+          locals.cfContext.waitUntil(
+            dmUser(
+              env.DISCORD_BOT_TOKEN,
+              entry.discord_id,
+              `📝 The board has a question about your LahtiAG membership application:\n\n> ${entry.fix_note?.replace(/\n/g, '\n> ')}\n\nPut it right under **Your details** at ${url.origin}/membership — that is all it takes; nothing else about your application changes.`,
+            ).then(() => undefined),
+          );
+        }
+        tellBoard(`📝 **${entry.full_name}** was asked to fix something by ${board.email}${entry.discord_id ? '' : ' (no Discord account linked, so tell them yourself)'}: ${entry.fix_note}`);
+        return redirect(`${back}?ok=${entry.discord_id ? 'fix_asked' : 'fix_saved'}`, 303);
+      }
+      case 'fix_clear': {
+        await clearCorrection(env.DB, id, now);
+        return redirect(`${back}?ok=fix_cleared`, 303);
       }
       case 'link_confirm':
         await resolveLinkRequest(env.DB, id, 'confirm', now);

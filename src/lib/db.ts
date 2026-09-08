@@ -1763,6 +1763,11 @@ export interface RegisterRow extends ApplicationInput {
   active_since: number | null;
   active_by: string | null;
   board_note: string | null;
+  // What the board asked the applicant to put right, and when. Unlike
+  // board_note this is written to be read by them.
+  fix_note: string | null;
+  fix_asked_at: number | null;
+  fix_asked_by: string | null;
   status: RegisterStatus;
   source: 'web' | 'import' | 'board';
   applied_at: number;
@@ -2141,6 +2146,26 @@ export async function mergeApplicationInto(
 // A linked member editing their own details on /membership: everything
 // they supplied on the application, with the same validation and the same
 // email uniqueness; never status, class, or the Discord link.
+// The board asks for a correction: the entry stays where it is, and the
+// note is the applicant's to read and answer by saving their details.
+export async function askForCorrection(db: D1Database, id: number, note: string, by: string, now: number): Promise<RegisterRow | null> {
+  const text = note.trim().slice(0, 400);
+  if (!text) throw new RuleError('bad_input', 'Say what needs fixing.');
+  await db
+    .prepare('UPDATE register SET fix_note = ?2, fix_asked_at = ?3, fix_asked_by = ?4, updated_at = ?3 WHERE id = ?1')
+    .bind(id, text, now, by)
+    .run();
+  return getRegisterEntry(db, id);
+}
+
+// Answered, or withdrawn by the board.
+export async function clearCorrection(db: D1Database, id: number, now: number): Promise<void> {
+  await db
+    .prepare('UPDATE register SET fix_note = NULL, fix_asked_at = NULL, fix_asked_by = NULL, updated_at = ?2 WHERE id = ?1')
+    .bind(id, now)
+    .run();
+}
+
 export async function updateOwnEntry(
   db: D1Database,
   discordId: string,
@@ -2158,6 +2183,7 @@ export async function updateOwnEntry(
   await db
     .prepare(
       `UPDATE register SET full_name = ?2, domicile = ?3, email = ?4, student_status = ?5,
+         fix_note = NULL, fix_asked_at = NULL, fix_asked_by = NULL,
          union_member = ?6, telegram = ?7, games = ?8, wants_active = ?9, is_active = ?10,
          active_since = CASE WHEN ?10 = 1 THEN active_since ELSE NULL END,
          active_by = CASE WHEN ?10 = 1 THEN active_by ELSE NULL END,

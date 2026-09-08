@@ -166,6 +166,9 @@ const moreRows = showAll ? [] : rows.slice(PREVIEW);
 const allHref = `${viewHref(view)}&all=1`;
 const since = (r: RegisterRow) =>
   formatHelsinkiDate(r.status === 'pending' ? r.applied_at : (r.decided_at ?? r.applied_at));
+// An application the board has already asked about is not waiting on
+// the board any more.
+const waitingOnThem = (r: { fix_note: string | null }) => r.fix_note !== null;
 const days = (t: number) => Math.floor((now - t) / 86400);
 ---
 <Base title="Member register" description="Board-only member register of Lahti Association of Gaming LAG ry." wide>
@@ -192,7 +195,10 @@ const days = (t: number) => Math.floor((now - t) / 86400);
             return (
               <div class="queue-card">
                 <div class="queue-body">
-                  <p class="queue-name"><a href={`/register/${r.id}`}>{r.full_name}</a></p>
+                  <p class="queue-name">
+                    <a href={`/register/${r.id}`}>{r.full_name}</a>
+                    {waitingOnThem(r) && <span class="status-badge status-pending">waiting on them</span>}
+                  </p>
                   <p class="queue-meta">
                     {r.domicile} · {STUDENT_STATUS_LABELS[r.student_status]}
                     {r.union_member !== 'none' && <>, {r.union_member}</>}

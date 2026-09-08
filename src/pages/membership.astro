@@ -230,6 +230,17 @@ const MESSAGES: Record<FieldError, string> = {
     <>
       {note && <p class="flash">{note}</p>}
 
+      {entry.fix_note !== null && (
+        <div class="flash flash-ask">
+          <p><strong>The board has a question about your application.</strong></p>
+          <blockquote>{entry.fix_note}</blockquote>
+          <p>
+            Put it right under <a href="#details">Your details</a> below and save — that is all it takes, and the
+            board sees it straight away. Nothing else about your application changes.
+          </p>
+        </div>
+      )}
+
       <section class="member-hero" id="my-stats">
         <MemberCard
           name={entry.full_name}
@@ -348,7 +359,7 @@ const MESSAGES: Record<FieldError, string> = {
           </form>
         </section>
 
-        <section class="panel-card">
+        <section class="panel-card" id="details">
           <div class="card-head">
             <div>
               <h2>Your details</h2>
