@@ -372,9 +372,9 @@ On a phone it does everything:
   their ticket, the items are marked handed over, all from the one payment.
 - **No scanner?** The holder presses "Mark as used" on their ticket in
   front of you; the ticket then shows the **mark of the day**, an icon
-  that changes daily and is shown on the door page too, so a screenshot
-  from another day gives itself away. Shop items work the same with
-  "Mark as collected".
+  that changes every day — never the same one twice in a week — and is
+  shown on the door page too, so a screenshot from another day gives
+  itself away. Shop items work the same with "Mark as collected".
 
 | | |
 |---|---|

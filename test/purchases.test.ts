@@ -367,12 +367,31 @@ describe('the mark of the day', () => {
     const a = await dailyMark('secret-a', day);
     expect(await dailyMark('secret-a', day + 3600 * 5)).toEqual(a);
     expect(a.icon.length).toBeGreaterThan(0);
-    const days = new Set<string>();
-    for (let d = 0; d < 30; d++) days.add((await dailyMark('secret-a', day + d * 86400)).name);
-    expect(days.size).toBeGreaterThan(5);
     const other = [];
     for (let d = 0; d < 10; d++) other.push((await dailyMark('secret-b', day + d * 86400)).name === (await dailyMark('secret-a', day + d * 86400)).name);
     expect(other.every(Boolean)).toBe(false);
+  });
+
+  // The point of the mark is that another day's screenshot shows the
+  // wrong one, so what matters is not that the marks look random but
+  // that days near each other never share one.
+  it('gives every day of a week its own mark, and deals the whole list out over a cycle', async () => {
+    const day = Date.UTC(2026, 8, 5, 10) / 1000;
+    const names: string[] = [];
+    for (let d = 0; d < 800; d++) names.push((await dailyMark('secret-a', day + d * 86400)).name);
+    const marks = new Set(names).size;
+    // No two days in the same week share a mark, wherever the cycles fall.
+    for (let i = 0; i + 7 <= names.length; i++) {
+      expect(new Set(names.slice(i, i + 7)).size).toBe(7);
+    }
+    // And over a full cycle every mark is used exactly once, so none is
+    // rarer than another. Cycles are aligned on the day number itself,
+    // not on where this run happens to start.
+    const firstDay = Math.round(Date.UTC(2026, 8, 5) / 86_400_000);
+    const start = (marks - (firstDay % marks)) % marks;
+    for (let i = start; i + marks <= names.length; i += marks) {
+      expect(new Set(names.slice(i, i + marks)).size).toBe(marks);
+    }
   });
 });
 
