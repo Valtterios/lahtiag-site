@@ -370,6 +370,9 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             <p class="event-gating">
               {draft && <span class="status-badge status-muted">Draft</span>}
               {opensLater && event.cancelled_at === null && <span class="status-badge">Signups open {formatHelsinki(event.signups_open_at!)}</span>}
+              {!opensLater && !signupsClosed && event.cancelled_at === null && event.signups_close_at !== null && (
+                <span class="status-badge">Signups close {formatHelsinki(event.signups_close_at)}</span>
+              )}
               {event.cancelled_at !== null && <span class="status-badge status-danger">Cancelled</span>}
               {signupsClosed && event.cancelled_at === null && <span class="status-badge status-muted">Signups closed</span>}
               {event.members_only === 1 && <span class="status-badge status-member">Members only</span>}
@@ -898,7 +901,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
           <p class="admin-status">
             <span class={`status-badge${draft ? ' status-muted' : ' status-member'}`}>{draft ? 'Draft' : 'Published'}</span>
             {event.cancelled_at !== null && <span class="status-badge status-danger">Cancelled</span>}
-            <span class="status-badge">{signupsClosed ? 'Signups closed' : opensLater ? `Signups open ${formatHelsinki(event.signups_open_at!)}` : 'Signups open'}</span>
+            <span class="status-badge">{signupsClosed ? 'Signups closed' : opensLater ? `Signups open ${formatHelsinki(event.signups_open_at!)}` : event.signups_close_at !== null ? `Signups open until ${formatHelsinki(event.signups_close_at)}` : 'Signups open'}</span>
             <span class="status-badge">{isTeamEvent ? `${eventTeams.length} teams, ${going.length} players` : `${going.length}${event.capacity !== null ? ` / ${event.capacity}` : ''} going`}{waitlist.length > 0 ? `, ${waitlist.length} waiting` : ''}</span>
             {sales && <span class="status-badge">{sales.tickets} tickets sold</span>}
             {brackets.length === 1 && <span class={`status-badge${brackets[0].live_at === null ? ' status-muted' : ''}`}>{brackets[0].live_at === null ? 'Bracket: draft' : 'Bracket: live'}</span>}
@@ -974,6 +977,8 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               </label>
               <label>Signups open on <input name="open_date" type="date" value={event.signups_open_at !== null ? unixToHelsinkiInputs(event.signups_open_at).date : ''} /></label>
               <label>Signups open at (Helsinki) <input name="open_time" type="time" value={event.signups_open_at !== null ? unixToHelsinkiInputs(event.signups_open_at).time : ''} placeholder="empty = when published" /></label>
+              <label>Signups close on <input name="close_date" type="date" value={event.signups_close_at !== null ? unixToHelsinkiInputs(event.signups_close_at).date : ''} /></label>
+              <label>Signups close at (Helsinki) <input name="close_time" type="time" value={event.signups_close_at !== null ? unixToHelsinkiInputs(event.signups_close_at).time : ''} placeholder="empty = they stay open until you close them" /></label>
               <label>
                 Team size
                 <input name="team_size" type="number" min="1" value={event.team_size ?? ''} placeholder="empty = individual signups" />

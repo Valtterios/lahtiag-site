@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { formatHelsinkiRange, helsinkiToUnix } from '../src/lib/time';
-import { upsertMember, createEvent, listUpcomingEvents, listPastEvents } from '../src/lib/db';
+import { upsertMember, createEvent, getEvent, listUpcomingEvents, listPastEvents, setSignupsClosed, setSignupsCloseAt } from '../src/lib/db';
 
 const db = () => env.DB;
 const NOW = helsinkiToUnix('2026-01-15', '19:00')!;
@@ -66,5 +66,24 @@ describe('ends_at rules', () => {
     const id = await seed(-7200, -3600);
     expect((await listUpcomingEvents(db(), NOW)).map((e) => e.id)).not.toContain(id);
     expect((await listPastEvents(db(), NOW)).map((e) => e.id)).toContain(id);
+  });
+});
+
+describe('a closing time that has come', () => {
+  it('is dropped when the board reopens signups, so the job leaves them alone', async () => {
+    await upsertMember(db(), { discord_id: 'host', username: 'Host', avatar_hash: null }, NOW);
+    const id = await createEvent(db(), { title: 'LAN', description: null, starts_at: NOW + 86400, capacity: null, created_by: 'host' }, NOW);
+    await setSignupsCloseAt(db(), id, NOW - 60);
+    await setSignupsClosed(db(), id, true, NOW);
+    expect((await getEvent(db(), id))?.signups_close_at).toBe(NOW - 60);
+    await setSignupsClosed(db(), id, false, NOW);
+    const event = await getEvent(db(), id);
+    expect(event?.signups_closed_at).toBeNull();
+    expect(event?.signups_close_at).toBeNull();
+    // A closing time still ahead survives a reopening: it has not fired yet.
+    await setSignupsCloseAt(db(), id, NOW + 3600);
+    await setSignupsClosed(db(), id, true, NOW);
+    await setSignupsClosed(db(), id, false, NOW);
+    expect((await getEvent(db(), id))?.signups_close_at).toBe(NOW + 3600);
   });
 });

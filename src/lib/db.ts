@@ -95,6 +95,7 @@ export interface EventRow {
   discord_bracket_message_id: string | null; // legacy, unused: brackets.discord_message_id took over
   bracket_live_at: number | null; // legacy, unused: brackets.live_at took over
   signups_open_at: number | null; // null = from publication; else signups and sales wait for this moment
+  signups_close_at: number | null; // null = until the board closes them; else the job closes them at this moment
   interest_synced_at: number | null; // last time Discord's Interested clicks were read
   reminder_sent_at: number | null; // the hourly job's day-before reminder, once
   open_posted_at: number | null; // the hourly job's "signups are open" post, once
@@ -808,6 +809,8 @@ export async function purgeMember(db: D1Database, discordId: string): Promise<'d
   }
 }
 
+// Reopening also drops a closing time that has already been and gone,
+// or the job would shut the door again a quarter of an hour later.
 export async function setSignupsClosed(
   db: D1Database,
   eventId: number,
@@ -820,6 +823,9 @@ export async function setSignupsClosed(
     .prepare('UPDATE events SET signups_closed_at = ?2 WHERE id = ?1')
     .bind(eventId, closed ? now : null)
     .run();
+  if (!closed && event.signups_close_at !== null && event.signups_close_at <= now) {
+    await setSignupsCloseAt(db, eventId, null);
+  }
 }
 
 // --- tournament team signups -----------------------------------------------
@@ -3086,6 +3092,10 @@ export async function listMyEvents(db: D1Database, discordId: string, now: numbe
 
 export async function setSignupsOpenAt(db: D1Database, eventId: number, at: number | null): Promise<void> {
   await db.prepare('UPDATE events SET signups_open_at = ?2 WHERE id = ?1').bind(eventId, at).run();
+}
+
+export async function setSignupsCloseAt(db: D1Database, eventId: number, at: number | null): Promise<void> {
+  await db.prepare('UPDATE events SET signups_close_at = ?2 WHERE id = ?1').bind(eventId, at).run();
 }
 
 export interface InterestRow {

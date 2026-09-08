@@ -20,6 +20,7 @@ import {
   listEventsEndedBetween,
   listAttendees,
   memberStats,
+  setSignupsClosed,
   recordMilestone,
   EVENT_MILESTONES,
   type EventWithCounts,
@@ -28,7 +29,7 @@ import {
 } from './db';
 import { postWebhook, NO_MENTIONS, SUPPRESS_EMBEDS } from './discord';
 import { syncInterest, archiveEventDiscord } from './event-discord';
-import { announcePromotions, postEventLine } from './event-channel';
+import { announcePromotions, postEventLine, postSignups } from './event-channel';
 import { formatHelsinki } from './time';
 import { refreshEventAnnouncement } from './announce';
 import { postNews } from './news';
@@ -50,6 +51,15 @@ export function dueReminders<T extends Pick<EventWithCounts, 'starts_at' | 'remi
 export function dueOpenings<T extends Pick<EventWithCounts, 'signups_open_at' | 'open_posted_at' | 'published_at' | 'cancelled_at' | 'starts_at'>>(events: T[], now: number): T[] {
   return events.filter(
     (e) => e.published_at !== null && e.cancelled_at === null && e.open_posted_at === null && e.signups_open_at !== null && e.signups_open_at <= now && now - e.signups_open_at < OPENING_GRACE && e.starts_at > now,
+  );
+}
+
+// Pure: which events' signups have reached their closing time and are
+// still open. The board's own Close button does the same thing; this is
+// the one they set and forgot.
+export function dueClosings<T extends Pick<EventWithCounts, 'signups_close_at' | 'signups_closed_at' | 'published_at' | 'cancelled_at'>>(events: T[], now: number): T[] {
+  return events.filter(
+    (e) => e.published_at !== null && e.cancelled_at === null && e.signups_closed_at === null && e.signups_close_at !== null && e.signups_close_at <= now,
   );
 }
 
@@ -132,6 +142,7 @@ export interface HourlySummary {
   reminders: number;
   sales: number;
   openings: number;
+  closings: number;
   promotions: number;
   interest: number;
   archived: number;
@@ -139,7 +150,7 @@ export interface HourlySummary {
 
 export async function runHourly(db: D1Database, env: Env, origin: string, now: number): Promise<HourlySummary> {
   const upcoming = await listUpcomingEvents(db, now, false);
-  const summary: HourlySummary = { digest: 0, milestones: 0, news: 0, reminders: 0, sales: 0, openings: 0, promotions: 0, interest: 0, archived: 0 };
+  const summary: HourlySummary = { digest: 0, milestones: 0, news: 0, reminders: 0, sales: 0, openings: 0, closings: 0, promotions: 0, interest: 0, archived: 0 };
 
   // News written ahead: published and posted at its time.
   for (const draft of await listDueAnnouncements(db, now)) {
@@ -179,6 +190,12 @@ export async function runHourly(db: D1Database, env: Env, origin: string, now: n
     if (event.discord_channel_id) await postEventLine(db, env, event.id, line, true);
     await db.prepare('UPDATE events SET open_posted_at = ?2 WHERE id = ?1').bind(event.id, now).run();
     summary.openings++;
+  }
+
+  for (const event of dueClosings(upcoming, now)) {
+    await setSignupsClosed(db, event.id, true, now);
+    await postSignups(db, env, event.id, true);
+    summary.closings++;
   }
 
   summary.promotions = await announcePromotions(db, env, now);

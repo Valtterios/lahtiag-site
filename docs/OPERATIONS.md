@@ -105,7 +105,12 @@ returns to the categories):
    one reserve is a team of six, one of them starting on the bench. The
    announcement posts itself to the webhook channel.
 2. Members sign up (and create/join teams) on the event page.
-3. **🔒 Close signups** (Event) when the field is set.
+3. **🔒 Close signups** (Event) when the field is set — or set
+   **Signups close on/at** in the event's own fields and let it happen:
+   the quarter-hourly job closes them within fifteen minutes of that
+   moment and posts the same line in the event's channel. Reopening by
+   hand drops a closing time that has already passed, so the job does not
+   shut the door again behind you.
 4. **🎲 Generate bracket** (Bracket) — random seeding, byes handled
    automatically. The draw is a **draft** only the board sees: on the
    site's bracket page, rearrange round one if you want (a bye is an

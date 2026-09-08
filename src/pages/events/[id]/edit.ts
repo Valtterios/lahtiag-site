@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { updateEvent, getEvent, listBrackets, setSignupsOpenAt, demoteOverCapacity, RuleError } from '../../../lib/db';
+import { updateEvent, getEvent, listBrackets, setSignupsOpenAt, setSignupsCloseAt, demoteOverCapacity, RuleError } from '../../../lib/db';
 import { renameEventDiscord, syncScheduledEvent } from '../../../lib/event-discord';
 import { dropPinnedBrackets } from '../../../lib/event-channel';
 import { later, postEventLine, changeLine, announcePromotionsInBackground, notifyWaitlisted } from '../../../lib/event-channel';
@@ -30,6 +30,12 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
   const openTime = String(form.get('open_time') ?? '').trim();
   const opensAt = openDate === '' && openTime === '' ? null : helsinkiToUnix(openDate, openTime || '00:00');
   if (opensAt === null && (openDate !== '' || openTime !== '')) return redirect(`${back}?err=bad_time`, 303);
+  // Signups close by themselves at this moment; both fields empty means
+  // they stay open until the board closes them.
+  const closeDate = String(form.get('close_date') ?? '').trim();
+  const closeTime = String(form.get('close_time') ?? '').trim();
+  const closesAt = closeDate === '' && closeTime === '' ? null : helsinkiToUnix(closeDate, closeTime || '23:59');
+  if (closesAt === null && (closeDate !== '' || closeTime !== '')) return redirect(`${back}?err=bad_time`, 303);
   const capacityRaw = String(form.get('capacity') ?? '').trim();
   const description = String(form.get('description') ?? '').trim();
   const organizers = String(form.get('organizers') ?? '').trim();
@@ -63,6 +69,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
       team_reserves: teamReserves,
     });
     await setSignupsOpenAt(env.DB, id, opensAt);
+    await setSignupsCloseAt(env.DB, id, closesAt);
     // A smaller event: the latest signups beyond the new capacity wait, and hear about it.
     if (before && event.capacity !== null && (before.capacity === null || event.capacity < before.capacity)) {
       const demoted = await demoteOverCapacity(env.DB, id);

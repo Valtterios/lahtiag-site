@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dueReminders, dueOpenings, dueSalesReminder, reminderLine, openingLine, salesLine, digestText, milestoneLine, helsinkiClock, REMINDER_WINDOW } from '../src/lib/cron';
+import { dueReminders, dueOpenings, dueClosings, dueSalesReminder, reminderLine, openingLine, salesLine, digestText, milestoneLine, helsinkiClock, REMINDER_WINDOW } from '../src/lib/cron';
 
 // The hourly job's choices, as pure functions.
 
@@ -18,6 +18,23 @@ describe('dueReminders', () => {
       { ...base, id: 7, starts_at: NOW + 3600, published_at: null },
     ];
     expect(dueReminders(events, NOW).map((e) => e.id)).toEqual([1, 2]);
+  });
+});
+
+describe('dueClosings', () => {
+  it('picks the ones whose closing time has come and are still open', () => {
+    const shut = { ...base, signups_closed_at: null as number | null, signups_close_at: null as number | null };
+    const events = [
+      { ...shut, id: 1, signups_close_at: NOW - 60 }, // came and went: close it
+      { ...shut, id: 2, signups_close_at: NOW }, // exactly now
+      { ...shut, id: 3, signups_close_at: NOW + 60 }, // not yet
+      { ...shut, id: 4, signups_close_at: NOW - 60, signups_closed_at: NOW - 30 }, // already closed
+      { ...shut, id: 5, signups_close_at: NOW - 86400 * 30 }, // long past, still open: close it
+      { ...shut, id: 6, signups_close_at: null }, // closed by hand only
+      { ...shut, id: 7, signups_close_at: NOW - 60, cancelled_at: NOW - 10 },
+      { ...shut, id: 8, signups_close_at: NOW - 60, published_at: null },
+    ];
+    expect(dueClosings(events, NOW).map((e) => e.id)).toEqual([1, 2, 5]);
   });
 });
 

@@ -308,6 +308,12 @@ at the door.*
 
 *The history page: the Hall of Fame with the final bracket picture, and the leaderboard.*
 
+- **Signups open and close by the clock.** Both are fields on the event:
+  leave the opening empty and signups open when you publish, leave the
+  closing empty and they stay open until you press Close signups. With a
+  closing time set, they close themselves within fifteen minutes of it,
+  and the event's channel hears about it the same way.
+
 - **Pinging when you publish.** The Publish card asks who to ping:
   nobody, `@everyone`, or a role. Only the first posting rings — later
   edits to the announcement (a new time, the counts going up) notify
