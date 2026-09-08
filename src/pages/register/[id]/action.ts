@@ -139,7 +139,7 @@ export const POST: APIRoute = async ({ request, redirect, params, url, locals })
           env.DB,
           id,
           parsed.value,
-          { discord_id: discordIdRaw || null, board_note: boardNote || null, member_type: memberType },
+          { discord_id: discordIdRaw || null, board_note: boardNote || null, member_type: memberType, founder: form.get('founder') === 'on' },
           now,
         );
         // A link changed by hand: strip the old account, set up the new one.

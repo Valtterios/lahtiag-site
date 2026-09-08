@@ -35,6 +35,7 @@ interface Props {
   active: boolean;
   board?: boolean;
   honorary?: boolean; // the rules' own class, and the rarest card
+  founder?: boolean; // founded the association: a gold chip, in place of the board one
   outside?: boolean; // external or supporting: a member, but not a full one
   figures?: CardFigure[]; // the whole record, four at most; none before the card is issued
   minecraft?: string | null;
@@ -53,6 +54,7 @@ const {
   active,
   board = false,
   honorary = false,
+  founder = false,
   outside = false,
   figures = [],
   minecraft = null,
@@ -71,10 +73,14 @@ const KIND: Record<RegisterStatus, string> = {
   former: 'Expired',
 };
 // Both, when both: the stock already says board, but an active board
-// member is still an active and the foil is theirs to wear.
-const roles: { label: string; foil: boolean }[] = [];
-if (board) roles.push({ label: 'Board', foil: false });
-if (active) roles.push({ label: 'Active', foil: true });
+// member is still an active and the foil is theirs to wear. Founding the
+// association outranks sitting on its board, and says the same thing about
+// the person for longer, so the gold chip takes that place rather than
+// crowding in beside it.
+const roles: { label: string; foil: 'gold' | 'silver' | null }[] = [];
+if (founder) roles.push({ label: 'Founder', foil: 'gold' });
+else if (board) roles.push({ label: 'Board', foil: null });
+if (active) roles.push({ label: 'Active', foil: 'silver' });
 const no = String(number).padStart(4, '0');
 const wordmark = light ? '/brand/wordmark-blue.png' : '/brand/wordmark-white.png';
 // The card's height is fixed by its proportions, so a long name cannot be
@@ -99,7 +105,9 @@ const scale = name.length > 22 ? ' id-name-longer' : name.length > 14 ? ' id-nam
           <p class="id-card-name">{name}</p>
           <p class="id-card-class">
             {klass}
-            {roles.map((r) => <span class={`id-card-flag${r.foil ? ' id-card-flag-foil' : ''}`}>{r.label}</span>)}
+            {roles.map((r) => (
+              <span class={`id-card-flag${r.foil ? ' id-card-flag-foil' : ''}${r.foil === 'gold' ? ' id-card-flag-gold' : ''}`}>{r.label}</span>
+            ))}
           </p>
         </div>
         {figures.length > 0 && (

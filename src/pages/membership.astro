@@ -242,6 +242,7 @@ const MESSAGES: Record<FieldError, string> = {
           active={entry.is_active}
           board={session.isAdmin}
           honorary={entry.member_type === 'honorary'}
+          founder={entry.founder}
           outside={entry.member_type === 'external' || entry.member_type === 'supporting'}
           figures={figures}
           minecraft={mcOwn?.name ?? null}
@@ -301,14 +302,16 @@ const MESSAGES: Record<FieldError, string> = {
           <section class="panel-card">
             <div class="card-head">
               <div>
-                <h2>Your profile card</h2>
+                <h2>Your card in Discord</h2>
                 <p>
-                  Your season as a picture, for sharing: <code>/profile</code> in Discord posts this one for
-                  everyone to see. It is not your membership card and carries none of your details.
+                  <code>/profile</code> posts this for everyone in the server to see, and anyone looking at it
+                  can turn it over. It is the same card as above with everything the register keeps to itself
+                  taken off: no full name, no number, no membership class — only what Discord already knows
+                  and what the association says out loud.
                 </p>
               </div>
             </div>
-            <img class="profile-card" src="/membership/card.png" alt="Your stats card" width="900" height="536" />
+            <img class="profile-card" src="/membership/card.png" alt="Your card as Discord shows it" width="900" height="567" />
             <form method="post" action="/membership/leaderboard" class="leaderboard-optin">
               <input type="hidden" name="csrf" value={csrf} />
               <label class="check"><input type="checkbox" name="hide" checked={!onLeaderboard} /> <span>Hide me from the public leaderboard on the <a href="/history">history page</a> and keep my season off my profile card. Everyone is on both unless hidden.</span></label>

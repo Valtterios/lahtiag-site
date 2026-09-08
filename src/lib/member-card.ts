@@ -8,7 +8,11 @@
 // what Discord already knows or the association says out loud: the display
 // name, the avatar, the stock, since when, and the figures.
 
+import type { D1Database } from '@cloudflare/workers-types';
 import type { MemberStats } from './db';
+import { getRegisterByDiscord, isLeaderboardOptIn, memberStats } from './db';
+import { avatarUrl } from './discord';
+import { lifetimeTotals } from './season';
 import { Canvas, cleanText } from './raster';
 import { decodePng } from './png-decode';
 import { formatHelsinkiDate } from './time';
@@ -30,6 +34,7 @@ export interface CardFace {
   name: string;
   tier: CardTier;
   active: boolean;
+  founder: boolean;
   memberSince: number | null;
   avatar: Uint8Array | null; // the PNG bytes, already fetched
   figures: { label: string; value: string }[];
@@ -53,15 +58,21 @@ const STOCKS: Record<CardTier, Stock> = {
 };
 
 // The bands of a piece of metal, light and dark by turns. The hard turns
-// are what make it read as a surface rather than a gradient.
-const FOIL = [0x6f7276, 0xdfe3e9, 0x8a9098, 0xffffff, 0x99a0a8, 0xeef1f5, 0x767c84, 0xccd2da, 0x7b8188];
+// are what make it read as a surface rather than a gradient. Silver is the
+// actives'; gold is the founders', and only theirs.
+const FOILS = {
+  silver: [0x6f7276, 0xdfe3e9, 0x8a9098, 0xffffff, 0x99a0a8, 0xeef1f5, 0x767c84, 0xccd2da, 0x7b8188],
+  gold: [0x8a6a1f, 0xf8e6a8, 0xc9a247, 0xfffbe9, 0xd4af4f, 0xf4e4ab, 0xa67f28, 0xe9d182, 0x8f6d21],
+};
+type Foil = keyof typeof FOILS;
 
-function foilAt(t: number): number {
-  const at = Math.min(FOIL.length - 1.001, Math.max(0, t) * (FOIL.length - 1));
+function foilAt(metal: Foil, t: number): number {
+  const bands = FOILS[metal];
+  const at = Math.min(bands.length - 1.001, Math.max(0, t) * (bands.length - 1));
   const i = Math.floor(at);
   const f = at - i;
   const mix = (shift: number) =>
-    Math.round((((FOIL[i] >> shift) & 0xff) * (1 - f) + ((FOIL[i + 1] >> shift) & 0xff) * f));
+    Math.round((((bands[i] >> shift) & 0xff) * (1 - f) + ((bands[i + 1] >> shift) & 0xff) * f));
   return (mix(16) << 16) | (mix(8) << 8) | mix(0);
 }
 
@@ -117,9 +128,10 @@ function drawAvatar(c: Canvas, image: { width: number; height: number; rgba: Uin
   }
 }
 
-// A chip: the role marker. Foil for an active, flat for the board, cut at
-// the top-right corner like everything else the brand draws.
-function chip(c: Canvas, x: number, y: number, label: string, stock: Stock, foil: boolean): number {
+// A chip: the role marker. Struck in metal for an active or a founder,
+// flat for the board, cut at the top-right corner like everything else the
+// brand draws.
+function chip(c: Canvas, x: number, y: number, label: string, stock: Stock, foil: Foil | null): number {
   const padX = 16;
   const w = Canvas.textWidth(label) + padX * 2;
   const h = 46;
@@ -127,11 +139,32 @@ function chip(c: Canvas, x: number, y: number, label: string, stock: Stock, foil
   for (let dy = 0; dy < h; dy++) {
     for (let dx = 0; dx < w; dx++) {
       if (dx >= w - notch + dy && dy < notch) continue;
-      c.blend(x + dx, y + dy, foil ? foilAt(dx / w) : stock.chip);
+      c.blend(x + dx, y + dy, foil ? foilAt(foil, dx / w) : stock.chip);
     }
   }
   c.text(x + padX, y + 6, label, foil ? INK : stock.chipInk, 's');
   return w;
+}
+
+// Break a line of text to a width, at most so many lines; the last one is
+// cut with a mark if the rest will not fit.
+function wrap(text: string, width: number, lines: number): string[] {
+  const words = text.split(' ');
+  const out: string[] = [];
+  let line = '';
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (Canvas.textWidth(next) <= width || !line) {
+      line = next;
+      continue;
+    }
+    out.push(line);
+    line = word;
+    if (out.length === lines - 1) break;
+  }
+  const rest = words.slice(out.join(' ').split(' ').filter(Boolean).length).join(' ');
+  out.push(Canvas.fit(out.length === lines - 1 ? rest : line, width));
+  return out.slice(0, lines);
 }
 
 export async function memberCardPng(face: CardFace, back: boolean): Promise<Uint8Array> {
@@ -140,15 +173,17 @@ export async function memberCardPng(face: CardFace, back: boolean): Promise<Uint
   guilloche(c, stock.ruling);
   const pad = 50;
 
-  c.text(pad, 34, 'LahtiAG', stock.ink, 'l');
-  const kind = back ? 'MEMBER CARD' : 'MEMBER CARD';
-  c.text(W - pad - Canvas.textWidth(kind), 48, kind, stock.ink, 's');
-
   if (!back) {
-    // The photograph, in a border, with the same cut corner.
+    // The wordmark is a picture the Worker has no way to open, so the name
+    // is set instead. Upper case throughout, as on the web: the large font
+    // has ÄÖÅ but not äöå, so a Finnish name only survives in capitals.
+    c.text(pad, 30, 'LAHTIAG', stock.ink, 'l');
+    const kind = 'MEMBER CARD';
+    c.text(W - pad - Canvas.textWidth(kind), 46, kind, stock.ink, 's');
+
     const size = 150;
     const px = pad;
-    const py = 130;
+    const py = 120;
     c.rect(px - 5, py - 5, size + 10, size + 10, stock.rule);
     c.rect(px, py, size, size, stock.ruling);
     if (face.avatar) {
@@ -158,44 +193,45 @@ export async function memberCardPng(face: CardFace, back: boolean): Promise<Uint
 
     const tx = px + size + 40;
     const wide = W - pad - tx;
-    const big = Canvas.textWidth(face.name, 'xl') <= wide;
-    c.text(tx, big ? 150 : 168, Canvas.fit(face.name, wide, big ? 'xl' : 'l'), stock.ink, big ? 'xl' : 'l');
+    c.text(tx, 138, Canvas.fit(face.name.toUpperCase(), wide, 'l'), stock.ink, 'l');
 
     let cx = tx;
-    if (face.tier === 'board') cx += chip(c, cx, 258, 'BOARD', stock, false) + 14;
-    if (face.active) chip(c, cx, 258, 'ACTIVE', stock, true);
+    if (face.founder) cx += chip(c, cx, 206, 'FOUNDER', stock, 'gold') + 14;
+    else if (face.tier === 'board') cx += chip(c, cx, 206, 'BOARD', stock, null) + 14;
+    if (face.active) chip(c, cx, 206, 'ACTIVE', stock, 'silver');
 
-    // The figures, under a rule, said to be the whole record.
-    const ry = 344;
-    c.rect(pad, ry, W - pad * 2, 2, stock.rule);
+    const since = face.memberSince !== null ? `MEMBER SINCE ${formatHelsinkiDate(face.memberSince).toUpperCase()}` : 'NOT A MEMBER';
+    c.text(pad, 300, since, stock.ink, 's');
+
+    c.rect(pad, 356, W - pad * 2, 2, stock.rule);
     if (face.figures.length > 0) {
-      c.text(pad, ry + 18, 'ALL TIME', stock.rule, 's');
+      c.text(pad, 370, 'ALL TIME', stock.rule, 's');
       const cell = (W - pad * 2) / face.figures.length;
       face.figures.forEach((f, i) => {
         const x = pad + i * cell;
-        const size = Canvas.textWidth(f.value, 'l') <= cell - 20 ? 'l' : 's';
-        c.text(x, size === 'l' ? 62 + ry : 74 + ry, f.value, stock.ink, size);
-        c.text(x, ry + 126, f.label.toUpperCase(), stock.rule, 's');
+        const big = Canvas.textWidth(f.value, 'l') <= cell - 20;
+        c.text(x, big ? 412 : 424, Canvas.fit(f.value, cell - 20, big ? 'l' : 's'), stock.ink, big ? 'l' : 's');
+        c.text(x, 476, Canvas.fit(f.label.toUpperCase(), cell - 20), stock.rule, 's');
       });
     } else {
-      c.text(pad, ry + 60, 'This member keeps their numbers to themselves.', stock.rule, 's');
+      c.text(pad, 400, 'This member keeps their numbers to themselves.', stock.rule, 's');
     }
-
-    const since = face.memberSince !== null ? `MEMBER SINCE ${formatHelsinkiDate(face.memberSince).toUpperCase()}` : 'NOT A MEMBER';
-    c.text(pad, H - pad - 34, since, stock.ink, 's');
   } else {
-    // The back: the stripe, the name on its panel, and the rest of the record.
-    c.rect(0, 118, W, 76, face.tier === 'board' ? 0x000000 : INK);
-    c.rect(pad, 232, W - pad * 2, 62, face.tier === 'plain' ? 0xf5f5f5 : WHITE);
-    c.text(pad + 20, 240, Canvas.fit(face.name, W - pad * 2 - 40, 'l'), INK, 'l');
+    // The back carries no wordmark, as the web card's does not: the stripe
+    // is the first thing, the way it is on a card you turn over.
+    c.rect(0, 58, W, 82, face.tier === 'board' ? 0x000000 : INK);
+    const panelY = 184;
+    c.rect(pad, panelY, W - pad * 2, 66, face.tier === 'plain' ? 0xf5f5f5 : WHITE);
+    c.text(pad + 22, panelY + 6, Canvas.fit(face.name.toUpperCase(), W - pad * 2 - 44, 'l'), INK, 'l');
 
-    let y = 326;
-    for (const line of face.record) {
-      c.text(pad, y, Canvas.fit(line, W - pad * 2), stock.ink, 's');
+    let y = 296;
+    for (const line of wrap(face.record.join(' · '), W - pad * 2, 2)) {
+      c.text(pad, y, line, stock.ink, 's');
       y += 40;
     }
-    c.text(pad, H - pad - 78, 'Lahti Association of Gaming LAG ry, Lahti.', stock.rule, 's');
-    c.text(pad, H - pad - 34, 'LAHTIAG.FI/MEMBERSHIP', stock.ink, 's');
+    c.text(pad, 424, 'Lahti Association of Gaming LAG ry, Lahti.', stock.rule, 's');
+    c.text(pad, 462, 'Personal and not transferable.', stock.rule, 's');
+    c.text(pad, 504, 'LAHTIAG.FI/MEMBERSHIP', stock.ink, 's');
   }
 
   cutShape(c, 22, 34);
@@ -220,4 +256,56 @@ export function cardRecord(stats: MemberStats, voiceMinutes: number): string[] {
   if (stats.first_event_at !== null) lines.push(`First event ${formatHelsinkiDate(stats.first_event_at)}`);
   if (stats.last_win) lines.push(`Last win ${cleanText(stats.last_win.title)}`);
   return lines;
+}
+
+// Everything the card needs, gathered in one place so the page and the
+// slash command draw exactly the same thing.
+//
+// Hiding yourself from the leaderboard takes the figures off: the opt-out
+// is about numbers, and half of one that still published the whole record
+// would not be worth having.
+export async function cardFace(
+  db: D1Database,
+  who: { discordId: string; name: string; avatarHash: string | null; board: boolean },
+  now: number,
+): Promise<CardFace> {
+  const [entry, stats, shown] = await Promise.all([
+    getRegisterByDiscord(db, who.discordId),
+    memberStats(db, who.discordId, now),
+    isLeaderboardOptIn(db, who.discordId),
+  ]);
+  const lifetime = shown ? await lifetimeTotals(db, who.discordId) : null;
+  const member = entry?.status === 'member';
+  const tier: CardTier = !member
+    ? 'plain'
+    : who.board
+      ? 'board'
+      : entry.member_type === 'honorary'
+        ? 'honorary'
+        : entry.member_type === 'external' || entry.member_type === 'supporting'
+          ? 'plain'
+          : 'member';
+  return {
+    name: cleanText(who.name) || 'Member',
+    tier,
+    active: Boolean(entry?.is_active),
+    founder: Boolean(entry?.founder),
+    memberSince: stats.member_since,
+    avatar: await fetchAvatar(who.discordId, who.avatarHash),
+    figures: lifetime ? cardFigures(stats, lifetime.messages, lifetime.minecraft_minutes) : [],
+    record: lifetime ? cardRecord(stats, lifetime.voice_minutes) : [],
+  };
+}
+
+// The avatar, or nothing: a card without a photograph is still a card, and
+// Discord's CDN is not worth failing a command over.
+async function fetchAvatar(discordId: string, avatarHash: string | null): Promise<Uint8Array | null> {
+  try {
+    const response = await fetch(avatarUrl(discordId, avatarHash, 256));
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return bytes.length > 0 && bytes.length < 4_000_000 ? bytes : null;
+  } catch {
+    return null;
+  }
 }

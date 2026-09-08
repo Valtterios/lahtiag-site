@@ -822,10 +822,17 @@ export async function editInteractionReplyWithFile(
   interactionToken: string,
   content: string,
   file: MessageFile,
+  components: unknown[] = [],
 ): Promise<boolean> {
   try {
     const form = new FormData();
-    form.append('payload_json', JSON.stringify({ content, allowed_mentions: NO_MENTIONS, attachments: [{ id: 0, filename: file.name }] }));
+    // The attachments list is the whole list: naming only the new file is
+    // what drops the one already on the message, which is how a card is
+    // turned over in place.
+    form.append(
+      'payload_json',
+      JSON.stringify({ content, allowed_mentions: NO_MENTIONS, attachments: [{ id: 0, filename: file.name }], components }),
+    );
     form.append('files[0]', new Blob([file.bytes as BlobPart], { type: file.type }), file.name);
     const response = await fetch(`${API}/webhooks/${applicationId}/${interactionToken}/messages/@original`, { method: 'PATCH', body: form });
     return response.ok;

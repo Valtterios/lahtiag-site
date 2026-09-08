@@ -28,7 +28,6 @@ import {
   upsertMember,
   RuleError,
   getRegisterByDiscord,
-  memberStats,
   toggleInterest,
   joinWaitlist,
   getEvent,
@@ -40,7 +39,7 @@ import {
 import { formatHelsinki, formatHelsinkiDate, helsinkiToUnix } from '../../lib/time';
 import { syncScheduledEvent, setUpEventDiscord } from '../../lib/event-discord';
 import { participantNames, postSignups, postBracketOut, postResult, postRevert, postEventLine, cancelLine, screenLine, dropLiveBracket } from '../../lib/event-channel';
-import { profileCardPng } from '../../lib/profile-card';
+import { cardFace, memberCardPng } from '../../lib/member-card';
 import { cleanText } from '../../lib/raster';
 import { postEventAnnouncement, refreshEventAnnouncement } from '../../lib/announce';
 import { syncEventRolesInBackground } from '../../lib/event-discord';
@@ -106,7 +105,12 @@ interface Interaction {
     custom_id?: string;
     values?: string[];
     components?: ModalRow[];
-    resolved?: { users?: Record<string, { id: string; username: string; global_name: string | null; avatar: string | null }> };
+    resolved?: {
+      users?: Record<string, { id: string; username: string; global_name: string | null; avatar: string | null }>;
+      // Discord resolves the picked member too, roles and all, so the card
+      // can say who is on the board without asking Discord again.
+      members?: Record<string, { roles?: string[]; nick?: string | null }>;
+    };
   };
   member?: { roles?: string[]; nick?: string | null; user?: { id: string; username: string; global_name: string | null; avatar: string | null } };
 }
@@ -263,6 +267,14 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
       return refuse('This needs the admin role.');
     }
     return json({ type: 4, data: { flags: 64, ...controlPanel(url.origin) } });
+  }
+
+  // The card's Turn over (p:b:..., p:f:...): anyone looking at it. The
+  // message it sits on is edited in place, so the answer is a deferred
+  // update rather than a reply of its own.
+  if (interaction.type === 3 && /^p:[bf]:/.test(interaction.data?.custom_id ?? '')) {
+    locals.cfContext.waitUntil(fleeting(handleProfileTurn(env, interaction, interaction.data!.custom_id!)));
+    return json({ type: 6 });
   }
 
   // Announcement buttons (e:go, e:maybe, e:heart): anyone in the server.
@@ -847,21 +859,86 @@ async function handleProfile(env: WorkerEnv, interaction: Interaction): Promise<
     await editInteractionReply(interaction.application_id, interaction.token, 'Could not tell whose card to draw.');
     return;
   }
-  const resolved = interaction.data?.resolved?.users?.[targetId];
-  const who = resolved ?? (targetId === invoker?.id ? invoker : undefined);
-  // The first name the card's fonts can draw in full; else what remains of it.
-  const candidates = [targetId === invoker?.id ? interaction.member?.nick : null, who?.global_name, who?.username, await memberName(env, targetId)].filter((n): n is string => Boolean(n));
-  const name = candidates.find((n) => cleanText(n) === n.trim()) ?? candidates.map(cleanText).find((n) => n.length > 0) ?? 'Member';
-  const now = Math.floor(Date.now() / 1000);
-  const stats = await memberStats(env.DB, targetId, now);
-  const season = (await isLeaderboardOptIn(env.DB, targetId)) ? await seasonSummary(env.DB, targetId, now) : null;
-  const png = await profileCardPng(name, stats, season);
-  const ok = await editInteractionReplyWithFile(interaction.application_id, interaction.token, '', { name: 'profile.png', bytes: png, type: 'image/png' });
+  // Hiding yourself from the leaderboard is a decision about your numbers
+  // being public, so it also stops anybody else putting your card in a
+  // channel. Your own card you can always draw.
+  if (targetId !== invoker?.id && !(await isLeaderboardOptIn(env.DB, targetId))) {
+    await editInteractionReply(interaction.application_id, interaction.token, 'That member keeps their card to themselves.');
+    return;
+  }
+  const png = await profileCard(env, interaction, targetId, false);
+  if (!png) {
+    await editInteractionReply(interaction.application_id, interaction.token, 'The card could not be drawn. Try again in a moment.');
+    return;
+  }
+  const ok = await editInteractionReplyWithFile(
+    interaction.application_id,
+    interaction.token,
+    '',
+    { name: 'card.png', bytes: png, type: 'image/png' },
+    turnButton(targetId, false),
+  );
   if (!ok) {
     await editInteractionReply(interaction.application_id, interaction.token, 'The card could not be posted. Try again in a moment.');
     return;
   }
   return 'keep';
+}
+
+// One button under the card, which anyone looking at it may press: the
+// back carries nothing the front does not already say out loud.
+function turnButton(targetId: string, showingBack: boolean): unknown[] {
+  return [
+    {
+      type: 1,
+      components: [
+        { type: 2, style: 2, label: showingBack ? 'Turn back' : 'Turn over', custom_id: `p:${showingBack ? 'f' : 'b'}:${targetId}` },
+      ],
+    },
+  ];
+}
+
+// Turning the card over: the same picture from the other side, swapped
+// into the message that is already there.
+async function handleProfileTurn(env: WorkerEnv, interaction: Interaction, id: string): Promise<Outcome> {
+  const [, side, targetId] = id.split(':');
+  const back = side === 'b';
+  const png = await profileCard(env, interaction, targetId, back);
+  if (!png) return;
+  await editInteractionReplyWithFile(
+    interaction.application_id,
+    interaction.token,
+    '',
+    { name: back ? 'card-back.png' : 'card.png', bytes: png, type: 'image/png' },
+    turnButton(targetId, back),
+  );
+  return 'keep';
+}
+
+// The card itself: the same code the membership page draws with, so the
+// preview there cannot drift from what the channel sees.
+async function profileCard(env: WorkerEnv, interaction: Interaction, targetId: string, back: boolean): Promise<Uint8Array | null> {
+  const invoker = interaction.member?.user;
+  const resolved = interaction.data?.resolved?.users?.[targetId];
+  const who = resolved ?? (targetId === invoker?.id ? invoker : undefined);
+  const candidates = [
+    targetId === invoker?.id ? interaction.member?.nick : interaction.data?.resolved?.members?.[targetId]?.nick,
+    who?.global_name,
+    who?.username,
+    await memberName(env, targetId),
+  ].filter((n): n is string => Boolean(n));
+  const name = candidates.find((n) => cleanText(n) === n.trim()) ?? candidates.map(cleanText).find((n) => n.length > 0) ?? 'Member';
+  const roles = targetId === invoker?.id ? (interaction.member?.roles ?? []) : (interaction.data?.resolved?.members?.[targetId]?.roles ?? []);
+  try {
+    const face = await cardFace(
+      env.DB,
+      { discordId: targetId, name, avatarHash: who?.avatar ?? null, board: hasAdminRole(roles, env.ADMIN_ROLE_ID) },
+      Math.floor(Date.now() / 1000),
+    );
+    return await memberCardPng(face, back);
+  } catch {
+    return null;
+  }
 }
 
 async function memberName(env: WorkerEnv, discordId: string): Promise<string | null> {

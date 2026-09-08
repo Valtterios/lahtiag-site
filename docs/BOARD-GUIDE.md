@@ -129,10 +129,13 @@ the bottom right lets you view a page as a member or a visitor would.
 
 *The card itself. The stock follows the classes in the rules: blue a full
 member, white one from outside the two schools, yellow an honorary member,
-ink the board. Actives are a role rather than a class, so they wear a chip
-struck in foil instead. It turns over for the rest of the record. An
-application still waiting shows the same white card with a dashed edge,
-which is the clearest way to say the board has not decided yet.*
+ink the board. Roles are chips rather than stocks: silver foil for an
+active, gold for a founder (which takes the board chip's place, and is the
+"Founded the association" box on their register entry). It turns over for
+the rest of the record. An application still waiting shows the same white
+card with a dashed edge, which is the clearest way to say the board has
+not decided yet. `/profile` posts the same card in Discord, without the
+name, number or class — those stay in the register.*
 
 ![Actives on the membership page](images/site/membership-actives.png)
 

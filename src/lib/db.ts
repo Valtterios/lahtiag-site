@@ -1495,6 +1495,7 @@ export interface RegisterRow extends ApplicationInput {
   link_discord_name: string | null;
   link_requested_at: number | null;
   is_active: boolean; // board-approved active (wants_active is the request)
+  founder: boolean; // founded the association: not a class, not a role, a fact
   active_since: number | null;
   active_by: string | null;
   board_note: string | null;
@@ -1507,13 +1508,14 @@ export interface RegisterRow extends ApplicationInput {
   updated_at: number;
 }
 
-interface RegisterDbRow extends Omit<RegisterRow, 'wants_active' | 'is_active'> {
+interface RegisterDbRow extends Omit<RegisterRow, 'wants_active' | 'is_active' | 'founder'> {
   wants_active: number;
   is_active: number;
+  founder: number;
 }
 
 function fromDb(row: RegisterDbRow): RegisterRow {
-  return { ...row, wants_active: row.wants_active === 1, is_active: row.is_active === 1 };
+  return { ...row, wants_active: row.wants_active === 1, is_active: row.is_active === 1, founder: row.founder === 1 };
 }
 
 // A public application. One row per email and per linked Discord account:
@@ -1661,7 +1663,7 @@ export async function updateRegisterEntry(
   db: D1Database,
   id: number,
   input: ApplicationInput,
-  extra: { discord_id: string | null; board_note: string | null; member_type: MemberType },
+  extra: { discord_id: string | null; board_note: string | null; member_type: MemberType; founder: boolean },
   now: number,
 ): Promise<void> {
   const entry = await getRegisterEntry(db, id);
@@ -1680,7 +1682,7 @@ export async function updateRegisterEntry(
       `UPDATE register SET full_name = ?2, domicile = ?3, email = ?4, student_status = ?5,
          union_member = ?6, telegram = ?7, discord_name = ?8, discord_id = ?9, games = ?10,
          wants_active = ?11, message = ?12, board_note = ?13, updated_at = ?14, member_type = ?15,
-         search_key = ?16
+         search_key = ?16, founder = ?17
        WHERE id = ?1`,
     )
     .bind(
@@ -1700,6 +1702,7 @@ export async function updateRegisterEntry(
       now,
       extra.member_type,
       searchKey([input.full_name, input.email, input.discord_name, input.telegram]),
+      extra.founder ? 1 : 0,
     )
     .run();
 }

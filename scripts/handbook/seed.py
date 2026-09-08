@@ -57,6 +57,8 @@ for n, first, full, dom, email, stu, uni, typ, dname, status, src, applied, want
                wants, 'Mainly CS2 and Mario Kart, happy to help at LANs.' if n == 11 else None, 'Lends the projector.' if n == 2 else None,
                status, src, a, a, decided, 'aino.virtanen@lahtiag.fi' if decided else None, a, key(full, email, dname), active, a + 86400 if active else None, 'aino.virtanen@lahtiag.fi' if active else None))
 # Venla asks to link her Discord account
+# Aino founded the association, which is the gold badge on her card.
+c.execute('UPDATE register SET founder = 1 WHERE id = 1')
 c.execute('UPDATE register SET link_discord_id = ?, link_discord_name = ?, link_requested_at = ? WHERE id = 10', (did(10), 'venla', NOW - 3 * 3600))
 c.execute('INSERT INTO members (discord_id, username, avatar_hash, last_seen) VALUES (?,?,NULL,?)', (did(10), 'Venla', NOW - 3 * 3600))
 c.execute('INSERT INTO register_admins (email, added_by, added_at) VALUES (?,?,?)', ('aino.virtanen@lahtiag.fi', 'puheenjohtaja@lahtiag.fi', t('2026-06-01 12:00')))

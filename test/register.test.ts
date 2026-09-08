@@ -73,8 +73,8 @@ function application(overrides: Partial<ApplicationInput> = {}): ApplicationInpu
   };
 }
 
-const EXTRA_NONE = { discord_id: null, board_note: null, member_type: 'full' as const };
-const EXTRA_FULL = { discord_id: null, board_note: null, member_type: 'full' as const };
+const EXTRA_NONE = { discord_id: null, board_note: null, member_type: 'full' as const, founder: false };
+const EXTRA_FULL = { discord_id: null, board_note: null, member_type: 'full' as const, founder: false };
 
 function formOf(fields: Record<string, string | string[]>): FormData {
   const form = new FormData();
@@ -225,7 +225,7 @@ describe('updateRegisterEntry and status changes', () => {
       db(),
       id,
       application({ domicile: 'Hollola', wants_active: true }),
-      { discord_id: '2002', board_note: 'Paid at the door', member_type: 'supporting' },
+      { discord_id: '2002', board_note: 'Paid at the door', member_type: 'supporting', founder: false },
       NOW + 5,
     );
     expect(await getRegisterEntry(db(), id)).toMatchObject({

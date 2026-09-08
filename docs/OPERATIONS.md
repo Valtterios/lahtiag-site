@@ -245,13 +245,29 @@ Where there is no pointer, the light comes to the
 turn instead: one sweep across the face as the card comes round.
 `prefers-reduced-motion` stops all of it.
 
-**Stats and the profile card.** The profile card is the other card: a
-picture, drawn by the site, of events attended, tournaments played and won. In Discord, `/profile` posts the card for everyone to see
-(`/profile user:@someone` for another member's). The command is
-registered with `scripts/register-commands.mjs` like the others. The card also carries the season so far as a second row of tiles
-(`src/lib/profile-card.ts`: events, messages, voice, Minecraft; a dash on
-Minecraft when no name is linked), unless the member has hidden themselves
-from the leaderboard: the one opt-out covers both.
+**The card in Discord.** `/profile` posts the membership card — the same
+code the page draws with (`src/lib/member-card.ts`), so the preview on the
+membership page cannot drift from what the channel sees. A button under it
+turns it over, which anyone looking may press.
+
+It is not the same *card*, though, and must not become one: `/profile` is
+public and works on anybody, so the full name, the member number and the
+membership class are all left off. What goes on is what Discord already
+knows or the association says out loud — the display name, the avatar, the
+stock, since when, and the figures. Hiding yourself from the leaderboard
+takes every figure off and stops anyone else drawing your card at all;
+your own you can always draw.
+
+The Worker draws it rather than a browser: `raster.ts` is a truecolour PNG
+encoder with an alpha channel (for the cut corners) and `png-decode.ts`
+reads the avatar back off Discord's CDN. The stock, the chips and the foil
+follow the web card. The old stats picture (`profile-card.ts`) stays for
+the champion cards posted to an event's channel.
+
+**Founders.** `register.founder`, a checkbox on the entry page for anyone
+with register access. Not a class and not a role anyone is elected to, so
+it is its own flag: it puts a gold chip on the card in place of the board
+one, on the site and in Discord.
 
 **Backups.** D1 keeps thirty days of point-in-time history on its own
 (`npx wrangler d1 time-travel info lahtiag` shows the current bookmark;

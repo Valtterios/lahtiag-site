@@ -698,6 +698,18 @@ a:hover {
    not a smooth ramp: the hard turns are what make it read as a surface
    rather than a gradient. */
 :root {
+  --foil-gold: linear-gradient(
+    105deg,
+    #8a6a1f 0%,
+    #f8e6a8 12%,
+    #c9a247 23%,
+    #fffbe9 34%,
+    #d4af4f 46%,
+    #f4e4ab 58%,
+    #a67f28 71%,
+    #e9d182 85%,
+    #8f6d21 100%
+  );
   --card-foil: linear-gradient(
     105deg,
     #6f7276 0%,
@@ -1053,16 +1065,20 @@ a:hover {
   gap: 0.5rem;
 }
 
-/* Actives are a role, not a class, so they get no stock of their own. What
-   they get is foil: the Active chip is struck in the same metal as the
-   mark on the back, and it catches the light the same way. Nothing else on
-   any card is foil, so it is theirs. */
+/* Roles wear foil: the chip is struck in metal and catches the light the
+   way the mark on the back does. Silver for an active. Gold is the
+   founders', and only theirs — there will never be more of them. */
 .id-card-flag-foil {
   background: var(--card-foil);
   background-size: 260% 260%;
   background-position: var(--mx, 50%) var(--my, 50%);
   color: var(--ink);
   box-shadow: inset 0 0 0 1px rgba(30, 30, 30, 0.18);
+}
+
+.id-card-flag-gold {
+  --card-foil: var(--foil-gold);
+  box-shadow: inset 0 0 0 1px rgba(90, 60, 0, 0.35);
 }
 
 /* The whole record, not one season: what makes the card worth showing.
@@ -1305,10 +1321,12 @@ a:hover {
     border-width: 0.9cqi;
   }
 
+  /* Centred, so the height the card has over its contents falls half
+     above the name and half below rather than all of it under the photo. */
   .id-card-who {
     grid-column: 1;
     grid-row: 3;
-    align-self: end;
+    align-self: center;
   }
 
   .id-card-name {
@@ -1316,11 +1334,11 @@ a:hover {
   }
 
   .id-name-long .id-card-name {
-    font-size: 7.6cqi;
+    font-size: 8.6cqi;
   }
 
   .id-name-longer .id-card-name {
-    font-size: 6.2cqi;
+    font-size: 7cqi;
   }
 
   .id-card-class {
