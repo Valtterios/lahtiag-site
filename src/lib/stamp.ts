@@ -1,7 +1,9 @@
-// The mark of the day: an icon derived from a secret and today's date in
-// Helsinki. A buyer's live purchase page shows it next to items waiting
-// to be collected, and the board's pages show the same one, so a
-// screenshot from another day gives itself away.
+// The mark of the day: an icon derived from a secret and a date in
+// Helsinki. The board's pages take today's; a buyer's ticket or item
+// takes the day it was used or collected on, and shows it only once that
+// has happened — before the button is pressed there is nothing to prove
+// and no mark on the page. The two agree exactly when the buyer pressed
+// it today, which is what makes a screenshot from another day show.
 //
 // Which only works if two days rarely share a mark, and drawing one at
 // random per day is not enough for that: independent draws from a list
