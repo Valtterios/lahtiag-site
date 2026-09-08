@@ -69,8 +69,9 @@ const flash =
               {event.organizers && <span>By {event.organizers}, </span>}
               {event.team_size !== null ? (
                 <span>
-                  teams of {event.team_size}, {event.teams_count}
-                  {event.capacity !== null ? ` / ${event.capacity}` : ''} teams in
+                  teams of {event.team_size}, {event.yes_count - event.reserves_count}
+                  {event.capacity !== null ? ` / ${event.capacity * event.team_size} spots filled` : ' in'}
+                  {event.capacity === null && event.teams_count > 0 ? `, ${event.teams_count} teams` : ''}
                 </span>
               ) : (
                 <span>
