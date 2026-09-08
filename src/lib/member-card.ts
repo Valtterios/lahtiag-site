@@ -79,10 +79,11 @@ export interface CardFace {
   name: string;
   tier: CardTier;
   // What the card calls itself. Only a current member carries a member
-  // card; everybody else in the server gets a player card, which says
-  // nothing about the register — an application waiting on the board is
-  // the board's business, not the channel's.
-  kind: 'MEMBER CARD' | 'PLAYER CARD';
+  // card; everybody else in the server gets a guest card, which is what
+  // the roster already calls them and says nothing about the register —
+  // an application waiting on the board is the board's business, not the
+  // channel's.
+  kind: 'MEMBER CARD' | 'GUEST CARD';
   active: boolean;
   founder: boolean;
   memberSince: number | null;
@@ -284,9 +285,12 @@ export async function memberCardPng(face: CardFace, back: boolean, source: strin
     // bottom row and read as a mistake rather than as paper.
     if (mark) drawArt(c, mark, W - 270, H - 220, 306, light ? 0.1 : 0.14, () => (light ? BLUE : WHITE));
 
-    if (wordmark) drawArt(c, wordmark, pad, 34, 168);
+    // The logotype is the loudest thing on a card and was set smaller
+    // here than on the web card; both sit on the same centre line as the
+    // words opposite, whichever of the two is drawn.
+    if (wordmark) drawArt(c, wordmark, pad, 24, 230);
     else c.text(pad, 30, 'LAHTIAG', stock.ink, 'l');
-    c.text(W - pad - Canvas.textWidth(face.kind), 42, face.kind, stock.ink, 's');
+    c.text(W - pad - Canvas.textWidth(face.kind), 44, face.kind, stock.ink, 's');
 
     const size = 150;
     const px = pad;
@@ -302,7 +306,11 @@ export async function memberCardPng(face: CardFace, back: boolean, source: strin
     // äöå, so a Finnish name only survives in capitals.
     const tx = px + size + 40;
     const wide = W - pad - tx;
-    c.text(tx, 124, Canvas.fit(face.name.toUpperCase(), wide, 'l'), stock.ink, 'l');
+    // A name with chips under it is the top of a block that stands
+    // against the photograph; a name on its own is the whole block, and
+    // sits on the photograph's own centre line rather than its top edge.
+    const chips = face.founder || face.tier === 'ink' || face.active;
+    c.text(tx, chips ? 124 : 157, Canvas.fit(face.name.toUpperCase(), wide, 'l'), stock.ink, 'l');
 
     let cx = tx;
     if (face.founder) cx += chip(c, cx, 196, 'FOUNDER', stock, 'gold') + 14;
@@ -408,7 +416,7 @@ export async function cardFace(
   return {
     name: cleanText(who.name) || 'Member',
     tier,
-    kind: member ? 'MEMBER CARD' : 'PLAYER CARD',
+    kind: member ? 'MEMBER CARD' : 'GUEST CARD',
     active: Boolean(entry?.is_active),
     founder: Boolean(entry?.founder),
     memberSince: stats.member_since,

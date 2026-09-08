@@ -54,7 +54,7 @@ describe('the card Discord gets', () => {
     const face = await cardFace(db(), who('9'), NOW);
     expect(face.tier).toBe('plain');
     expect(face.memberSince).toBeNull();
-    expect(face.kind).toBe('PLAYER CARD');
+    expect(face.kind).toBe('GUEST CARD');
   });
 
   it('calls a card by what it is, and an application by nothing at all', async () => {
@@ -64,7 +64,7 @@ describe('the card Discord gets', () => {
     // Whoever is waiting on the board looks exactly like anybody else in
     // the server: the channel is not told that they applied.
     const waiting = await cardFace(db(), who('10'), NOW);
-    expect(waiting.kind).toBe('PLAYER CARD');
+    expect(waiting.kind).toBe('GUEST CARD');
     expect(waiting.tier).toBe('plain');
   });
 

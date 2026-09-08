@@ -265,7 +265,7 @@ everything it leaves out lives. The link goes to whoever presses it, not
 to whoever the card is of, so it reads the same on anybody's card.
 
 A current member's card says MEMBER CARD; everybody else in the server
-gets the same white stock saying PLAYER CARD, with no "member since" line
+gets the same white stock saying GUEST CARD, with no "member since" line
 — including whoever is waiting on the board, since the channel has no
 business knowing that somebody applied.
 
