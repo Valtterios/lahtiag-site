@@ -235,9 +235,13 @@ card (`src/components/MemberCard.astro`): name, number (the register id),
 class, member since, and four figures from the whole record, not one season
 (`lifetimeTotals` in `src/lib/season.ts`). The stock is the tier — blue a
 member, yellow an active, ink the board, pale for an application still in
-the queue or a membership that has ended. It turns over for the rest. All of
-it is CSS in `site.css`; nothing is rendered to an image, so it costs no
-worker time.
+the queue or a membership that has ended. It turns over for the rest, and the back
+carries the mark stamped in foil — the brand file used as a mask over a
+metallic gradient that slides as the pointer moves. All of it is CSS in
+`site.css`; nothing is rendered to an image, so it costs no worker time.
+Where there is no pointer the card takes its cue from the scroll instead,
+leaning as it crosses the viewport; `prefers-reduced-motion` stops all of
+it.
 
 **Stats and the profile card.** The profile card is the other card: a
 picture, drawn by the site, of events attended, tournaments played and won. In Discord, `/profile` posts the card for everyone to see

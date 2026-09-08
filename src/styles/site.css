@@ -690,9 +690,55 @@ a:hover {
   --card-stripe: rgba(0, 0, 0, 0.45);
   --card-shadow: rgba(65, 105, 225, 0.55);
   --card-edge: none;
+  --card-foil: var(--foil-silver);
+  --card-foil-opacity: 0.85;
+}
+
+/* Foils for the back's stamp. Metal is a run of light and dark bands, not
+   a smooth ramp: the hard turns are what make it read as a surface rather
+   than a gradient. */
+:root {
+  --foil-silver: linear-gradient(
+    105deg,
+    #6f7276 0%,
+    #dfe3e9 12%,
+    #8a9098 23%,
+    #ffffff 34%,
+    #99a0a8 46%,
+    #eef1f5 58%,
+    #767c84 71%,
+    #ccd2da 85%,
+    #7b8188 100%
+  );
+  --foil-gold: linear-gradient(
+    105deg,
+    #8a6a1f 0%,
+    #f8e6a8 12%,
+    #c9a247 23%,
+    #fffbe9 34%,
+    #d4af4f 46%,
+    #f4e4ab 58%,
+    #a67f28 71%,
+    #e9d182 85%,
+    #8f6d21 100%
+  );
+  --foil-graphite: linear-gradient(
+    105deg,
+    #23241f 0%,
+    #6f7268 12%,
+    #191a16 23%,
+    #93968b 34%,
+    #24261f 46%,
+    #787b70 58%,
+    #17180f 71%,
+    #5f6257 85%,
+    #212219 100%
+  );
 }
 
 .id-tier-active {
+  --card-foil: var(--foil-graphite);
+  --card-foil-opacity: 0.8;
   --card-bg: var(--yellow);
   --card-ink: var(--ink);
   --card-rule: rgba(30, 30, 30, 0.28);
@@ -710,6 +756,7 @@ a:hover {
 }
 
 .id-tier-board {
+  --card-foil: var(--foil-gold);
   --card-bg: var(--ink);
   --card-shadow: rgba(30, 30, 30, 0.5);
 }
@@ -717,6 +764,7 @@ a:hover {
 /* Pale stock: an application still in the queue, or a membership that has
    ended. The same card, plainly not a valid one. */
 .id-tier-pale {
+  --card-foil-opacity: 0.5;
   --card-bg: var(--surface);
   --card-ink: var(--ink);
   --card-rule: var(--line);
@@ -757,7 +805,8 @@ a:hover {
 }
 
 .id-card:hover .id-card-shade,
-.id-card:focus-within .id-card-shade {
+.id-card:focus-within .id-card-shade,
+.id-card.is-lit .id-card-shade {
   opacity: 0.5;
   transform: translateY(11px) scale(0.96);
 }
@@ -840,7 +889,8 @@ a:hover {
 }
 
 .id-card:hover .id-card-tilt,
-.id-card:focus-within .id-card-tilt {
+.id-card:focus-within .id-card-tilt,
+.id-card.is-lit .id-card-tilt {
   --lift: -3px;
 }
 
@@ -880,10 +930,26 @@ a:hover {
   opacity: 0.1;
 }
 
-.id-card-back .id-card-mark {
-  width: 26cqi;
-  right: -5cqi;
-  bottom: -6cqi;
+/* The mark stamped in foil on the back. The brand file is the mask, so
+   what shows through is metal, and the metal is a good deal wider than the
+   stamp: moving --mx/--my slides the bands under it and it catches the
+   light the way foil does. Its place is the corner a card leaves for a
+   hologram, and the small print is kept clear of it. */
+.id-card-foil {
+  position: absolute;
+  right: 3cqi;
+  bottom: 3cqi;
+  width: 24cqi;
+  height: 24cqi;
+  background: var(--card-foil);
+  background-size: 260% 260%;
+  background-position: var(--mx, 50%) var(--my, 50%);
+  mask-image: url('/brand/mark-blue.png');
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  opacity: var(--card-foil-opacity);
+  pointer-events: none;
 }
 
 /* The glare sits where the pointer is (MemberCard.astro sets --mx/--my);
@@ -899,7 +965,8 @@ a:hover {
 }
 
 .id-card:hover .id-card-glare,
-.id-card:focus-within .id-card-glare {
+.id-card:focus-within .id-card-glare,
+.id-card.is-lit .id-card-glare {
   opacity: 1;
 }
 
@@ -1129,7 +1196,7 @@ a:hover {
 }
 
 .id-card-small {
-  margin: auto 5.5cqi 0;
+  margin: auto 30cqi 0 5.5cqi;
   font-size: 2.4cqi;
   line-height: 1.45;
   opacity: 0.75;
@@ -1191,14 +1258,14 @@ a:hover {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto 1fr auto auto;
     gap: 4cqi 0;
-    padding: 6cqi 6.5cqi;
+    padding: 6cqi 6.5cqi 8cqi;
     --notch: 7cqi;
     border-radius: 5cqi;
   }
 
   .id-card-back {
     display: flex;
-    padding: 0 0 6cqi;
+    padding: 0 0 8cqi;
     gap: 4cqi;
   }
 
@@ -1318,10 +1385,15 @@ a:hover {
     font-size: 3.6cqi;
   }
 
-  .id-card-back .id-card-mark {
-    width: 72cqi;
-    right: -12cqi;
-    bottom: 26cqi;
+  .id-card-foil {
+    width: 54cqi;
+    height: 54cqi;
+    right: 6.5cqi;
+    bottom: 34cqi;
+  }
+
+  .id-card-small {
+    margin-right: 6.5cqi;
   }
 
   .id-card-mark {
