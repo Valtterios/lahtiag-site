@@ -27,6 +27,7 @@ export class RuleError extends Error {
       | 'team_full'
       | 'dup_name'
       | 'not_team_event'
+      | 'not_linked' // a member with no Discord account to add them as
       | 'closed'
       | 'duplicate'
       | 'members_only'
@@ -649,6 +650,79 @@ export async function addManualParticipant(
     )
     .bind(eventId, discordId, status, now, eventTeamId)
     .run();
+  return discordId;
+}
+
+// Board: put an actual member on the roster, against their own Discord
+// account. The walk-in above mints a synthetic id, which is right for a
+// stranger at the door but wrong for a member: the placeholder holds no
+// role, no ticks and no stats, and never joins up with the person later.
+// This is the one the board wants nearly every time — a member who has not
+// signed up, or who signed up without a team, being put where they belong
+// — so an existing signup is moved rather than refused.
+export async function addMemberParticipant(
+  db: D1Database,
+  eventId: number,
+  registerId: number,
+  status: 'yes' | 'maybe',
+  eventTeamId: number | null,
+  now: number,
+): Promise<string> {
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  const member = await db
+    .prepare("SELECT full_name, discord_id, discord_name FROM register WHERE id = ?1 AND status = 'member'")
+    .bind(registerId)
+    .first<{ full_name: string; discord_id: string | null; discord_name: string | null }>();
+  if (!member) throw new RuleError('missing', 'No current member with that entry.');
+  if (!member.discord_id) {
+    throw new RuleError('not_linked', 'That member has no Discord account linked yet, so there is nothing to add them as.');
+  }
+  const discordId = member.discord_id;
+  const existing = await db
+    .prepare('SELECT event_team_id FROM signups WHERE event_id = ?1 AND discord_id = ?2')
+    .bind(eventId, discordId)
+    .first<{ event_team_id: number | null }>();
+  if (eventTeamId !== null) {
+    if (event.team_size === null) throw new RuleError('not_team_event', 'This event does not take team signups.');
+    const team = await db
+      .prepare('SELECT id FROM event_teams WHERE id = ?1 AND event_id = ?2')
+      .bind(eventTeamId, eventId)
+      .first();
+    if (!team) throw new RuleError('missing', 'No such team on this event.');
+    // Counted without them, the way adminUpdateSignup counts it: moving
+    // someone into the team they are already in is not one more body.
+    const members = await db
+      .prepare('SELECT COUNT(*) AS n FROM signups WHERE event_id = ?1 AND event_team_id = ?2 AND discord_id != ?3')
+      .bind(eventId, eventTeamId, discordId)
+      .first<{ n: number }>();
+    if ((members?.n ?? 0) >= event.team_size) throw new RuleError('team_full', 'That team is already full.');
+    status = 'yes';
+  }
+  // The roster reads names from the member cache, so it needs a row; a
+  // member who has signed in already has one, and this leaves it alone.
+  await db
+    .prepare(
+      `INSERT INTO members (discord_id, username, avatar_hash, last_seen)
+       VALUES (?1, ?2, NULL, ?3)
+       ON CONFLICT (discord_id) DO NOTHING`,
+    )
+    .bind(discordId, member.discord_name ?? member.full_name, now)
+    .run();
+  if (existing) {
+    await db
+      .prepare('UPDATE signups SET status = ?3, event_team_id = ?4 WHERE event_id = ?1 AND discord_id = ?2')
+      .bind(eventId, discordId, status, eventTeamId)
+      .run();
+  } else {
+    await db
+      .prepare('INSERT INTO signups (event_id, discord_id, status, created_at, event_team_id) VALUES (?1, ?2, ?3, ?4, ?5)')
+      .bind(eventId, discordId, status, now, eventTeamId)
+      .run();
+  }
+  // On the roster and on the waitlist at once would be nonsense.
+  await db.prepare('DELETE FROM event_waitlist WHERE event_id = ?1 AND discord_id = ?2').bind(eventId, discordId).run();
+  await dropEmptyEventTeams(db, eventId);
   return discordId;
 }
 

@@ -251,7 +251,13 @@ which is the clearest way to say the board has not decided yet.*
 
 ![Participants](images/site/event-participants-panel.png)
 
-*Participants: change anyone's answer, move them between teams, or add a walk-in by name.*
+*Participants: change anyone's answer or move them between teams, 1 put a
+member on the roster against their own Discord account, 2 add a walk-in by
+name. Use Add member for anyone who has an account: the event's Discord
+role, their ticks and their stats all follow the signup, and none of that
+finds a walk-in. Add member also moves someone already on the roster into a
+team. A walk-in is a name and nothing else, which is right for a stranger
+at the door.*
 
 - **Team events.** Set a team size; people form teams, or the board makes
   teams, renames them and groups loose players under Participants.

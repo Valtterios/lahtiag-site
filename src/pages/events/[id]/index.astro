@@ -138,7 +138,7 @@ if (event && !draft && event.cancelled_at === null) syncInterestInBackground(Ast
 // Flashes from board actions open the (otherwise folded) board tools.
 const DISCORD_OPEN = new Set(['discord_reannounced', 'discord_created', 'discord_synced', 'discord_removed', 'discord_upgraded', 'discord_archived', 'discord_team_voice', 'discord_needs_category', 'discord_no_teams', 'discord_event_created', 'discord_event_removed', 'discord_event_skipped', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
 const TICK_KEYS = new Set(['tick_given', 'tick_removed', 'tick_duplicate', 'tick_not_member', 'tick_missing', 'tick_bad_input']);
-const ADMIN_OPEN = new Set(['team_size', ...TICK_KEYS, 'cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'photos_added', 'photo_removed', 'credit_saved', 'photo_missing', 'photo_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
+const ADMIN_OPEN = new Set(['team_size', 'not_linked', 'member_added', 'added', ...TICK_KEYS, 'cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'photos_added', 'photo_removed', 'credit_saved', 'photo_missing', 'photo_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
 const okKey = Astro.url.searchParams.get('ok') ?? '';
 const errKey = Astro.url.searchParams.get('err') ?? '';
 const FLASH: Record<string, string> = {
@@ -146,6 +146,9 @@ const FLASH: Record<string, string> = {
   team_full: 'That team is already full.',
   dup_name: 'A team with that name already exists.',
   not_team_event: 'This event does not take team signups.',
+  not_linked: 'That member has no Discord account linked yet, so there is nothing to add them as. Link it on their register entry first.',
+  member_added: 'Added, against their own Discord account: the event role, their ticks and their stats all follow.',
+  added: 'Walk-in added.',
   cancelled: 'This event has been cancelled and signups are closed.',
   closed: 'Signups are closed for this event.',
   bad_time: "That date and time didn't parse.",
@@ -1127,9 +1130,12 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             <summary><b>Participants</b><span class="admin-edit-meta">{going.length} going{maybe.length > 0 ? `, ${maybe.length} maybe` : ''}{waitlist.length > 0 ? `, ${waitlist.length} waiting` : ''}</span><span class="admin-edit-hint">add or remove someone, give ticks</span></summary>
             <p class="event-meta">
               Changes here skip the signup rules: closed signups and capacity
-              don't apply. Picking a team sets the answer to Going. Adding by
-              name is for walk-ins without Discord; their signup can be
-              edited and removed like any other.
+              don't apply. Picking a team sets the answer to Going. Add member
+              puts someone on against their own Discord account, so the event
+              role, their ticks and their stats all follow, and it moves
+              someone already here into a team. Adding by name is for walk-ins
+              without Discord: a name and nothing else, editable and removable
+              like any other signup.
             </p>
             {isTeamEvent && (
               <div class="entry-actions admin-teams">
@@ -1181,6 +1187,46 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 ))}
               </ul>
             )}
+            <div class="add-forms">
+            {tickMembers.length > 0 && (() => {
+              const linked = tickMembers.filter((m) => m.discord_id !== null);
+              const here = new Set(signups.map((sg) => sg.discord_id));
+              const away = linked.filter((m) => !here.has(m.discord_id!));
+              return linked.length > 0 ? (
+                <form method="post" action={`/events/${event.id}/add-participant`} class="participant-row">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <label>Member
+                    <select name="register_id" required>
+                      {away.length > 0 && (
+                        <optgroup label="Not on the roster">
+                          {away.map((m) => <option value={m.register_id}>{m.full_name}{m.discord_name ? ` (${m.discord_name})` : ''}</option>)}
+                        </optgroup>
+                      )}
+                      {away.length < linked.length && (
+                        <optgroup label="Already here — pick to move them">
+                          {linked.filter((m) => here.has(m.discord_id!)).map((m) => (
+                            <option value={m.register_id}>{m.full_name}{m.discord_name ? ` (${m.discord_name})` : ''}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </label>
+                  <select name="status">
+                    <option value="yes">Going</option>
+                    <option value="maybe">Maybe</option>
+                  </select>
+                  {isTeamEvent && eventTeams.length > 0 && (
+                    <select name="event_team_id">
+                      <option value="">No team</option>
+                      {eventTeams.map((team) => (
+                        <option value={team.id}>{team.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button class="btn btn-primary" type="submit">Add member</button>
+                </form>
+              ) : null;
+            })()}
             <form method="post" action={`/events/${event.id}/add-participant`} class="participant-row">
               <input type="hidden" name="csrf" value={csrf} />
               <label>Name <input name="name" required maxlength="60" placeholder="Walk-in participant" /></label>
@@ -1198,6 +1244,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               )}
               <button class="btn btn-primary" type="submit">Add participant</button>
             </form>
+            </div>
             <div class="ticks-box" id="ticks">
               <h3 class="section-label">Ticks</h3>
               <p class="event-meta">

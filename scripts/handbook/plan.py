@@ -61,7 +61,7 @@ shot('event-board-tools', '/events/1', 'admin', open=['details.admin-panel'], cl
 shot('event-draft-page', '/events/6', 'admin', top=640, pad=0, hl=['.publish-form', 'text=Draft'])
 shot('event-tickets-panel', '/events/1', 'admin', open=['details.admin-panel'], openText=['Tickets'], clip='#tickets', top=520, hl=['text=Export CSV', 'text=Door page'], nums=True)
 shot('event-questions-panel', '/events/1', 'admin', open=['details.admin-panel'], openText=['Questions'], clip='#questions', top=330, hl=['text=Add question'])
-shot('event-participants-panel', '/events/2', 'admin', open=['details.admin-panel'], openText=['Participants'], clip='#participants', top=480, hl=['text=Add participant'])
+shot('event-participants-panel', '/events/3', 'admin', open=['details.admin-panel'], openText=['Participants'], clip='.add-forms', pad=14, hl=['text=Add member', 'text=Add participant'], nums=True)
 shot('event-roster-waitlist', '/events/2', 'admin', clip='#who', hl=['.roster-label', '.member-mark-guest'], pad=8, nums=True)
 shot('event-edit-panel', '/events/1', 'admin', open=['details.admin-panel', 'details.admin-edit'], clip='details.admin-edit', top=420)
 shot('event-cover-duplicate', '/events/1', 'admin', open=['details.admin-panel', 'details.admin-edit'], clip='.cover-form', pad=16, extend=80, hl=['text=Replace cover', 'text=Duplicate as a draft', 'text=Cancel this event'], nums=True)

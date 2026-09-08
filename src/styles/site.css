@@ -1049,6 +1049,12 @@ a:hover {
   opacity: 1;
 }
 
+/* The two ways onto a roster by hand, kept together. */
+.add-forms {
+  display: grid;
+  gap: 0.5rem;
+}
+
 /* Actives are a role, not a class, so they get no stock of their own. What
    they get is foil: the Active chip is struck in the same metal as the
    mark on the back, and it catches the light the same way. Nothing else on
