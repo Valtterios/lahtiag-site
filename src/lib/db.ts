@@ -293,12 +293,12 @@ export async function createEvent(
   if (input.capacity !== null && (!Number.isInteger(input.capacity) || input.capacity < 1)) {
     throw new RuleError('bad_input', 'Capacity must be a positive whole number.');
   }
-  const memberSlots = checkMemberSlots(input.member_slots ?? null, input.capacity);
   const teamSize = input.team_size ?? null;
   if (teamSize !== null && (!Number.isInteger(teamSize) || teamSize < 1)) {
     throw new RuleError('bad_input', 'Team size must be a positive whole number.');
   }
   const teamReserves = teamSize === null ? 0 : checkReserves(input.team_reserves ?? 0);
+  const memberSlots = checkMemberSlots(input.member_slots ?? null, input.capacity, teamSize);
   const organizers = input.organizers?.trim() || null;
   const endsAt = input.ends_at ?? null;
   if (endsAt !== null && endsAt <= input.starts_at) {
@@ -365,7 +365,6 @@ export async function updateEvent(
 ): Promise<EventWithCounts> {
   const event = await getEvent(db, id);
   if (!event) throw new RuleError('missing', `No event with id ${id}.`);
-  const memberSlots = checkMemberSlots(input.member_slots ?? null, input.capacity);
   let teamSize = event.team_size;
   if (input.team_size !== undefined && input.team_size !== event.team_size) {
     if (input.team_size !== null && (!Number.isInteger(input.team_size) || input.team_size < 1)) {
@@ -393,6 +392,7 @@ export async function updateEvent(
         : new RuleError('team_reserves', 'A team already has more members than that leaves room for. Take somebody off the team first.');
     }
   }
+  const memberSlots = checkMemberSlots(input.member_slots ?? null, input.capacity, teamSize);
   if (event.cancelled_at !== null) throw new RuleError('cancelled', 'This event is cancelled.');
   if (!input.title.trim()) throw new RuleError('bad_input', 'An event needs a title.');
   checkEventText(input);
@@ -947,7 +947,9 @@ export async function createEventTeam(
   now: number,
 ): Promise<number> {
   const event = await requireOpenTeamEvent(db, eventId, now);
-  await requireEligible(db, event, discordId, false);
+  // Making a team, or joining one, takes a place: on a team event the
+  // reserved seats hold line-up places for members like any other.
+  await requireEligible(db, event, discordId, true);
   await requireTicketIfTicketed(db, eventId, discordId);
   const trimmed = name.trim();
   if (!trimmed || trimmed.length > 40) {
@@ -986,7 +988,7 @@ export async function joinEventTeam(
   now: number,
 ): Promise<void> {
   const event = await requireOpenTeamEvent(db, eventId, now);
-  await requireEligible(db, event, discordId, false);
+  await requireEligible(db, event, discordId, true);
   await requireTicketIfTicketed(db, eventId, discordId);
   const team = await db
     .prepare('SELECT * FROM event_teams WHERE id = ?1 AND event_id = ?2')
@@ -3183,10 +3185,18 @@ function checkReserves(reserves: number): number {
   return reserves;
 }
 
-function checkMemberSlots(slots: number | null, capacity: number | null): number | null {
+// Reserved seats are counted in people on every event. A team event's
+// capacity is in teams, so the places it has are the line-ups those
+// teams field — four teams of two is eight places, of which the board
+// may hold any number for members.
+export function eventPlaces(capacity: number | null, teamSize: number | null): number | null {
+  return capacity === null ? null : capacity * (teamSize ?? 1);
+}
+
+function checkMemberSlots(slots: number | null, capacity: number | null, teamSize: number | null): number | null {
   if (slots === null || capacity === null) return null;
   if (!Number.isInteger(slots) || slots < 1) throw new RuleError('bad_input', 'Reserved seats must be a positive whole number.');
-  if (slots > capacity) throw new RuleError('bad_input', 'Reserved seats cannot exceed the capacity.');
+  if (slots > eventPlaces(capacity, teamSize)!) throw new RuleError('bad_input', 'Reserved seats cannot exceed the places the event has.');
   return slots;
 }
 
@@ -3223,8 +3233,8 @@ export async function signupAccess(
   if (event.members_only === 1 && !member) {
     return { allowed: false, reason: 'members_only', member, openSeatsLeft: null };
   }
-  const limited = event.member_slots !== null && event.capacity !== null && event.team_size === null;
-  if (!limited) return { allowed: true, reason: null, member, openSeatsLeft: null };
+  const places = eventPlaces(event.capacity, event.team_size);
+  if (event.member_slots === null || places === null) return { allowed: true, reason: null, member, openSeatsLeft: null };
   const nonMembers = await db
     .prepare(
       `SELECT COUNT(*) AS n FROM signups s
@@ -3242,7 +3252,7 @@ export async function signupAccess(
     )
     .bind(event.id, now - PENDING_TICKET_SECONDS)
     .first<{ n: number }>();
-  const openSeatsLeft = Math.max(0, event.capacity! - event.member_slots! - (nonMembers?.n ?? 0) - (byName?.n ?? 0));
+  const openSeatsLeft = Math.max(0, places - event.member_slots - (nonMembers?.n ?? 0) - (byName?.n ?? 0));
   if (wantsSeat && !member && openSeatsLeft === 0) {
     return { allowed: false, reason: 'reserved', member, openSeatsLeft };
   }

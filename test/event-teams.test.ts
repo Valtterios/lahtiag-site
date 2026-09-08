@@ -16,6 +16,7 @@ import {
   addManualParticipant,
   purgeMember,
   setSignupsClosed,
+  updateEvent,
 } from '../src/lib/db';
 
 // Tournament team signups against real D1: forming, joining, switching,
@@ -25,7 +26,7 @@ const NOW = 1_760_000_000;
 const db = () => env.DB;
 
 async function wipe(): Promise<void> {
-  for (const table of ['signups', 'event_teams', 'events', 'announcements', 'members']) {
+  for (const table of ['signups', 'event_teams', 'events', 'announcements', 'members', 'register']) {
     await db().prepare(`DELETE FROM ${table}`).run();
   }
 }
@@ -335,5 +336,38 @@ describe('addManualParticipant', () => {
     const id = await addManualParticipant(db(), eventId, 'Guest', 'yes', null, NOW);
     expect(await purgeMember(db(), id)).toBe('deleted');
     expect(await listSignups(db(), eventId)).toHaveLength(0);
+  });
+});
+
+describe('seats reserved for members on a team event', () => {
+  it('holds line-up places, counted in people rather than in teams', async () => {
+    // Four teams of two: eight places, six of them held for members.
+    const eventId = await teamEvent(2, 4);
+    for (const id of ['m1', 'g1', 'g2', 'g3']) await member(id);
+    await db()
+      .prepare(
+        `INSERT INTO register (full_name, domicile, email, student_status, union_member, member_type, discord_id, status, source, applied_at, consented_at, updated_at, search_key)
+         VALUES ('A Member', 'Lahti', 'm1@x.fi', 'LUT', 'LTKY', 'full', 'm1', 'member', 'board', ?1, ?1, ?1, 'a')`,
+      )
+      .bind(NOW)
+      .run();
+    await updateEvent(db(), eventId, {
+      title: 'Doubles cup', description: null, starts_at: NOW + 86400, ends_at: null,
+      capacity: 4, organizers: null, link_url: null, member_slots: 6,
+    });
+    // Two places are open to everyone, and the third guest is turned away.
+    const teamId = await createEventTeam(db(), eventId, 'Guests', 'g1', NOW);
+    await joinEventTeam(db(), eventId, teamId, 'g2', NOW);
+    await expect(createEventTeam(db(), eventId, 'Latecomers', 'g3', NOW)).rejects.toMatchObject({ code: 'reserved' });
+    // The member walks in: the held places are theirs.
+    await createEventTeam(db(), eventId, 'Members', 'm1', NOW);
+    expect((await listEventTeams(db(), eventId)).map((t) => t.name).sort()).toEqual(['Guests', 'Members']);
+    // More than the event has places for is refused outright.
+    await expect(
+      updateEvent(db(), eventId, {
+        title: 'Doubles cup', description: null, starts_at: NOW + 86400, ends_at: null,
+        capacity: 4, organizers: null, link_url: null, member_slots: 9,
+      }),
+    ).rejects.toMatchObject({ code: 'bad_input' });
   });
 });

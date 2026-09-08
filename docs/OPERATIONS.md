@@ -102,8 +102,11 @@ returns to the categories):
    tournament-style event where members form their own teams on the site;
    empty means individual signups. On the site's form there is also
    **Reserves per team**: places beyond the line-up, so five-a-side with
-   one reserve is a team of six, one of them starting on the bench. The
-   announcement posts itself to the webhook channel.
+   one reserve is a team of six, one of them starting on the bench.
+   **Seats reserved for members** are counted in people on every event —
+   on a team event the places are the line-ups the capacity can field,
+   so four teams of two is eight places and reserving six leaves two open
+   to everybody. The announcement posts itself to the webhook channel.
 2. Members sign up (and create/join teams) on the event page.
 3. **🔒 Close signups** (Event) when the field is set — or set
    **Signups close on/at** in the event's own fields and let it happen:
