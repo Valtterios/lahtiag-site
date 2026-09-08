@@ -879,7 +879,7 @@ async function handleProfile(env: WorkerEnv, interaction: Interaction, origin: s
     interaction.token,
     '',
     { name: 'card.png', bytes: png, type: 'image/png' },
-    turnButton(targetId, false),
+    turnButton(targetId, false, origin),
   );
   if (!ok) {
     await editInteractionReply(interaction.application_id, interaction.token, 'The card could not be posted. Try again in a moment.');
@@ -888,14 +888,19 @@ async function handleProfile(env: WorkerEnv, interaction: Interaction, origin: s
   return 'keep';
 }
 
-// One button under the card, which anyone looking at it may press: the
-// back carries nothing the front does not already say out loud.
-function turnButton(targetId: string, showingBack: boolean): unknown[] {
+// Two buttons under the card. Turning it over is for anyone looking at
+// it — the back carries nothing the front does not already say out loud.
+// The second is a plain link to the membership page, which is where the
+// card comes from and where everything the card leaves out lives: the
+// season, the events, the Minecraft names. It goes to whoever presses
+// it, not to whoever the card is of, so it reads the same on anybody's.
+function turnButton(targetId: string, showingBack: boolean, origin: string): unknown[] {
   return [
     {
       type: 1,
       components: [
         { type: 2, style: 2, label: showingBack ? 'Turn back' : 'Turn over', custom_id: `p:${showingBack ? 'f' : 'b'}:${targetId}` },
+        { type: 2, style: 5, label: 'Membership page', url: `${origin}/membership` },
       ],
     },
   ];
@@ -913,7 +918,7 @@ async function handleProfileTurn(env: WorkerEnv, interaction: Interaction, id: s
     interaction.token,
     '',
     { name: back ? 'card-back.png' : 'card.png', bytes: png, type: 'image/png' },
-    turnButton(targetId, back),
+    turnButton(targetId, back, origin),
   );
   return 'keep';
 }

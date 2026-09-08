@@ -258,8 +258,11 @@ turn instead: one sweep across the face as the card comes round.
 
 **The card in Discord.** `/profile` posts the membership card — the same
 code the page draws with (`src/lib/member-card.ts`), so the preview on the
-membership page cannot drift from what the channel sees. A button under it
-turns it over, which anyone looking may press.
+membership page cannot drift from what the channel sees. Two buttons sit
+under it: one turns it over, which anyone looking may press, and one
+links to the membership page — where the card comes from, and where
+everything it leaves out lives. The link goes to whoever presses it, not
+to whoever the card is of, so it reads the same on anybody's card.
 
 It is not the same *card*, though, and must not become one: `/profile` is
 public and works on anybody, so the full name, the member number and the
