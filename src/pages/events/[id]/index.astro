@@ -353,7 +353,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
               <span>
                 {isTeamEvent
-                  ? `Teams of ${event.team_size}: ${placesFilled}${event.capacity !== null ? ` / ${event.capacity * event.team_size!}` : ''} spots filled, ${eventTeams.length}${event.capacity !== null ? ` / ${event.capacity}` : ''} teams${benched > 0 ? `, ${benched} on the bench` : ''}`
+                  ? `Teams of ${event.team_size}: ${placesFilled}${event.capacity !== null ? ` / ${event.capacity * event.team_size!}` : ''} spots filled, ${eventTeams.length}${event.capacity !== null ? ` / ${event.capacity}` : ''} teams${benched > 0 ? `, ${benched} on the bench` : ''}${maybe.length > 0 ? `, ${maybe.length} maybe` : ''}`
                   : `${going.length}${event.capacity !== null ? ` / ${event.capacity}` : ''} going${maybe.length > 0 ? `, ${maybe.length} maybe` : ''}`}
                 {ticketed && event.capacity !== null && going.length >= event.capacity && <> <span class="status-badge status-muted">Sold out</span></>}
               </span>
@@ -863,6 +863,29 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                   </li>
                 ))}
               </ul>
+            </>
+          )}
+
+          {maybe.length > 0 && (
+            <>
+              <h3 class="roster-label">Maybe</h3>
+              <ul class="roster">
+                {maybe.map((s) => (
+                  <li class="person person-maybe">
+                    <img class="person-face" src={avatarUrl(s.discord_id, s.avatar_hash)} width="28" height="28" alt="" loading="lazy" />
+                    <span class="person-name">{s.username}</span>
+                    {session?.isAdmin && s.is_member !== 1 && <span class="member-mark member-mark-guest" title="Not in the member register">guest</span>}
+                    {session?.isAdmin && (
+                      <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="discord_id" value={s.discord_id} />
+                        <button class="chip-remove" type="submit" title="Remove signup">×</button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <p class="queue-meta">A maybe is not in a team: answering yes and joining one is the same click.</p>
             </>
           )}
 
