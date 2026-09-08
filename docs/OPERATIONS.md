@@ -264,6 +264,11 @@ links to the membership page — where the card comes from, and where
 everything it leaves out lives. The link goes to whoever presses it, not
 to whoever the card is of, so it reads the same on anybody's card.
 
+A current member's card says MEMBER CARD; everybody else in the server
+gets the same white stock saying PLAYER CARD, with no "member since" line
+— including whoever is waiting on the board, since the channel has no
+business knowing that somebody applied.
+
 It is not the same *card*, though, and must not become one: `/profile` is
 public and works on anybody, so the full name, the member number and the
 membership class are all left off. What goes on is what Discord already
@@ -274,8 +279,11 @@ your own you can always draw.
 
 The Worker draws it rather than a browser: `raster.ts` is a truecolour PNG
 encoder with an alpha channel (for the cut corners) and `png-decode.ts`
-reads back both the avatar from Discord's CDN and the brand files from the
-site's own origin — so the wordmark and the mark are the real ones, not
+reads back both the avatar from Discord's CDN and the brand files through
+the Worker's own `ASSETS` binding — asking the public origin for them
+works in `wrangler dev`, where the loopback is answered from the asset
+layer, and fails in production, where it comes back through the route to
+the Worker, which has no `/brand/` of its own — so the wordmark and the mark are the real ones, not
 type, and the mark on the back is struck in silver by painting metal
 through its alpha. They are decoded once per isolate. The old stats picture (`profile-card.ts`) stays for
 the champion cards posted to an event's channel.

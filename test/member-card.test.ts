@@ -50,10 +50,22 @@ describe('the card Discord gets', () => {
     expect((await cardFace(db(), who('5', true), NOW)).tier).toBe('ink');
   });
 
-  it('gives someone with no membership the white stock, not a member card', async () => {
+  it('gives someone with no membership the white stock, and a player card', async () => {
     const face = await cardFace(db(), who('9'), NOW);
     expect(face.tier).toBe('plain');
     expect(face.memberSince).toBeNull();
+    expect(face.kind).toBe('PLAYER CARD');
+  });
+
+  it('calls a card by what it is, and an application by nothing at all', async () => {
+    await entry('10');
+    expect((await cardFace(db(), who('10'), NOW)).kind).toBe('MEMBER CARD');
+    await db().prepare("UPDATE register SET status = 'pending' WHERE discord_id = '10'").run();
+    // Whoever is waiting on the board looks exactly like anybody else in
+    // the server: the channel is not told that they applied.
+    const waiting = await cardFace(db(), who('10'), NOW);
+    expect(waiting.kind).toBe('PLAYER CARD');
+    expect(waiting.tier).toBe('plain');
   });
 
   it('wears the founder flag, and the ink stock that comes with it', async () => {

@@ -953,7 +953,7 @@ async function profileCard(env: WorkerEnv, interaction: Interaction, targetId: s
       },
       Math.floor(Date.now() / 1000),
     );
-    return await memberCardPng(face, back, origin);
+    return await memberCardPng(face, back, { origin, assets: env.ASSETS });
   } catch {
     return null;
   }

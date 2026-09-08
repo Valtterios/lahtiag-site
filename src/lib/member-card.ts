@@ -8,7 +8,7 @@
 // what Discord already knows or the association says out loud: the display
 // name, the avatar, the stock, since when, and the figures.
 
-import type { D1Database } from '@cloudflare/workers-types';
+import type { D1Database, Fetcher } from '@cloudflare/workers-types';
 import type { MemberStats } from './db';
 import { getRegisterByDiscord, isLeaderboardOptIn, memberStats } from './db';
 import { avatarUrl } from './discord';
@@ -27,18 +27,27 @@ const H = 567; // ID-1, the proportions of a bank card
 // often than a deploy changes them.
 const brand = new Map<string, Bitmap | null>();
 
-async function art(origin: string, file: string): Promise<Bitmap | null> {
+// The brand files, read through the Worker's own asset binding. Asking
+// the public origin for them looked right and worked in dev, where
+// wrangler answers the loopback from the asset layer; in production the
+// request comes back through the route to the Worker itself, which has no
+// /brand/ of its own, so every card fell back to the bitmap word and the
+// blue stocks hid it well enough that nobody noticed. Only a hit is
+// cached: a file that failed once should be tried again on the next card
+// rather than being missing for the life of the isolate.
+async function art(source: ArtSource, file: string): Promise<Bitmap | null> {
   const known = brand.get(file);
   if (known !== undefined) return known;
-  let image: Bitmap | null = null;
   try {
-    const response = await fetch(`${origin}/brand/${file}`);
-    if (response.ok) image = await decodePng(new Uint8Array(await response.arrayBuffer()));
+    const url = `${source.origin}/brand/${file}`;
+    const response = await (source.assets ? source.assets.fetch(url) : fetch(url));
+    if (!response.ok) return null;
+    const image = await decodePng(new Uint8Array(await response.arrayBuffer()));
+    if (image) brand.set(file, image);
+    return image;
   } catch {
-    image = null;
+    return null;
   }
-  brand.set(file, image);
-  return image;
 }
 
 const BLUE = 0x4169e1;
@@ -48,11 +57,23 @@ const WHITE = 0xffffff;
 const LINE = 0xe0e2e8;
 const MUTED = 0x5f5f5f;
 
+// Where the wordmark and the mark come from. The origin is only the URL
+// they are named by; the binding is what actually answers.
+export interface ArtSource {
+  origin: string;
+  assets?: Fetcher;
+}
+
 export type CardTier = 'member' | 'plain' | 'honorary' | 'ink';
 
 export interface CardFace {
   name: string;
   tier: CardTier;
+  // What the card calls itself. Only a current member carries a member
+  // card; everybody else in the server gets a player card, which says
+  // nothing about the register — an application waiting on the board is
+  // the board's business, not the channel's.
+  kind: 'MEMBER CARD' | 'PLAYER CARD';
   active: boolean;
   founder: boolean;
   memberSince: number | null;
@@ -64,7 +85,8 @@ export interface CardFace {
 interface Stock {
   bg: number;
   ink: number;
-  rule: number;
+  rule: number; // hairlines and the frame around the photograph
+  label: number; // the small capitals over every figure and field
   ruling: number; // the colour of the guilloche
   rulingAlpha: number;
   well: number; // behind a photograph that has not loaded
@@ -72,11 +94,15 @@ interface Stock {
   chipInk: number;
 }
 
+// A label is the stock's own ink at seven tenths over its ground, which
+// is what the web card's `opacity: .7` comes to. The hairline colour was
+// standing in for it, and on white — a hairline you can only just see —
+// that left every label at the edge of legibility.
 const STOCKS: Record<CardTier, Stock> = {
-  member: { bg: BLUE, ink: WHITE, rule: 0x7f95e8, ruling: WHITE, rulingAlpha: 0.09, well: 0x3a5fd0, chip: YELLOW, chipInk: INK },
-  plain: { bg: WHITE, ink: INK, rule: LINE, ruling: INK, rulingAlpha: 0.05, well: 0xededf0, chip: BLUE, chipInk: WHITE },
-  honorary: { bg: YELLOW, ink: INK, rule: 0xc9ab44, ruling: INK, rulingAlpha: 0.07, well: 0xf2ce46, chip: BLUE, chipInk: WHITE },
-  ink: { bg: INK, ink: WHITE, rule: 0x5c5c5c, ruling: WHITE, rulingAlpha: 0.09, well: 0x2b2b2b, chip: YELLOW, chipInk: INK },
+  member: { bg: BLUE, ink: WHITE, rule: 0x7f95e8, label: 0xc6d2f6, ruling: WHITE, rulingAlpha: 0.09, well: 0x3a5fd0, chip: YELLOW, chipInk: INK },
+  plain: { bg: WHITE, ink: INK, rule: LINE, label: 0x626262, ruling: INK, rulingAlpha: 0.05, well: 0xededf0, chip: BLUE, chipInk: WHITE },
+  honorary: { bg: YELLOW, ink: INK, rule: 0xc9ab44, label: 0x625830, ruling: INK, rulingAlpha: 0.07, well: 0xf2ce46, chip: BLUE, chipInk: WHITE },
+  ink: { bg: INK, ink: WHITE, rule: 0x5c5c5c, label: 0xbbbbbb, ruling: WHITE, rulingAlpha: 0.09, well: 0x2b2b2b, chip: YELLOW, chipInk: INK },
 };
 
 // The bands of a piece of metal, light and dark by turns. The hard turns
@@ -229,7 +255,8 @@ function wrap(text: string, width: number, lines: number): string[] {
   return out.slice(0, lines);
 }
 
-export async function memberCardPng(face: CardFace, back: boolean, origin: string): Promise<Uint8Array> {
+export async function memberCardPng(face: CardFace, back: boolean, source: string | ArtSource): Promise<Uint8Array> {
+  const art_ = typeof source === 'string' ? { origin: source } : source;
   const stock = STOCKS[face.tier];
   const c = new Canvas(W, H, stock.bg);
   guilloche(c, stock.ruling, stock.rulingAlpha);
@@ -238,18 +265,19 @@ export async function memberCardPng(face: CardFace, back: boolean, origin: strin
   // the ink are dark enough for the white one.
   const light = face.tier === 'honorary' || face.tier === 'plain';
   const [wordmark, mark] = await Promise.all([
-    art(origin, light ? 'wordmark-blue.png' : 'wordmark-white.png'),
-    art(origin, 'mark-blue.png'),
+    art(art_, light ? 'wordmark-blue.png' : 'wordmark-white.png'),
+    art(art_, 'mark-blue.png'),
   ]);
 
   if (!back) {
-    // The mark watermarked into the far corner, as on the web card.
-    if (mark) drawArt(c, mark, W - 232, H - 214, 268, light ? 0.1 : 0.07, () => (light ? BLUE : WHITE));
+    // The mark watermarked into the far corner and running off both
+    // edges, the way the web card's does: whole, it sat square across the
+    // bottom row and read as a mistake rather than as paper.
+    if (mark) drawArt(c, mark, W - 270, H - 220, 306, light ? 0.1 : 0.14, () => (light ? BLUE : WHITE));
 
     if (wordmark) drawArt(c, wordmark, pad, 34, 168);
     else c.text(pad, 30, 'LAHTIAG', stock.ink, 'l');
-    const kind = 'MEMBER CARD';
-    c.text(W - pad - Canvas.textWidth(kind), 42, kind, stock.ink, 's');
+    c.text(W - pad - Canvas.textWidth(face.kind), 42, face.kind, stock.ink, 's');
 
     const size = 150;
     const px = pad;
@@ -274,23 +302,28 @@ export async function memberCardPng(face: CardFace, back: boolean, origin: strin
 
     c.rect(pad, 300, W - pad * 2, 2, stock.rule);
     if (face.figures.length > 0) {
-      c.text(pad, 312, 'ALL TIME', stock.rule, 's');
+      c.text(pad, 312, 'ALL TIME', stock.label, 's');
       const cell = (W - pad * 2) / face.figures.length;
       face.figures.forEach((f, i) => {
         const x = pad + i * cell;
         const big = Canvas.textWidth(f.value, 'l') <= cell - 20;
         c.text(x, big ? 356 : 368, Canvas.fit(f.value, cell - 20, big ? 'l' : 's'), stock.ink, big ? 'l' : 's');
-        c.text(x, 420, Canvas.fit(f.label.toUpperCase(), cell - 20), stock.rule, 's');
+        c.text(x, 420, Canvas.fit(f.label.toUpperCase(), cell - 20), stock.label, 's');
       });
     } else {
-      c.text(pad, 356, 'This member keeps their numbers to themselves.', stock.rule, 's');
+      c.text(pad, 356, 'This member keeps their numbers to themselves.', stock.label, 's');
     }
 
-    // The bottom row the web card has, minus the member number.
-    c.text(pad, 470, 'MEMBER SINCE', stock.rule, 's');
-    c.text(pad, 504, face.memberSince !== null ? formatHelsinkiDate(face.memberSince) : 'not yet', stock.ink, 's');
-    c.text(pad + 320, 470, 'DISCORD', stock.rule, 's');
-    c.text(pad + 320, 504, Canvas.fit(face.name, W - pad * 2 - 320), stock.ink, 's');
+    // The bottom row the web card has, minus the member number. "Member
+    // since — not yet" was a strange thing to tell somebody who never
+    // applied, so a player card simply doesn't have the field.
+    const dx = face.memberSince === null ? 0 : 320;
+    if (face.memberSince !== null) {
+      c.text(pad, 470, 'MEMBER SINCE', stock.label, 's');
+      c.text(pad, 504, formatHelsinkiDate(face.memberSince), stock.ink, 's');
+    }
+    c.text(pad + dx, 470, 'DISCORD', stock.label, 's');
+    c.text(pad + dx, 504, Canvas.fit(face.name, W - pad * 2 - dx), stock.ink, 's');
   } else {
     // The back carries no wordmark, as the web card's does not: the stripe
     // is the first thing, the way it is on a card you turn over.
@@ -304,8 +337,8 @@ export async function memberCardPng(face: CardFace, back: boolean, origin: strin
       c.text(pad, y, line, stock.ink, 's');
       y += 40;
     }
-    c.text(pad, 424, 'Lahti Association of Gaming LAG ry, Lahti.', stock.rule, 's');
-    c.text(pad, 462, 'Personal and not transferable.', stock.rule, 's');
+    c.text(pad, 424, 'Lahti Association of Gaming LAG ry, Lahti.', stock.label, 's');
+    c.text(pad, 462, 'Personal and not transferable.', stock.label, 's');
     c.text(pad, 504, 'LAHTIAG.FI/MEMBERSHIP', stock.ink, 's');
 
     // The mark struck in silver, where a card keeps its hologram.
@@ -366,6 +399,7 @@ export async function cardFace(
   return {
     name: cleanText(who.name) || 'Member',
     tier,
+    kind: member ? 'MEMBER CARD' : 'PLAYER CARD',
     active: Boolean(entry?.is_active),
     founder: Boolean(entry?.founder),
     memberSince: stats.member_since,
