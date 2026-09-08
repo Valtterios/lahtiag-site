@@ -6,7 +6,7 @@ import { currentSession, ensureCsrf, viewAs } from '../../lib/guard';
 import ViewAs from '../../components/ViewAs.astro';
 import { listUpcomingEvents, listPastEvents, coverVersions } from '../../lib/db';
 import { ticketPrice, seatsLeft, isFull } from '../../lib/price';
-import { formatHelsinki, formatHelsinkiRange } from '../../lib/time';
+import { formatHelsinki, whenLabel } from '../../lib/time';
 
 // Server-rendered: the events list lives in D1. The Phase 1 Markdown page
 // of event stories moved to /history when this route took the path over.
@@ -62,7 +62,7 @@ const flash =
           <div class="event-tile-body">
             <p class="event-when">
               {event.starts_at <= now && <span class="live-badge">Happening now</span>}
-              {formatHelsinkiRange(event.starts_at, event.ends_at)}
+              {whenLabel(event)}
             </p>
             <h2><a href={`/events/${event.id}`}>{event.title}</a>{event.published_at === null && <> <span class="status-badge status-muted">Draft</span></>}</h2>
             <p class="event-meta">
@@ -175,6 +175,9 @@ const flash =
         <label>
           Capacity
           <input name="capacity" type="number" min="1" placeholder="unlimited (people, or teams for a team event)" />
+        </label>
+        <label class="check check-standalone">
+          <input type="checkbox" name="date_tba" /> <span>Date to be announced — the date above is a placeholder for the ordering, and the site says so instead of naming a day</span>
         </label>
         <label>Signups close on <input name="close_date" type="date" /></label>
         <label>Signups close at (Helsinki) <input name="close_time" type="time" placeholder="empty = 23:59; leave the date empty to close them by hand" /></label>

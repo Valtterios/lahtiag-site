@@ -345,6 +345,14 @@ at the door.*
 
 *The history page: the Hall of Fame with the final bracket picture, and the leaderboard.*
 
+- **An event with no date yet.** Tick *Date to be announced* and the
+  site stops naming a day: the events page, the front page and the
+  Discord announcement all say "Date to be announced" instead. Put a rough
+  date in the fields anyway — it is what orders the event in the list —
+  and nothing that needs a real one runs: no day-before reminder, no
+  entry in the calendar feed, nothing on Discord's own event list. Untick
+  it when you know, and all three come back on their own.
+
 - **Signups open and close by the clock.** Both are fields on the event:
   leave the opening empty and signups open when you publish, leave the
   closing empty and they stay open until you press Close signups. With a

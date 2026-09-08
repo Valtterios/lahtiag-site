@@ -87,6 +87,14 @@ returns to the categories):
 *`/board` in Discord: Event, Bracket and Announce & screen open the buttons; Whitelist, Register and News link to the site. Only the person who typed it sees the panel.*
 
 
+0. **A date nobody knows yet.** `events.date_tba` keeps `starts_at` a
+   real number — every query orders, filters and counts by it — while
+   stopping the site from stating it. `whenLabel()` is what the pages and
+   the announcement print; `dueReminders` skips such events, the ICS feed
+   leaves them out, and `syncScheduledEvent` returns `skipped` rather than
+   putting a placeholder day in everybody's Discord client. Clear the flag
+   and all three resume on the next run.
+
 0. **Publishing and the ping.** The Publish card on a draft's page asks
    who the announcement should ping: nobody (the default), `@everyone`,
    or one of the server's roles — the same three choices a news post has.

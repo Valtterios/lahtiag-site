@@ -35,11 +35,13 @@ export function eventAnnouncement(input: {
   location?: string | null;
   description?: string | null;
   room?: number;
+  dateTba?: boolean;
 }): string {
   const where = input.location?.trim() ? ` · ${input.location.trim()}` : '';
   const byLine = input.organizers ? `\nOrganized by ${input.organizers}` : '';
   const teamsLine = input.teamSize ? `\nTeams of ${input.teamSize}, form yours on the site!` : '';
-  const head = `📅 **${input.title.trim()}**\n${formatHelsinkiRange(input.startsAt, input.endsAt)}${where}${byLine}${teamsLine}`;
+  const when = input.dateTba ? 'Date to be announced' : formatHelsinkiRange(input.startsAt, input.endsAt);
+  const head = `📅 **${input.title.trim()}**\n${when}${where}${byLine}${teamsLine}`;
   const tail = `\nSign up: ${input.url}`;
   const body = blurb(input.description, (input.room ?? 0) - head.length - tail.length - 2);
   return `${head}${body ? `\n\n${body}\n` : ''}${tail}`;

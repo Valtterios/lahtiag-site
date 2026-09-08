@@ -691,6 +691,9 @@ export async function syncScheduledEvent(
   if (!token) return 'unconfigured';
   const event = await getEvent(db, eventId);
   if (!event) return 'error';
+  // Discord's own event list wants a start time, and a placeholder would
+  // put the wrong day in everybody's client. It goes up when the date does.
+  if (event.date_tba) return 'skipped';
   const reason = `lahtiag.fi event ${eventId}`;
   const live = event.published_at !== null && event.cancelled_at === null;
   if (!live) {

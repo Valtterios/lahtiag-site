@@ -33,7 +33,7 @@ import { questionOptions, answersComplete, QUESTION_KINDS } from '../../../lib/q
 import { purchaseOffer, pendingPurchaseFor, resumablePurchase } from '../../../lib/purchases';
 import { readBasket, basketCount } from '../../../lib/basket';
 import { stripeConfigured } from '../../../lib/stripe';
-import { formatHelsinkiRange, unixToHelsinkiInputs, formatHelsinki } from '../../../lib/time';
+import { whenLabel, formatHelsinkiRange, unixToHelsinkiInputs, formatHelsinki } from '../../../lib/time';
 import { kindWorth, listTickKinds, listTickableMembers, listTicks } from '../../../lib/ticks';
 import { seasonStartYear } from '../../../lib/activity';
 
@@ -339,7 +339,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             <li>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
               <span>
-                {formatHelsinkiRange(event.starts_at, event.ends_at)}
+                {whenLabel(event)}
                 {event.starts_at <= nowSeconds && event.ends_at !== null && event.ends_at > nowSeconds && <> <span class="live-badge">Happening now</span></>}
               </span>
             </li>
@@ -928,6 +928,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
           <p class="admin-status">
             <span class={`status-badge${draft ? ' status-muted' : ' status-member'}`}>{draft ? 'Draft' : 'Published'}</span>
             {event.cancelled_at !== null && <span class="status-badge status-danger">Cancelled</span>}
+            {event.date_tba === 1 && <span class="status-badge status-pending">Date to be announced</span>}
             <span class="status-badge">{signupsClosed ? 'Signups closed' : opensLater ? `Signups open ${formatHelsinki(event.signups_open_at!)}` : event.signups_close_at !== null ? `Signups open until ${formatHelsinki(event.signups_close_at)}` : 'Signups open'}</span>
             <span class="status-badge">{isTeamEvent ? `${eventTeams.length} teams, ${going.length} players` : `${going.length}${event.capacity !== null ? ` / ${event.capacity}` : ''} going`}{waitlist.length > 0 ? `, ${waitlist.length} waiting` : ''}</span>
             {sales && <span class="status-badge">{sales.tickets} tickets sold</span>}
@@ -1004,6 +1005,9 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               </label>
               <label>Signups open on <input name="open_date" type="date" value={event.signups_open_at !== null ? unixToHelsinkiInputs(event.signups_open_at).date : ''} /></label>
               <label>Signups open at (Helsinki) <input name="open_time" type="time" value={event.signups_open_at !== null ? unixToHelsinkiInputs(event.signups_open_at).time : ''} placeholder="empty = when published" /></label>
+              <label class="check check-standalone">
+                <input type="checkbox" name="date_tba" checked={event.date_tba === 1} /> <span>Date to be announced — the date above only orders it in the list; untick it when the day is known and the announcement, the calendar feed and Discord's event list all follow</span>
+              </label>
               <label>Signups close on <input name="close_date" type="date" value={event.signups_close_at !== null ? unixToHelsinkiInputs(event.signups_close_at).date : ''} /></label>
               <label>Signups close at (Helsinki) <input name="close_time" type="time" value={event.signups_close_at !== null ? unixToHelsinkiInputs(event.signups_close_at).time : ''} placeholder="empty = they stay open until you close them" /></label>
               <label>

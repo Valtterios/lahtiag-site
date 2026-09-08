@@ -94,6 +94,7 @@ export interface EventRow {
   discord_category_id: string | null; // a big event's own category; null = one channel under the shared Events category
   discord_bracket_message_id: string | null; // legacy, unused: brackets.discord_message_id took over
   bracket_live_at: number | null; // legacy, unused: brackets.live_at took over
+  date_tba: number; // 1 = starts_at is a placeholder and no date is announced
   signups_open_at: number | null; // null = from publication; else signups and sales wait for this moment
   signups_close_at: number | null; // null = until the board closes them; else the job closes them at this moment
   interest_synced_at: number | null; // last time Discord's Interested clicks were read
@@ -278,6 +279,7 @@ export async function createEvent(
     capacity: number | null;
     team_size?: number | null;
     team_reserves?: number | null;
+    date_tba?: boolean;
     organizers?: string | null;
     location?: string | null;
     link_url?: string | null;
@@ -307,8 +309,8 @@ export async function createEvent(
   const linkUrl = normalizeLink(input.link_url);
   const row = await db
     .prepare(
-      `INSERT INTO events (title, description, starts_at, ends_at, capacity, team_size, team_reserves, organizers, link_url, created_by, created_at, members_only, member_slots, location, published_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) RETURNING id`,
+      `INSERT INTO events (title, description, starts_at, ends_at, capacity, team_size, team_reserves, organizers, link_url, created_by, created_at, members_only, member_slots, location, published_at, date_tba)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16) RETURNING id`,
     )
     .bind(
       input.title.trim(),
@@ -326,6 +328,7 @@ export async function createEvent(
       memberSlots,
       input.location?.trim() || null,
       input.published === false ? null : now,
+      input.date_tba ? 1 : 0,
     )
     .first<{ id: number }>();
   return row!.id;
@@ -361,6 +364,7 @@ export async function updateEvent(
     member_slots?: number | null;
     team_size?: number | null; // undefined: unchanged
     team_reserves?: number | null; // undefined: unchanged
+    date_tba?: boolean; // undefined: unchanged
   },
 ): Promise<EventWithCounts> {
   const event = await getEvent(db, id);
@@ -405,7 +409,8 @@ export async function updateEvent(
   await db
     .prepare(
       `UPDATE events SET title = ?2, description = ?3, starts_at = ?4, ends_at = ?5, capacity = ?6, organizers = ?7, link_url = ?8,
-         members_only = ?9, member_slots = ?10, location = ?11, team_size = ?12, team_reserves = ?13
+         members_only = ?9, member_slots = ?10, location = ?11, team_size = ?12, team_reserves = ?13,
+         date_tba = ?14
        WHERE id = ?1`,
     )
     .bind(
@@ -422,6 +427,7 @@ export async function updateEvent(
       input.location?.trim() || null,
       teamSize,
       teamReserves,
+      (input.date_tba ?? event.date_tba === 1) ? 1 : 0,
     )
     .run();
   // A changed team size makes every bracket the wrong shape: they go, to

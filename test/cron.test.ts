@@ -4,7 +4,7 @@ import { dueReminders, dueOpenings, dueClosings, dueSalesReminder, reminderLine,
 // The hourly job's choices, as pure functions.
 
 const NOW = 1_760_000_000;
-const base = { published_at: NOW - 1000, cancelled_at: null as number | null, reminder_sent_at: null as number | null, open_posted_at: null as number | null, signups_open_at: null as number | null };
+const base = { published_at: NOW - 1000, cancelled_at: null as number | null, reminder_sent_at: null as number | null, open_posted_at: null as number | null, signups_open_at: null as number | null, date_tba: 0 };
 
 describe('dueReminders', () => {
   it('picks published, upcoming events inside the last day, once', () => {
@@ -16,6 +16,8 @@ describe('dueReminders', () => {
       { ...base, id: 5, starts_at: NOW - 10 }, // started
       { ...base, id: 6, starts_at: NOW + 3600, cancelled_at: NOW - 5 },
       { ...base, id: 7, starts_at: NOW + 3600, published_at: null },
+      // The date is a placeholder: counting down to it would be a fiction.
+      { ...base, id: 8, starts_at: NOW + 3600, date_tba: 1 },
     ];
     expect(dueReminders(events, NOW).map((e) => e.id)).toEqual([1, 2]);
   });
@@ -91,7 +93,7 @@ describe('digest and milestones', () => {
   it('writes the digest only when there is something to say', () => {
     expect(digestText([], [], 0, 'u')).toBeNull();
     const text = digestText(
-      [{ id: 1, title: 'LAN **x**', starts_at: NOW, yes_count: 12, interest_count: 3, team_size: null, teams_count: 0 }],
+      [{ id: 1, title: 'LAN **x**', starts_at: NOW, ends_at: null, date_tba: 0, yes_count: 12, interest_count: 3, team_size: null, teams_count: 0 }],
       [{ champion_name: 'Alpha', title: 'Cup' }],
       2,
       'https://x',

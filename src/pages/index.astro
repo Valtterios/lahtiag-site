@@ -7,7 +7,7 @@ import DiscordWidget from '../components/DiscordWidget.astro';
 import { listUpcomingEvents, listAnnouncements, listPhotoAlbums, coverVersions, type EventWithCounts, type AnnouncementRow, type PhotoAlbum } from '../lib/db';
 import { ticketPrice, seatsLeft, isFull } from '../lib/price';
 import { newsExcerpt } from '../lib/news';
-import { formatHelsinkiRange, formatHelsinkiDate } from '../lib/time';
+import { whenLabel, formatHelsinkiDate } from '../lib/time';
 
 // Server-rendered: what is coming up, what was written and what was played
 // all come from D1. A database hiccup must never take the front page down,
@@ -92,7 +92,7 @@ try {
             <div class="event-tile-body">
               <p class="event-when">
                 {event.starts_at <= now && <span class="live-badge">Happening now</span>}
-                {formatHelsinkiRange(event.starts_at, event.ends_at)}
+                {whenLabel(event)}
               </p>
               <h3><a href={`/events/${event.id}`}>{event.title}</a></h3>
               {event.location && <p class="event-meta">{event.location}</p>}

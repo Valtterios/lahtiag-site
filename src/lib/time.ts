@@ -73,6 +73,13 @@ export function unixToHelsinkiInputs(unixSeconds: number): { date: string; time:
 
 // "Sat 12 Sep 2026, 18:00 to 22:00" (same day) or both full timestamps
 // when the event runs past midnight. No end time: just the start.
+// What an event's date says on the page. A date the board has not been
+// told yet is not a date, whatever is in the column to keep the ordering
+// working, so it says so instead of naming a day nobody agreed to.
+export function whenLabel(event: { starts_at: number; ends_at: number | null; date_tba?: number }): string {
+  return event.date_tba ? 'Date to be announced' : formatHelsinkiRange(event.starts_at, event.ends_at);
+}
+
 export function formatHelsinkiRange(start: number, end: number | null): string {
   const startText = formatHelsinki(start);
   if (end === null) return startText;

@@ -29,6 +29,9 @@ export const GET: APIRoute = async ({ url }) => {
     'X-WR-TIMEZONE:Europe/Helsinki',
   ];
   for (const event of events) {
+    // A calendar entry for a date nobody has announced would put a
+    // placeholder in somebody's own calendar; it appears once it is real.
+    if (event.date_tba) continue;
     const description = [
       event.organizers ? `Organized by ${event.organizers}` : '',
       event.description ?? '',

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { helsinkiToUnix, formatHelsinki, agoLabel } from '../src/lib/time';
+import { helsinkiToUnix, formatHelsinki, formatHelsinkiRange, whenLabel, agoLabel } from '../src/lib/time';
 
 // Helsinki is UTC+2 (EET) in winter and UTC+3 (EEST) in summer. The 2026
 // transitions: forward on Sunday 29 March (03:00 -> 04:00 local, 01:00 UTC),
@@ -78,5 +78,16 @@ describe('agoLabel', () => {
     expect(agoLabel(NOW - 130 * 60, NOW)).toBe('2 h 10 min ago');
     // A payment whose clock ran ahead of ours is simply new.
     expect(agoLabel(NOW + 30, NOW)).toBe('just now');
+  });
+});
+
+describe('whenLabel', () => {
+  const start = helsinkiToUnix('2026-12-10', '18:00')!;
+
+  it('names the day when there is one, and says so when there is not', () => {
+    expect(whenLabel({ starts_at: start, ends_at: start + 3 * 3600 })).toBe(formatHelsinkiRange(start, start + 3 * 3600));
+    expect(whenLabel({ starts_at: start, ends_at: null, date_tba: 0 })).toContain('2026');
+    // The placeholder in the column is never shown as if it were agreed.
+    expect(whenLabel({ starts_at: start, ends_at: start + 3 * 3600, date_tba: 1 })).toBe('Date to be announced');
   });
 });

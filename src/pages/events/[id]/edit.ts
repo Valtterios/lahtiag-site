@@ -35,6 +35,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
   const closeDate = String(form.get('close_date') ?? '').trim();
   const closeTime = String(form.get('close_time') ?? '').trim();
   const closesAt = closeDate === '' && closeTime === '' ? null : helsinkiToUnix(closeDate, closeTime || '23:59');
+  const dateTba = form.get('date_tba') === 'on';
   if (closesAt === null && (closeDate !== '' || closeTime !== '')) return redirect(`${back}?err=bad_time`, 303);
   const capacityRaw = String(form.get('capacity') ?? '').trim();
   const description = String(form.get('description') ?? '').trim();
@@ -67,6 +68,7 @@ export const POST: APIRoute = async ({ request, params, redirect, url, locals })
       member_slots: memberSlots,
       team_size: teamSize,
       team_reserves: teamReserves,
+      date_tba: dateTba,
     });
     await setSignupsOpenAt(env.DB, id, opensAt);
     await setSignupsCloseAt(env.DB, id, closesAt);

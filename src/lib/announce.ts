@@ -64,6 +64,7 @@ export function announcementText(event: EventWithCounts, origin: string): string
     teamSize: event.team_size,
     location: event.location,
     description: event.description,
+    dateTba: event.date_tba === 1,
     room,
     url: `${origin}/events/${event.id}`,
   })}\n${counts}`;

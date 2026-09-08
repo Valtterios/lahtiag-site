@@ -43,8 +43,10 @@ export const ARCHIVE_AFTER = 7 * 24 * 3600; // a week after the end, the event's
 type Env = { DISCORD_BOT_TOKEN?: string; DISCORD_WEBHOOK_URL?: string; WELCOME_WEBHOOK_URL?: string };
 
 // Pure: which events get their reminder now.
-export function dueReminders<T extends Pick<EventWithCounts, 'starts_at' | 'reminder_sent_at' | 'published_at' | 'cancelled_at'>>(events: T[], now: number): T[] {
-  return events.filter((e) => e.published_at !== null && e.cancelled_at === null && e.reminder_sent_at === null && e.starts_at > now && e.starts_at - now <= REMINDER_WINDOW);
+export function dueReminders<T extends Pick<EventWithCounts, 'starts_at' | 'reminder_sent_at' | 'published_at' | 'cancelled_at' | 'date_tba'>>(events: T[], now: number): T[] {
+  // Never for an event whose date is still to be announced: the day-before
+  // reminder would be counting down to a placeholder.
+  return events.filter((e) => e.published_at !== null && e.cancelled_at === null && !e.date_tba && e.reminder_sent_at === null && e.starts_at > now && e.starts_at - now <= REMINDER_WINDOW);
 }
 
 // Pure: which events' signups opened since the last run.
@@ -112,7 +114,7 @@ export function helsinkiClock(now: number): { weekday: number; hour: number } {
 // The Monday post for the general channel: the next two weeks, last
 // week's champion, new members.
 export function digestText(
-  upcoming: Pick<EventWithCounts, 'id' | 'title' | 'starts_at' | 'yes_count' | 'interest_count' | 'team_size' | 'teams_count'>[],
+  upcoming: Pick<EventWithCounts, 'id' | 'title' | 'starts_at' | 'ends_at' | 'date_tba' | 'yes_count' | 'interest_count' | 'team_size' | 'teams_count'>[],
   champions: Pick<ResultRow, 'champion_name' | 'title'>[],
   newMembers: number,
   origin: string,
@@ -123,7 +125,7 @@ export function digestText(
   for (const e of upcoming) {
     const who = e.team_size !== null ? `${e.teams_count} teams` : `${e.yes_count} going`;
     const heart = e.interest_count > 0 ? ` · ♡ ${e.interest_count}` : '';
-    lines.push(`• ${formatHelsinki(e.starts_at)} · **${safe(e.title)}** · ${who}${heart} · ${origin}/events/${e.id}`);
+    lines.push(`• ${e.date_tba ? 'Date to be announced' : formatHelsinki(e.starts_at)} · **${safe(e.title)}** · ${who}${heart} · ${origin}/events/${e.id}`);
   }
   for (const c of champions) lines.push(`🏆 Last week's champion: **${safe(c.champion_name)}** (${safe(c.title)})`);
   if (newMembers > 0) lines.push(`👋 ${newMembers} new ${newMembers === 1 ? 'member' : 'members'} joined last week. Welcome!`);
