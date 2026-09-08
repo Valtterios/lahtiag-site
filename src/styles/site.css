@@ -1405,12 +1405,31 @@ a:hover {
     font-size: 3.6cqi;
   }
 
+  /* The stamp goes where a card keeps its hologram: the bottom corner,
+     on the padding line, rather than adrift in the middle. */
   .id-card-foil {
-    width: 34cqi;
-    height: 34cqi;
+    width: 26cqi;
+    height: 26cqi;
     right: 6.5cqi;
-    bottom: 40cqi;
+    bottom: 6.5cqi;
   }
+
+  /* Clear of the stamp, the way the landscape small print is. */
+  .id-card-small {
+    margin-right: 30cqi;
+  }
+
+  /* Stood on its end the back has far more height than its contents, so
+     they are spread down it rather than bunched at the top over one big
+     hole. */
+  .id-card-back {
+    justify-content: space-between;
+  }
+
+  .id-card-small {
+    margin-top: 0;
+  }
+
 
   .id-card-small {
     margin-right: 6.5cqi;
