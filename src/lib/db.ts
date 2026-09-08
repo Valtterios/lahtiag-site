@@ -495,6 +495,7 @@ export async function setSignup(
       .first<{ n: number }>();
     if ((taken?.n ?? 0) >= event.capacity) throw new RuleError('full', 'This event is full.');
   }
+  const wasIn = event.team_size !== null ? await teamOf(db, eventId, discordId) : null;
   await db
     .prepare(
       `INSERT INTO signups (event_id, discord_id, status, created_at, event_team_id)
@@ -503,7 +504,7 @@ export async function setSignup(
     )
     .bind(eventId, discordId, status, now)
     .run();
-  if (event.team_size !== null) await dropEmptyEventTeams(db, eventId);
+  await dropTeamIfEmpty(db, eventId, wasIn);
   // Stepping back to maybe frees a seat for the waitlist.
   if (status === 'maybe') await promoteWaitlist(db, eventId, now);
 }
@@ -513,11 +514,12 @@ export async function removeSignup(db: D1Database, eventId: number, discordId: s
   if (event?.signups_closed_at != null) throw new RuleError('closed', 'Signups are closed.');
   // A paid ticket is the signup; leaving means a refund, from the board.
   if (await isTicketed(db, eventId)) throw new RuleError('needs_ticket', 'Ticket holders leave through a refund.');
+  const wasIn = await teamOf(db, eventId, discordId);
   await db
     .prepare('DELETE FROM signups WHERE event_id = ?1 AND discord_id = ?2')
     .bind(eventId, discordId)
     .run();
-  await dropEmptyEventTeams(db, eventId);
+  await dropTeamIfEmpty(db, eventId, wasIn);
   await promoteWaitlist(db, eventId);
 }
 
@@ -587,13 +589,15 @@ export async function adminUpdateSignup(
   } else if (status === 'maybe') {
     teamId = null;
   }
+  const wasIn = await teamOf(db, eventId, discordId);
   await db
     .prepare(
       'UPDATE signups SET status = ?3, event_team_id = ?4 WHERE event_id = ?1 AND discord_id = ?2',
     )
     .bind(eventId, discordId, status, teamId)
     .run();
-  await dropEmptyEventTeams(db, eventId);  if (status === 'maybe') await promoteWaitlist(db, eventId);
+  if (wasIn !== teamId) await dropTeamIfEmpty(db, eventId, wasIn);
+  if (status === 'maybe') await promoteWaitlist(db, eventId);
 }
 
 // Walk-in participants without Discord: a synthetic member row plus a
@@ -722,7 +726,8 @@ export async function addMemberParticipant(
   }
   // On the roster and on the waitlist at once would be nonsense.
   await db.prepare('DELETE FROM event_waitlist WHERE event_id = ?1 AND discord_id = ?2').bind(eventId, discordId).run();
-  await dropEmptyEventTeams(db, eventId);
+  const wasIn = existing?.event_team_id ?? null;
+  if (wasIn !== eventTeamId) await dropTeamIfEmpty(db, eventId, wasIn);
   return discordId;
 }
 
@@ -735,11 +740,12 @@ export async function adminRemoveSignup(
 ): Promise<void> {
   // A paid ticket is the signup: leaving goes through a refund in Stripe.
   if (await hasPaidTicket(db, eventId, discordId)) throw new RuleError('ticket_holder', 'This person holds a paid ticket.');
+  const wasIn = await teamOf(db, eventId, discordId);
   await db
     .prepare('DELETE FROM signups WHERE event_id = ?1 AND discord_id = ?2')
     .bind(eventId, discordId)
     .run();
-  await dropEmptyEventTeams(db, eventId);
+  await dropTeamIfEmpty(db, eventId, wasIn);
   await promoteWaitlist(db, eventId);
 }
 
@@ -750,12 +756,12 @@ export async function adminRemoveSignup(
 // ban cleanup and the GDPR-erasure path.
 export async function purgeMember(db: D1Database, discordId: string): Promise<'deleted' | 'anonymized'> {
   const { results: affected } = await db
-    .prepare('SELECT DISTINCT event_id AS id FROM signups WHERE discord_id = ?1')
+    .prepare('SELECT DISTINCT event_id AS id, event_team_id FROM signups WHERE discord_id = ?1')
     .bind(discordId)
-    .all<{ id: number }>();
+    .all<{ id: number; event_team_id: number | null }>();
   await db.prepare('DELETE FROM signups WHERE discord_id = ?1').bind(discordId).run();
   await db.prepare('DELETE FROM event_waitlist WHERE discord_id = ?1').bind(discordId).run();
-  for (const row of affected) await dropEmptyEventTeams(db, row.id);
+  for (const row of affected) await dropTeamIfEmpty(db, row.id, row.event_team_id);
   for (const row of affected) await promoteWaitlist(db, row.id);
   try {
     await db.prepare('DELETE FROM members WHERE discord_id = ?1').bind(discordId).run();
@@ -804,14 +810,30 @@ async function requireOpenTeamEvent(db: D1Database, eventId: number, now?: numbe
 
 // A team with no members left is deleted rather than lingering as an empty
 // name squatting on the roster (and, on capped events, on a team slot).
-async function dropEmptyEventTeams(db: D1Database, eventId: number): Promise<void> {
-  await db
-    .prepare(
-      `DELETE FROM event_teams WHERE event_id = ?1 AND id NOT IN
-        (SELECT event_team_id FROM signups WHERE event_id = ?1 AND event_team_id IS NOT NULL)`,
-    )
-    .bind(eventId)
-    .run();
+// A team disbands when its own last member leaves — never because some
+// other team on the event happens to be empty. Sweeping every empty team
+// on any roster edit deleted two kinds of team that are empty on purpose:
+// the ones the board makes to assign people into, and the ones a bracket
+// imported from an old tournament that never had a roster. Both went the
+// moment anybody was moved, and the bracket was left pointing at teams
+// that no longer existed.
+async function dropTeamIfEmpty(db: D1Database, eventId: number, teamId: number | null): Promise<void> {
+  if (teamId === null) return;
+  const left = await db
+    .prepare('SELECT 1 AS x FROM signups WHERE event_id = ?1 AND event_team_id = ?2 LIMIT 1')
+    .bind(eventId, teamId)
+    .first();
+  if (!left) await db.prepare('DELETE FROM event_teams WHERE id = ?1 AND event_id = ?2').bind(teamId, eventId).run();
+}
+
+// The team someone is in right now, read before a change so the change can
+// tidy up after itself.
+async function teamOf(db: D1Database, eventId: number, discordId: string): Promise<number | null> {
+  const row = await db
+    .prepare('SELECT event_team_id FROM signups WHERE event_id = ?1 AND discord_id = ?2')
+    .bind(eventId, discordId)
+    .first<{ event_team_id: number | null }>();
+  return row?.event_team_id ?? null;
 }
 
 export async function listEventTeams(db: D1Database, eventId: number): Promise<EventTeamRow[]> {
@@ -887,6 +909,7 @@ export async function joinEventTeam(
   if ((members?.n ?? 0) >= event.team_size!) {
     throw new RuleError('team_full', 'That team is already full.');
   }
+  const wasIn = await teamOf(db, eventId, discordId);
   await db
     .prepare(
       `INSERT INTO signups (event_id, discord_id, status, created_at, event_team_id)
@@ -895,21 +918,22 @@ export async function joinEventTeam(
     )
     .bind(eventId, discordId, now, eventTeamId)
     .run();
-  // Switching teams may have emptied the previous one.
-  await dropEmptyEventTeams(db, eventId);
+  // Switching teams may have emptied the one they came from.
+  if (wasIn !== eventTeamId) await dropTeamIfEmpty(db, eventId, wasIn);
 }
 
 // Leaving a team keeps the member signed up as a free agent.
 export async function leaveEventTeam(db: D1Database, eventId: number, discordId: string): Promise<void> {
   const event = await getEvent(db, eventId);
   if (event?.signups_closed_at != null) throw new RuleError('closed', 'Signups are closed.');
+  const wasIn = await teamOf(db, eventId, discordId);
   await db
     .prepare(
       'UPDATE signups SET event_team_id = NULL WHERE event_id = ?1 AND discord_id = ?2',
     )
     .bind(eventId, discordId)
     .run();
-  await dropEmptyEventTeams(db, eventId);
+  await dropTeamIfEmpty(db, eventId, wasIn);
 }
 
 export async function listSignups(db: D1Database, eventId: number): Promise<SignupRow[]> {
@@ -3481,8 +3505,9 @@ export async function refundTicket(db: D1Database, ticketId: number): Promise<Ti
   if (!ticket || ticket.status === 'refunded') return ticket;
   await db.prepare("UPDATE tickets SET status = 'refunded' WHERE id = ?1").bind(ticketId).run();
   if (ticket.discord_id) {
+    const wasIn = await teamOf(db, ticket.event_id, ticket.discord_id);
     await db.prepare('DELETE FROM signups WHERE event_id = ?1 AND discord_id = ?2').bind(ticket.event_id, ticket.discord_id).run();
-    await dropEmptyEventTeams(db, ticket.event_id);
+    await dropTeamIfEmpty(db, ticket.event_id, wasIn);
   }
   return { ...ticket, status: 'refunded' };
 }

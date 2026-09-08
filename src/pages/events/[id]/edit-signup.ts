@@ -9,23 +9,24 @@ import { announcePromotionsInBackground, later, notifyTeamPlacement, notifyCapta
 export const POST: APIRoute = async ({ request, params, redirect, locals, url }) => {
   const id = Number(params.id);
   const back = `/events/${id}`;
+  const here = `${back}#participants`;
 
   const admin = await requireAdmin(request, env);
-  if (!admin.ok) return redirect(`${back}?err=${admin.reason}`, 303);
+  if (!admin.ok) return redirect(`${back}?err=${admin.reason}#participants`, 303);
 
   const form = await request.formData();
-  if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf`, 303);
+  if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf#participants`, 303);
 
   const status = String(form.get('status') ?? '');
-  if (status !== 'yes' && status !== 'maybe') return redirect(`${back}?err=bad_input`, 303);
+  if (status !== 'yes' && status !== 'maybe') return redirect(`${back}?err=bad_input#participants`, 303);
   const teamRaw = String(form.get('event_team_id') ?? '').trim();
   const teamId = teamRaw === '' ? null : Number(teamRaw);
-  if (teamId !== null && !Number.isInteger(teamId)) return redirect(`${back}?err=bad_input`, 303);
+  if (teamId !== null && !Number.isInteger(teamId)) return redirect(`${back}?err=bad_input#participants`, 303);
 
   try {
     await adminUpdateSignup(env.DB, id, String(form.get('discord_id') ?? ''), status, teamId);
   } catch (error) {
-    if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
+    if (error instanceof RuleError) return redirect(`${back}?err=${error.code}#participants`, 303);
     throw error;
   }
   // Moving people between teams can empty one; the voice channels follow.
@@ -37,5 +38,5 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   }
   announcePromotionsInBackground(locals.cfContext, env.DB, env, Math.floor(Date.now() / 1000));
   refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
-  return redirect(back, 303);
+  return redirect(`${back}?ok=signup_saved#participants`, 303);
 };

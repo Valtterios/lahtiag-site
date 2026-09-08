@@ -138,7 +138,24 @@ if (event && !draft && event.cancelled_at === null) syncInterestInBackground(Ast
 // Flashes from board actions open the (otherwise folded) board tools.
 const DISCORD_OPEN = new Set(['discord_reannounced', 'discord_created', 'discord_synced', 'discord_removed', 'discord_upgraded', 'discord_archived', 'discord_team_voice', 'discord_needs_category', 'discord_no_teams', 'discord_event_created', 'discord_event_removed', 'discord_event_skipped', 'discord_unconfigured', 'discord_forbidden', 'discord_error', 'discord_exists', 'discord_partial', 'discord_missing']);
 const TICK_KEYS = new Set(['tick_given', 'tick_removed', 'tick_duplicate', 'tick_not_member', 'tick_missing', 'tick_bad_input']);
-const ADMIN_OPEN = new Set(['team_size', 'not_linked', 'member_added', 'added', ...TICK_KEYS, 'cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'photos_added', 'photo_removed', 'credit_saved', 'photo_missing', 'photo_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
+// Everything done from Participants comes back to Participants: the board
+// edits a roster a row at a time, and being thrown to the top of the page
+// with the panel shut after each one makes that miserable.
+const PARTICIPANT_KEYS = new Set([
+  ...TICK_KEYS,
+  'signup_saved',
+  'signup_removed',
+  'member_added',
+  'added',
+  'not_linked',
+  'team_renamed',
+  'team_saved',
+  'grouped',
+  'team_full',
+  'not_team_event',
+  'dup_name',
+]);
+const ADMIN_OPEN = new Set(['team_size', ...PARTICIPANT_KEYS, 'cover_saved', 'cover_removed', 'cover_missing', 'cover_bad', 'photos_added', 'photo_removed', 'credit_saved', 'photo_missing', 'photo_bad', 'type_saved', 'type_deleted', 'question_saved', 'reinstated', 'ticket_holder', 'bad_time', 'forbidden', 'discord_down', ...DISCORD_OPEN]);
 const okKey = Astro.url.searchParams.get('ok') ?? '';
 const errKey = Astro.url.searchParams.get('err') ?? '';
 const FLASH: Record<string, string> = {
@@ -149,6 +166,11 @@ const FLASH: Record<string, string> = {
   not_linked: 'That member has no Discord account linked yet, so there is nothing to add them as. Link it on their register entry first.',
   member_added: 'Added, against their own Discord account: the event role, their ticks and their stats all follow.',
   added: 'Walk-in added.',
+  signup_saved: 'Saved.',
+  signup_removed: 'Taken off the roster.',
+  team_renamed: 'Team renamed.',
+  team_saved: 'Team created.',
+  grouped: 'Players without a team grouped into teams.',
   cancelled: 'This event has been cancelled and signups are closed.',
   closed: 'Signups are closed for this event.',
   bad_time: "That date and time didn't parse.",
@@ -1126,7 +1148,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             </form>
             {questions.length > 0 && <p><a class="btn btn-ghost btn-sm" href={`/events/${event.id}/roster.csv`}>Export roster with answers</a></p>}
           </details>
-          <details class="admin-edit" id="participants" open={TICK_KEYS.has(okKey) || TICK_KEYS.has(errKey)}>
+          <details class="admin-edit" id="participants" open={PARTICIPANT_KEYS.has(okKey) || PARTICIPANT_KEYS.has(errKey)}>
             <summary><b>Participants</b><span class="admin-edit-meta">{going.length} going{maybe.length > 0 ? `, ${maybe.length} maybe` : ''}{waitlist.length > 0 ? `, ${waitlist.length} waiting` : ''}</span><span class="admin-edit-hint">add or remove someone, give ticks</span></summary>
             <p class="event-meta">
               Changes here skip the signup rules: closed signups and capacity

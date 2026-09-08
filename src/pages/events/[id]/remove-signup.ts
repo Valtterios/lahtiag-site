@@ -11,19 +11,19 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   const back = `/events/${id}`;
 
   const admin = await requireAdmin(request, env);
-  if (!admin.ok) return redirect(`${back}?err=${admin.reason}`, 303);
+  if (!admin.ok) return redirect(`${back}?err=${admin.reason}#participants`, 303);
 
   const form = await request.formData();
-  if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf`, 303);
+  if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf#participants`, 303);
 
   try {
     await adminRemoveSignup(env.DB, id, String(form.get('discord_id') ?? ''));
   } catch (error) {
-    if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
+    if (error instanceof RuleError) return redirect(`${back}?err=${error.code}#participants`, 303);
     throw error;
   }
   announcePromotionsInBackground(locals.cfContext, env.DB, env, Math.floor(Date.now() / 1000));
   syncEventRolesInBackground(locals.cfContext, env.DB, env, [id], Math.floor(Date.now() / 1000));
   refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
-  return redirect(back, 303);
+  return redirect(`${back}?ok=signup_removed#participants`, 303);
 };

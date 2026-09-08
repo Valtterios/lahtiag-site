@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
-import { upsertMember, createEvent, adminCreateTeam, listSignups, setSignup, addMemberParticipant, RuleError } from '../src/lib/db';
+import { upsertMember, createEvent, adminCreateTeam, listEventTeams, listSignups, setSignup, adminUpdateSignup, addMemberParticipant, RuleError } from '../src/lib/db';
 
 // Putting a member on a roster by hand. The point of this over the walk-in
 // path is that the signup belongs to their own Discord account, so the
@@ -89,6 +89,27 @@ describe('adding a member to an event by hand', () => {
     await expect(addMemberParticipant(db(), eventId, c, 'yes', teamId, NOW)).rejects.toMatchObject({ code: 'team_full' });
     const signups = await listSignups(db(), eventId);
     expect(signups.filter((s) => s.event_team_id === teamId).length).toBe(2);
+  });
+
+  it('leaves the other teams alone, however empty they are', async () => {
+    // The board makes empty teams on purpose to assign people into, and a
+    // bracket imported from an old tournament has teams with no roster at
+    // all. Both used to be swept away the moment anyone was moved.
+    const eventId = await teamEvent(5);
+    const kapital = await adminCreateTeam(db(), eventId, 'Kapital', 'admin', NOW);
+    const other = await adminCreateTeam(db(), eventId, 'Nullpointers', 'admin', NOW);
+    const empty = await adminCreateTeam(db(), eventId, 'Byte Me', 'admin', NOW);
+    const id = await entry('Valtteri', '900000000000000007');
+
+    await addMemberParticipant(db(), eventId, id, 'yes', kapital, NOW);
+    expect((await listEventTeams(db(), eventId)).map((t) => t.id).sort()).toEqual([kapital, other, empty].sort());
+
+    // Moving them on disbands only the team they left.
+    await adminUpdateSignup(db(), eventId, '900000000000000007', 'yes', other);
+    const left = (await listEventTeams(db(), eventId)).map((t) => t.id);
+    expect(left).toContain(other);
+    expect(left).toContain(empty);
+    expect(left).not.toContain(kapital);
   });
 
   it('refuses a team on an event that takes no teams', async () => {

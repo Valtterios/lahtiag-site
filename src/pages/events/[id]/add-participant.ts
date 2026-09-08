@@ -15,23 +15,23 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   const back = `/events/${id}`;
 
   const admin = await requireAdmin(request, env);
-  if (!admin.ok) return redirect(`${back}?err=${admin.reason}`, 303);
+  if (!admin.ok) return redirect(`${back}?err=${admin.reason}#participants`, 303);
 
   const form = await request.formData();
-  if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf`, 303);
+  if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf#participants`, 303);
 
   const status = String(form.get('status') ?? '');
-  if (status !== 'yes' && status !== 'maybe') return redirect(`${back}?err=bad_input`, 303);
+  if (status !== 'yes' && status !== 'maybe') return redirect(`${back}?err=bad_input#participants`, 303);
   const teamRaw = String(form.get('event_team_id') ?? '').trim();
   const teamId = teamRaw === '' ? null : Number(teamRaw);
-  if (teamId !== null && !Number.isInteger(teamId)) return redirect(`${back}?err=bad_input`, 303);
+  if (teamId !== null && !Number.isInteger(teamId)) return redirect(`${back}?err=bad_input#participants`, 303);
   const registerRaw = String(form.get('register_id') ?? '').trim();
   const now = Math.floor(Date.now() / 1000);
 
   try {
     if (registerRaw !== '') {
       const registerId = Number(registerRaw);
-      if (!Number.isInteger(registerId)) return redirect(`${back}?err=bad_input`, 303);
+      if (!Number.isInteger(registerId)) return redirect(`${back}?err=bad_input#participants`, 303);
       await addMemberParticipant(env.DB, id, registerId, status, teamId, now);
       // A real account, so the event's role and the announcement's count
       // both have something to follow.
@@ -41,9 +41,9 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
       await addManualParticipant(env.DB, id, String(form.get('name') ?? ''), status, teamId, now);
     }
   } catch (error) {
-    if (error instanceof RuleError) return redirect(`${back}?err=${error.code}`, 303);
+    if (error instanceof RuleError) return redirect(`${back}?err=${error.code}#participants`, 303);
     throw error;
   }
   syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, now);
-  return redirect(`${back}?ok=${registerRaw !== '' ? 'member_added' : 'added'}`, 303);
+  return redirect(`${back}?ok=${registerRaw !== '' ? 'member_added' : 'added'}#participants`, 303);
 };
