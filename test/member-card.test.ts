@@ -18,13 +18,13 @@ async function wipe(): Promise<void> {
   }
 }
 
-async function entry(discordId: string, type = 'full', extra = ''): Promise<void> {
+async function entry(discordId: string, type = 'full', honour: string | null = null): Promise<void> {
   await db()
     .prepare(
-      `INSERT INTO register (full_name, domicile, email, student_status, union_member, member_type, discord_id, status, source, applied_at, consented_at, decided_at, updated_at, search_key${extra ? `, ${extra}` : ''})
-       VALUES ('Valtteri Östberg', 'Lahti', ?2, 'LUT', 'LTKY', ?3, ?1, 'member', 'board', 1, 1, 1, 1, 'v'${extra ? ', 1' : ''})`,
+      `INSERT INTO register (full_name, domicile, email, student_status, union_member, member_type, discord_id, status, source, applied_at, consented_at, decided_at, updated_at, search_key, honour)
+       VALUES ('Valtteri Östberg', 'Lahti', ?2, 'LUT', 'LTKY', ?3, ?1, 'member', 'board', 1, 1, 1, 1, 'v', ?4)`,
     )
-    .bind(discordId, `${discordId}@example.com`, type)
+    .bind(discordId, `${discordId}@example.com`, type, honour)
     .run();
 }
 
@@ -68,11 +68,17 @@ describe('the card Discord gets', () => {
     expect(waiting.tier).toBe('plain');
   });
 
-  it('wears the founder flag, and the ink stock that comes with it', async () => {
+  it('wears the special roles, and the ink stock that comes with either', async () => {
     await entry('6', 'full', 'founder');
-    const face = await cardFace(db(), who('6'), NOW);
-    expect(face.founder).toBe(true);
-    expect(face.tier).toBe('ink');
+    const founder = await cardFace(db(), who('6'), NOW);
+    expect(founder).toMatchObject({ honour: 'founder', board: false, tier: 'ink' });
+    await wipe();
+    // Having sat on a board is the same kind of fact, and takes the same stock.
+    await entry('7', 'full', 'past_board');
+    const past = await cardFace(db(), who('7'), NOW);
+    expect(past).toMatchObject({ honour: 'past_board', board: false, tier: 'ink' });
+    // The office itself still comes from Discord, not the register.
+    expect((await cardFace(db(), who('7', true), NOW)).board).toBe(true);
   });
 
   it('drops every figure when the member has hidden themselves', async () => {

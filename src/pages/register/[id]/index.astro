@@ -15,6 +15,9 @@ import {
   MEMBER_TYPES,
   MEMBER_TYPE_LABELS,
   LIMITS,
+  HONOURS,
+  HONOUR_LABELS,
+  HONOUR_BADGES,
   FIX_PRESETS,
   sameHandle,
 } from '../../../lib/register';
@@ -91,7 +94,7 @@ const SOURCE: Record<string, string> = {
           {entry.fix_note !== null && <span class="status-badge status-pending">waiting on the applicant</span>}
           {entry.status === 'former' && <span class="status-badge status-former">Former member</span>}
           {entry.discord_id && <span class="status-badge">Discord linked</span>}
-          {entry.founder && <span class="status-badge status-member">founder</span>}
+          {entry.honour !== null && <span class="status-badge status-member">{HONOUR_BADGES[entry.honour].toLowerCase()}</span>}
           {entry.is_active && <span class="status-badge status-member">active</span>}
           {!entry.is_active && entry.wants_active && <span class="status-badge status-pending">asked to be an active</span>}
         </p>
@@ -273,9 +276,17 @@ const SOURCE: Record<string, string> = {
           <label class="check check-standalone">
             <input type="checkbox" name="wants_active" checked={entry.wants_active} /> <span>Has asked to be an active (approval is the button above)</span>
           </label>
-          <label class="check check-standalone">
-            <input type="checkbox" name="founder" checked={entry.founder} /> <span>Founded the association — a gold badge on their membership card, in place of the board one</span>
+          <label>
+            Special role
+            <select name="honour">
+              <option value="" selected={entry.honour === null}>none</option>
+              {HONOURS.map((h) => <option value={h} selected={entry.honour === h}>{HONOUR_LABELS[h]}</option>)}
+            </select>
           </label>
+          <p class="queue-meta">
+            Both put the ink card in their hands: the founder's badge is gold and takes the board one's place, a past
+            board member's is plain and stands aside while they hold the office itself.
+          </p>
           <label>Message from the person<textarea name="message" rows="2" maxlength={LIMITS.message}>{entry.message ?? ''}</textarea></label>
           <label>Board note (never shown to the member)<textarea name="board_note" rows="2" maxlength={LIMITS.board_note}>{entry.board_note ?? ''}</textarea></label>
           <button class="btn btn-primary" type="submit">Save changes</button>

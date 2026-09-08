@@ -10,6 +10,7 @@
 
 import type { D1Database, Fetcher } from '@cloudflare/workers-types';
 import type { MemberStats } from './db';
+import type { Honour } from './register';
 import { getRegisterByDiscord, isLeaderboardOptIn, memberStats } from './db';
 import { avatarUrl } from './discord';
 import { lifetimeTotals } from './season';
@@ -85,7 +86,8 @@ export interface CardFace {
   // channel's.
   kind: 'MEMBER CARD' | 'GUEST CARD';
   active: boolean;
-  founder: boolean;
+  board: boolean; // sits on the board now
+  honour: Honour | null; // founded the association, or sat on a past board
   memberSince: number | null;
   avatar: Uint8Array | null; // the PNG bytes, already fetched
   figures: { label: string; value: string }[];
@@ -309,12 +311,15 @@ export async function memberCardPng(face: CardFace, back: boolean, source: strin
     // A name with chips under it is the top of a block that stands
     // against the photograph; a name on its own is the whole block, and
     // sits on the photograph's own centre line rather than its top edge.
-    const chips = face.founder || face.tier === 'ink' || face.active;
+    const chips = face.honour !== null || face.board || face.active;
     c.text(tx, chips ? 124 : 157, Canvas.fit(face.name.toUpperCase(), wide, 'l'), stock.ink, 'l');
 
     let cx = tx;
-    if (face.founder) cx += chip(c, cx, 196, 'FOUNDER', stock, 'gold') + 14;
-    else if (face.tier === 'ink') cx += chip(c, cx, 196, 'BOARD', stock, null) + 14;
+    // Founding outranks the office and says the same thing for longer;
+    // the office outranks having held it.
+    if (face.honour === 'founder') cx += chip(c, cx, 196, 'FOUNDER', stock, 'gold') + 14;
+    else if (face.board) cx += chip(c, cx, 196, 'BOARD', stock, null) + 14;
+    else if (face.honour === 'past_board') cx += chip(c, cx, 196, 'PAST BOARD', stock, null) + 14;
     if (face.active) chip(c, cx, 196, 'ACTIVE', stock, 'silver');
 
     c.rect(pad, 300, W - pad * 2, 2, stock.rule);
@@ -406,7 +411,7 @@ export async function cardFace(
   const member = entry?.status === 'member';
   const tier: CardTier = !member
     ? 'plain'
-    : who.board || entry.founder
+    : who.board || entry.honour !== null
       ? 'ink'
       : entry.member_type === 'honorary'
         ? 'honorary'
@@ -418,7 +423,8 @@ export async function cardFace(
     tier,
     kind: member ? 'MEMBER CARD' : 'GUEST CARD',
     active: Boolean(entry?.is_active),
-    founder: Boolean(entry?.founder),
+    board: who.board,
+    honour: entry?.honour ?? null,
     memberSince: stats.member_since,
     avatar: await fetchAvatar(who.discordId, who.avatarHash),
     figures: lifetime ? cardFigures(stats, lifetime.messages, lifetime.minecraft_minutes) : [],

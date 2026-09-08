@@ -197,7 +197,7 @@ const days = (t: number) => Math.floor((now - t) / 86400);
                 <div class="queue-body">
                   <p class="queue-name">
                     <a href={`/register/${r.id}`}>{r.full_name}</a>
-                    {waitingOnThem(r) && <span class="status-badge status-pending">waiting on them</span>}
+                    {waitingOnThem(r) && <> <span class="status-badge status-pending">waiting on them</span></>}
                   </p>
                   <p class="queue-meta">
                     {r.domicile} · {STUDENT_STATUS_LABELS[r.student_status]}

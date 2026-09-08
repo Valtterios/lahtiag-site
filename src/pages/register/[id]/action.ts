@@ -15,7 +15,7 @@ import {
   mergeApplicationInto,
   RuleError,
 } from '../../../lib/db';
-import { parseApplication, LIMITS, MEMBER_TYPES, type MemberType } from '../../../lib/register';
+import { parseApplication, parseHonour, LIMITS, MEMBER_TYPES, type MemberType } from '../../../lib/register';
 import { applyRoles, loadRoleConfig, type RoleOutcome } from '../../../lib/roles';
 import { postWebhook, dmUser } from '../../../lib/discord';
 import { postBoardLine, postActivesRequest } from '../../../lib/board-channel';
@@ -166,7 +166,7 @@ export const POST: APIRoute = async ({ request, redirect, params, url, locals })
           env.DB,
           id,
           parsed.value,
-          { discord_id: discordIdRaw || null, board_note: boardNote || null, member_type: memberType, founder: form.get('founder') === 'on' },
+          { discord_id: discordIdRaw || null, board_note: boardNote || null, member_type: memberType, honour: parseHonour(form.get('honour')) },
           now,
         );
         // A link changed by hand: strip the old account, set up the new one.

@@ -117,6 +117,23 @@ function optional(form: FormData, name: string, max: number): string | null {
 
 // Telegram and Discord handles: people paste "@name", "name", or a full
 // t.me link. Keep what they typed minus a leading @ and surrounding noise.
+// What somebody has done for the association that outlives an office:
+// founding it, or having sat on a board that has since changed. Neither
+// is a class of membership or a Discord role — the register is the only
+// place that knows — and both put the ink card in their hands.
+export const HONOURS = ['founder', 'past_board'] as const;
+export type Honour = (typeof HONOURS)[number];
+export const HONOUR_LABELS: Record<Honour, string> = {
+  founder: 'Founded the association',
+  past_board: 'Served on a past board',
+};
+export const HONOUR_BADGES: Record<Honour, string> = { founder: 'Founder', past_board: 'Past board' };
+
+export function parseHonour(raw: unknown): Honour | null {
+  const text = String(raw ?? '').trim();
+  return (HONOURS as readonly string[]).includes(text) ? (text as Honour) : null;
+}
+
 // The corrections the board asks for over and over, in the association's
 // own voice and with the reason it has to ask. The board picks one and
 // edits it before it goes; nothing is sent that nobody read.

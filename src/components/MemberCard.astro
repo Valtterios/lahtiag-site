@@ -1,6 +1,6 @@
 ---
 import { formatHelsinkiDate } from '../lib/time';
-import type { RegisterStatus } from '../lib/register';
+import type { Honour, RegisterStatus } from '../lib/register';
 
 // The membership card on a member's own page: the association's ID for
 // them, carrying what an ID carries — who they are, which class of member,
@@ -36,7 +36,7 @@ interface Props {
   active: boolean;
   board?: boolean;
   honorary?: boolean; // the rules' own class, and the rarest card
-  founder?: boolean; // founded the association: a gold chip, in place of the board one
+  honour?: Honour | null; // founded the association (gold, in place of the board chip), or sat on a past board
   outside?: boolean; // external or supporting: a member, but not a full one
   figures?: CardFigure[]; // the whole record, four at most; none before the card is issued
   minecraft?: string | null;
@@ -55,7 +55,7 @@ const {
   active,
   board = false,
   honorary = false,
-  founder = false,
+  honour = null,
   outside = false,
   figures = [],
   minecraft = null,
@@ -64,7 +64,7 @@ const {
 } = Astro.props;
 
 const issued = status === 'member';
-const tier = !issued ? 'pale' : board || founder ? 'ink' : honorary ? 'honorary' : outside ? 'plain' : 'member';
+const tier = !issued ? 'pale' : board || honour !== null ? 'ink' : honorary ? 'honorary' : outside ? 'plain' : 'member';
 // The yellow and the pale stock take the blue wordmark; the other two are
 // dark enough for the white one.
 const light = tier !== 'member' && tier !== 'ink';
@@ -77,10 +77,13 @@ const KIND: Record<RegisterStatus, string> = {
 // member is still an active and the foil is theirs to wear. Founding the
 // association outranks sitting on its board, and says the same thing about
 // the person for longer, so the gold chip takes that place rather than
-// crowding in beside it.
+// crowding in beside it. Having sat on a board is the same kind of fact,
+// smaller: it takes the ink stock and a plain chip, and stands aside for
+// the office itself while somebody still holds it.
 const roles: { label: string; foil: 'gold' | 'silver' | null }[] = [];
-if (founder) roles.push({ label: 'Founder', foil: 'gold' });
+if (honour === 'founder') roles.push({ label: 'Founder', foil: 'gold' });
 else if (board) roles.push({ label: 'Board', foil: null });
+else if (honour === 'past_board') roles.push({ label: 'Past board', foil: null });
 if (active) roles.push({ label: 'Active', foil: 'silver' });
 const no = String(number).padStart(4, '0');
 const wordmark = light ? '/brand/wordmark-blue.png' : '/brand/wordmark-white.png';
