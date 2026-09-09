@@ -50,6 +50,20 @@ a { color: var(--blue); text-decoration: none; }
 .lede { font-size: 11pt; color: var(--muted); }
 .controller { background: #f5f5f5; border-left: 3px solid var(--yellow); padding: 3mm 4mm; margin: 0 0 4mm; font-size: 10pt; line-height: 1.5; }
 footer { margin-top: 10mm; padding-top: 3mm; border-top: 1px solid var(--line); color: var(--muted); font-size: 8.5pt; }
+table { border-collapse: collapse; width: 100%%; margin: 0 0 4mm; font-size: 9.5pt; }
+tr { page-break-inside: avoid; }
+thead { display: table-header-group; }
+th { font-family: 'Chakra Petch', sans-serif; font-weight: 600; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); text-align: left; padding: 0 3mm 1.5mm 0; border-bottom: 1.5px solid var(--blue); }
+td { padding: 1.3mm 3mm 1.3mm 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+table td:first-child, table th:first-child { width: 1%%; }
+th:last-child, td:last-child { padding-right: 0; }
+/* Money lines up: last column right-aligned with lining figures. */
+table td:last-child, table th:last-child { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+td strong { font-weight: 600; }
+blockquote { margin: 0 0 3mm; padding: 2.5mm 4mm; background: #f5f5f5; border-left: 3px solid var(--yellow); font-size: 10pt; }
+blockquote p:last-child { margin-bottom: 0; }
+code { font-family: 'DejaVu Sans Mono', monospace; font-size: 9pt; }
 """
 
 
@@ -58,6 +72,7 @@ def main() -> int:
     ap.add_argument("markdown")
     ap.add_argument("pdf")
     ap.add_argument("--meta", default="", help="lines for the top-right header block")
+    ap.add_argument("--lang", default="en", help="document language, e.g. fi")
     ap.add_argument("--footer", default="Lahti Association of Gaming LAG ry · Mukkulankatu 19, 15210 Lahti, Finland · board@lahtiag.fi · lahtiag.fi")
     args = ap.parse_args()
 
@@ -81,7 +96,7 @@ def main() -> int:
     logo = data_uri(ROOT / "public/brand/wordmark-blue.png", "image/png")
     meta = "Lahti Association of Gaming LAG ry\nBusiness ID 3485167-1" + ("\n" + args.meta if args.meta else "")
     html = (
-        '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>LahtiAG</title>'
+        f'<!doctype html><html lang="{args.lang}"><head><meta charset="utf-8"><title>LahtiAG</title>'
         f"<style>{css}</style></head><body>"
         f'<header class="title"><img src="{logo}" alt="Lahti AG"><div class="meta">{meta}</div></header>'
         f"{body}<footer>{args.footer}</footer></body></html>"
