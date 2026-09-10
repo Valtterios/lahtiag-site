@@ -415,13 +415,14 @@ const CLAIM_ERRORS: Record<string, string> = {
 
 // The buttons under /season and the leaderboard: private follow-ups for
 // whoever presses them, wherever the message sits.
-function seasonButtons(origin: string, claimable: boolean, withSeason: boolean): unknown[] {
+// A reply never carries the button that would answer with itself.
+function seasonButtons(origin: string, claimable: boolean, withSeason: boolean, withXp = true): unknown[] {
   return [
     {
       type: 1,
       components: [
         ...(withSeason ? [{ type: 2, style: 1, label: 'My season', custom_id: 's:me', emoji: { name: '📅' } }] : []),
-        { type: 2, style: 2, label: 'How to earn XP', custom_id: 's:xp', emoji: { name: '✨' } },
+        ...(withXp ? [{ type: 2, style: 2, label: 'How to earn XP', custom_id: 's:xp', emoji: { name: '✨' } }] : []),
         ...(claimable ? [{ type: 2, style: withSeason ? 2 : 1, label: 'Claim a tick', custom_id: 's:claim', emoji: { name: '🙋' } }] : []),
         { type: 2, style: 2, label: 'Link my Minecraft name', custom_id: 's:mc', emoji: { name: '⛏️' } },
         { type: 2, style: 5, label: 'Membership page', url: `${origin}/membership` },
@@ -507,7 +508,7 @@ async function handleXpGuide(env: WorkerEnv, interaction: Interaction, origin: s
   const now = Math.floor(Date.now() / 1000);
   await rememberInvoker(env, interaction, now);
   const [summary, kinds] = await Promise.all([seasonSummary(env.DB, userId, now), listTickKinds(env.DB)]);
-  await editInteractionReply(interaction.application_id, interaction.token, xpGuideLines(kinds, summary), seasonButtons(origin, kinds.some((k) => k.claimable), false), [], undefined, SUPPRESS_EMBEDS);
+  await editInteractionReply(interaction.application_id, interaction.token, xpGuideLines(kinds, summary), seasonButtons(origin, kinds.some((k) => k.claimable), true, false), [], undefined, SUPPRESS_EMBEDS);
   return 'keep';
 }
 
