@@ -25,6 +25,7 @@ import { voiceLabel } from '../lib/activity';
 import { seasonSummary, minecraftLine, lifetimeTotals } from '../lib/season';
 import { tickList } from '../lib/ticks';
 import { levelTitle, rewardText } from '../lib/pass';
+import { homePage, pageCount } from '../lib/pass-card';
 
 // A member's own page: their status, the actives request, and every
 // detail they gave on the application, editable by them. Needs a Discord
@@ -296,6 +297,15 @@ const MESSAGES: Record<FieldError, string> = {
                       <div class="pass-bar" role="progressbar" aria-valuemin="0" aria-valuemax={season.pass.next?.xp ?? season.pass.xp} aria-valuenow={season.pass.xp} aria-label="Season pass progress">
                         <span style={`width: ${Math.round(season.pass.fraction * 100)}%`}></span>
                       </div>
+                      <img class="pass-card" src={`/membership/pass.png?page=${homePage(season.pass)}`} alt="Your season pass as Discord shows it" width="900" height="600" loading="lazy" />
+                      {pageCount(season.pass.levels.length) > 1 && (
+                        <p class="pass-pages">
+                          Pages: {Array.from({ length: pageCount(season.pass.levels.length) }, (_, i) => (
+                            <a href={`/membership/pass.png?page=${i + 1}`}>{i + 1}</a>
+                          ))}
+                          <span> · <code>/pass</code> in Discord pages the same picture.</span>
+                        </p>
+                      )}
                       <ol class="pass-levels">
                         {season.pass.levels.map((l) => (
                           <li class={levelState(l)}>

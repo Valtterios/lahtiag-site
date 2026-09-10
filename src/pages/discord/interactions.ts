@@ -71,6 +71,8 @@ import { setActive as setRegisterActive, isLeaderboardOptIn } from '../../lib/db
 import { applyRoles as applyRegisterRoles, loadRoleConfig as loadRegisterRoleConfig } from '../../lib/roles';
 import { editChannelMessage as editBoardMessage, dmUser as dmMember, SUPPRESS_EMBEDS as NO_EMBEDS, dismissReply } from '../../lib/discord';
 import { seasonSummary, seasonLines } from '../../lib/season';
+import { passCardPng, homePage, pageCount, clampPage } from '../../lib/pass-card';
+import { passLines } from '../../lib/pass';
 import { listClaimableKinds, createClaim, decideClaim, claimLine, claimDecisionDm, CLAIM_NOTE_MAX } from '../../lib/claims';
 import { getTickKind, kindWorth } from '../../lib/ticks';
 import { xpStandings, leaderboardEmbed } from '../../lib/xp';
@@ -231,10 +233,15 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     return json({ type: 5 });
   }
 
-  // /season and /pass: the person's own season so far, privately, with
-  // where they stand on the pass. A listing, so it stays.
-  if (interaction.type === 2 && (interaction.data?.name === 'season' || interaction.data?.name === 'pass')) {
+  // /season: the person's own season so far, privately, with where they
+  // stand on the pass. A listing, so it stays.
+  if (interaction.type === 2 && interaction.data?.name === 'season') {
     locals.cfContext.waitUntil(fleeting(handleSeason(env, interaction, url.origin)));
+    return json({ type: 5, data: { flags: 64 } });
+  }
+  // /pass: the pass as a picture, privately, paged by its buttons.
+  if (interaction.type === 2 && interaction.data?.name === 'pass') {
+    locals.cfContext.waitUntil(fleeting(handlePassCard(env, interaction, url.origin, null)));
     return json({ type: 5, data: { flags: 64 } });
   }
 
@@ -298,6 +305,11 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     if (id.startsWith('s:claimev:')) return json(claimNoteModal(id.slice('s:claimev:'.length), String(interaction.data.values?.[0] ?? '0')));
     if (id === 's:claimkind') {
       locals.cfContext.waitUntil(fleeting(handleClaimEventPick(env, interaction)));
+      return json({ type: 6 });
+    }
+    // A page of the pass picture: swapped into the message that is there.
+    if (id.startsWith('s:pass:')) {
+      locals.cfContext.waitUntil(fleeting(handlePassCard(env, interaction, url.origin, Number(id.slice('s:pass:'.length)))));
       return json({ type: 6 });
     }
     locals.cfContext.waitUntil(fleeting(handleSeasonButton(env, interaction, url.origin)));
@@ -441,6 +453,50 @@ async function rememberInvoker(env: WorkerEnv, interaction: Interaction, now: nu
   const user = interaction.member?.user;
   if (!user) return;
   await upsertMember(env.DB, { discord_id: user.id, username: interaction.member?.nick ?? user.global_name ?? user.username, avatar_hash: user.avatar }, now);
+}
+
+// /pass, and its page buttons: the picture with the season's rungs, one
+// page of them at a time, the reader's own name on it. A page number
+// swaps the picture in place; without one the picture opens on the page
+// with the next rung to reach.
+async function handlePassCard(env: WorkerEnv, interaction: Interaction, origin: string, page: number | null): Promise<Outcome> {
+  const userId = interaction.member?.user?.id;
+  if (!userId) return;
+  const now = Math.floor(Date.now() / 1000);
+  await rememberInvoker(env, interaction, now);
+  const season = await seasonSummary(env.DB, userId, now);
+  const pages = pageCount(season.pass.levels.length);
+  const p = clampPage(page ?? homePage(season.pass), season.pass.levels.length);
+  const name = interaction.member?.nick ?? interaction.member?.user?.global_name ?? interaction.member?.user?.username ?? 'Member';
+  const png = await passCardPng({ name, season: season.label, progress: season.pass, held: season.held }, p);
+  const ok = await editInteractionReplyWithFile(
+    interaction.application_id,
+    interaction.token,
+    passLines(season.pass, origin)[0],
+    { name: `pass-${p}.png`, bytes: png, type: 'image/png' },
+    passButtons(p, pages, origin),
+  );
+  if (!ok) await editInteractionReply(interaction.application_id, interaction.token, 'The pass could not be drawn. Try again in a moment.');
+  return 'keep';
+}
+
+function passButtons(page: number, pages: number, origin: string): unknown[] {
+  return [
+    {
+      type: 1,
+      components: [
+        ...(pages > 1
+          ? [
+              { type: 2, style: 2, label: 'Previous', custom_id: `s:pass:${page - 1}`, disabled: page <= 1 },
+              { type: 2, style: 2, label: `Page ${page} / ${pages}`, custom_id: 's:pass:0', disabled: true },
+              { type: 2, style: 2, label: 'Next', custom_id: `s:pass:${page + 1}`, disabled: page >= pages },
+            ]
+          : []),
+        { type: 2, style: 1, label: 'My season', custom_id: 's:me', emoji: { name: '📅' } },
+        { type: 2, style: 5, label: 'Membership page', url: `${origin}/membership#pass` },
+      ],
+    },
+  ];
 }
 
 // A button pressed under /season or the leaderboard: a fresh private reply.
