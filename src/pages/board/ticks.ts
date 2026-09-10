@@ -8,9 +8,11 @@ import { claimDecisionDm, decideClaim } from '../../lib/claims';
 import { dmUser } from '../../lib/discord';
 import { seasonStartYear } from '../../lib/activity';
 import { postBoardLine } from '../../lib/board-channel';
+import { addPassLevel, removePassLevel, savePassLevel } from '../../lib/pass';
 
 // Every board write about ticks, dispatched on `action`: give | remove |
-// kind_add | kind_save | kind_retire | kind_restore. Posted from the
+// kind_add | kind_save | kind_retire | kind_restore, and the season pass's
+// levels, level_add | level_save | level_remove. Posted from the
 // season page and from an event's Manage participants; `back` says which,
 // and only those two shapes are followed. A tick given is told to the
 // board channel like any other board decision.
@@ -23,12 +25,14 @@ function safeBack(raw: string): string {
 export const POST: APIRoute = async ({ request, redirect, locals }) => {
   const form = await request.formData();
   const back = safeBack(String(form.get('back') ?? ''));
-  const go = (key: 'ok' | 'err', value: string) => redirect(`${back}${back.includes('?') ? '&' : '?'}${key}=${value}#ticks`, 303);
+  const action = String(form.get('action') ?? '');
+  // Level writes land back on the levels section, with their own flash keys.
+  const isLevel = action.startsWith('level_');
+  const go = (key: 'ok' | 'err', value: string) => redirect(`${back}${back.includes('?') ? '&' : '?'}${key}=${value}#${isLevel ? 'levels' : 'ticks'}`, 303);
   const access = await requireAnyBoard(request, env);
   if (!access.ok) return go('err', access.reason);
   if (!(await checkCsrf(request, form))) return go('err', 'csrf');
 
-  const action = String(form.get('action') ?? '');
   const now = Math.floor(Date.now() / 1000);
   // A positive integer, null for an empty field, NaN for anything else.
   const num = (name: string): number | null => {
@@ -37,6 +41,13 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
     const n = Number(raw);
     return Number.isInteger(n) && n > 0 ? n : Number.NaN;
   };
+  const levelInput = () => ({
+    xp: form.get('xp'),
+    name: form.get('name'),
+    reward: form.get('reward'),
+    sponsor: form.get('sponsor'),
+    role_id: form.get('role_id'),
+  });
   const kindInput = () => ({
     name: form.get('name'),
     description: form.get('description'),
@@ -76,6 +87,24 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
         await saveTickKind(env.DB, id, kindInput(), seasonStartYear(now));
         return go('ok', 'kind_saved');
       }
+      case 'level_add': {
+        const level = await addPassLevel(env.DB, seasonStartYear(now), levelInput(), access.who, now);
+        locals.cfContext.waitUntil(
+          postBoardLine(env.DB, env, `🎫 Season pass level added: **${level.level} · ${level.name}** at ${level.xp} XP, reward ${level.reward}${level.sponsor ? ` from ${level.sponsor}` : ''} (by ${access.who}).`),
+        );
+        return go('ok', 'level_added');
+      }
+      case 'level_save': {
+        const id = num('level_id');
+        if (!id) return go('err', 'level_bad_input');
+        await savePassLevel(env.DB, id, levelInput(), now);
+        return go('ok', 'level_saved');
+      }
+      case 'level_remove': {
+        const id = num('level_id');
+        if (!id) return go('err', 'level_bad_input');
+        return (await removePassLevel(env.DB, id)) ? go('ok', 'level_removed') : go('err', 'level_missing');
+      }
       case 'claim_approve':
       case 'claim_decline': {
         const id = num('claim_id');
@@ -98,7 +127,7 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
         return go('err', 'tick_bad_input');
     }
   } catch (error) {
-    if (error instanceof RuleError) return go('err', `tick_${error.code}`);
+    if (error instanceof RuleError) return go('err', `${isLevel ? 'level' : 'tick'}_${error.code}`);
     throw error;
   }
 };

@@ -50,7 +50,8 @@ export class RuleError extends Error {
   | 'no_waitlist'
   | 'bad_seeding'
   | 'bracket_live'
-      | 'answers',
+      | 'answers'
+      | 'reached', // a pass level someone already holds
     message: string,
   ) {
     super(message);

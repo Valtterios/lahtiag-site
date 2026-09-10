@@ -1,8 +1,9 @@
 // A member's season so far, for the membership page and the /season
-// command: events attended, Discord activity, Minecraft play time. The
-// XP and levels of the season pass will be computed from these once the
-// board has settled the rules; until then the raw numbers show. The season
-// is the academic year, from 1 September (see activity.ts).
+// command: events attended, Discord activity, Minecraft play time, the
+// ticks and their XP, and where that XP puts them on the season pass
+// (src/lib/pass.ts). Events, Discord and Minecraft show as raw counts
+// until the board decides what they pay. The season is the academic
+// year, from 1 September (see activity.ts).
 import type { D1Database } from '@cloudflare/workers-types';
 import { lifetimeActivity, seasonActivity, seasonLabel, seasonStartYear, voiceLabel } from './activity';
 import { lifetimePlaytime, seasonPlaytime } from './playtime';
@@ -10,6 +11,7 @@ import { listMinecraftNames } from './minecraft';
 import { memberSeasonTicks, tickList, tickXp, type SeasonTick } from './ticks';
 import { memberPendingClaims } from './claims';
 import { helsinkiToUnix } from './time';
+import { listPassLevels, memberReached, passLines, passProgress, type PassProgress } from './pass';
 
 export interface SeasonSummary {
   label: string; // '2026–27'
@@ -21,6 +23,8 @@ export interface SeasonSummary {
   ticks: SeasonTick[]; // what the board noted by hand (src/lib/ticks.ts)
   tick_xp: number; // what those are worth, caps applied
   claims_pending: number; // claims of theirs the board has not decided yet
+  pass: PassProgress; // the season pass track read against tick_xp
+  held: number[]; // ids of the levels the ledger says they hold (announced, reward given)
 }
 
 export function seasonStartUnix(now: number): number {
@@ -44,14 +48,17 @@ export async function seasonEvents(db: D1Database, discordId: string, now: numbe
 }
 
 export async function seasonSummary(db: D1Database, discordId: string, now: number): Promise<SeasonSummary> {
-  const [events, activity, playtime, names, ticks, claims_pending] = await Promise.all([
+  const [events, activity, playtime, names, ticks, claims_pending, levels, held] = await Promise.all([
     seasonEvents(db, discordId, now),
     seasonActivity(db, discordId, now),
     seasonPlaytime(db, discordId, now),
     listMinecraftNames(db, discordId),
     memberSeasonTicks(db, discordId, now),
     memberPendingClaims(db, discordId, now),
+    listPassLevels(db, seasonStartYear(now)),
+    memberReached(db, discordId, seasonStartYear(now)),
   ]);
+  const tick_xp = tickXp(ticks);
   return {
     label: seasonLabel(now),
     events,
@@ -60,8 +67,10 @@ export async function seasonSummary(db: D1Database, discordId: string, now: numb
     playtime,
     minecraft_name: names.find((n) => n.kind === 'own')?.name ?? null,
     ticks,
-    tick_xp: tickXp(ticks),
+    tick_xp,
     claims_pending,
+    pass: passProgress(tick_xp, levels),
+    held,
   };
 }
 
@@ -103,6 +112,6 @@ export function seasonLines(summary: SeasonSummary, origin: string): string {
       ? [`✅ Ticks from the board: **${summary.ticks.length}** · ${tickList(summary.ticks)}${summary.tick_xp > 0 ? ` · **${summary.tick_xp} XP**` : ''}`]
       : []),
     ...(summary.claims_pending > 0 ? [`⏳ Claims waiting for the board: **${summary.claims_pending}**`] : []),
-    `The season pass and its levels come once the board has set the rules. More on ${origin}/membership`,
+    ...passLines(summary.pass, origin),
   ].join('\n');
 }

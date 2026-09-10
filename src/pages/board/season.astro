@@ -8,6 +8,7 @@ import { activityChannels, channelSeason, seasonName, seasonStartYear, voiceLabe
 import { availableSeasons, pickSeason, seasonTotals, serverStats, weeklyStats, weekLabel } from '../../lib/season-stats';
 import { kindWorth, listTickKinds, listTickableMembers, listTicks, markCounted, TICK_LIMITS, TICK_PERIODS, TICK_PERIOD_LABELS } from '../../lib/ticks';
 import { listPendingClaims } from '../../lib/claims';
+import { listPassLevels, PASS_LIMITS } from '../../lib/pass';
 import { formatHelsinkiDate } from '../../lib/time';
 
 // The board's season page: what the listener and the play-time sync have
@@ -27,7 +28,7 @@ const year = pickSeason(Astro.url.searchParams.get('season'), seasons, now);
 const current = year === seasonStartYear(now);
 const here = current ? '/board/season' : `/board/season?season=${year}`;
 
-const [totals, weeks, channels, servers, counted, kinds, members, ticks, past, upcoming, claims] = access.ok
+const [totals, weeks, channels, servers, counted, kinds, members, ticks, past, upcoming, claims, levels] = access.ok
   ? await Promise.all([
       seasonTotals(env.DB, year, now),
       weeklyStats(env.DB, year, now),
@@ -40,8 +41,9 @@ const [totals, weeks, channels, servers, counted, kinds, members, ticks, past, u
       listPastEvents(env.DB, now, 12),
       listUpcomingEvents(env.DB, now, true),
       listPendingClaims(env.DB),
+      listPassLevels(env.DB, year),
     ])
-  : [null, [], [], [], [], [], [], [], [], [], []];
+  : [null, [], [], [], [], [], [], [], [], [], [], []];
 const activeKinds = kinds.filter((k) => k.retired_at === null);
 // Which ticks count under their kinds' caps, per member.
 const tickRows = markCounted(ticks, kinds);
@@ -60,6 +62,13 @@ const FLASH: Record<string, string> = {
   kind_saved: 'Tick saved.',
   kind_retired: 'Retired: it leaves the give list; ticks already given under it stay.',
   kind_restored: 'Back on the list.',
+  level_added: 'Level added. Members at or above its XP reach it within the hour, and the general channel hears of it.',
+  level_saved: 'Level saved. Whoever had reached it keeps it.',
+  level_removed: 'Level removed.',
+  level_reached: 'Someone has reached that level, so it stays; edit it instead.',
+  level_duplicate: 'A level at that XP is already there.',
+  level_missing: 'That level is no longer on the list.',
+  level_bad_input: "That didn't save. A level needs a name, a reward, and a whole number of XP; a Discord role id is 17 to 20 digits.",
   claim_approved: 'Claim approved: the tick is given and the member has a DM.',
   claim_declined: 'Claim declined; the member has a DM.',
   tick_duplicate: 'That is already there: the same tick for the same event, or a tick with that name.',
@@ -339,6 +348,73 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
               <button class="btn btn-primary btn-sm" type="submit">Add to the list</button>
             </form>
           </li>
+        </ul>
+      </section>
+
+      <section class="numbers season-section" id="levels">
+        <h2 class="section-label">Season pass levels</h2>
+        <p class="queue-intro">
+          The rungs of the {seasonName(year)} pass: at so many XP a member reaches a level and gets its reward. Levels are numbered by XP, lowest first,
+          so the number sorts itself. A sponsor's name goes on the level it pays for and shows with the reward. A Discord role id, if given, is handed
+          to whoever reaches the level. Within the hour of a crossing the bot tells the general channel who reached what (a member hidden from the
+          leaderboard gets a DM instead), and it is told once: a level once reached stays reached even if the line moves or a tick is removed.
+          {current ? '' : ' This is a past season; its levels are kept as they were.'}
+        </p>
+        {levels.length > 0 && (
+          <div class="table-scroll">
+            <table class="numbers-table">
+              <thead>
+                <tr><th>Level</th><th>XP</th><th>Name</th><th>Reward</th><th>Sponsor</th><th>Reached by</th></tr>
+              </thead>
+              <tbody>
+                {levels.map((l) => (
+                  <tr>
+                    <td>{l.level}</td>
+                    <td>{l.xp}</td>
+                    <td>{l.name}</td>
+                    <td>{l.reward}</td>
+                    <td>{l.sponsor ?? '—'}</td>
+                    <td>{l.reached} {l.reached === 1 ? 'member' : 'members'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <ul class="kind-list">
+          {levels.map((l) => (
+            <li>
+              <form method="post" action="/board/ticks" class="participant-row">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="level_id" value={l.id} />
+                <input type="hidden" name="back" value={here} />
+                <label>XP <input name="xp" type="number" min="1" max={PASS_LIMITS.xp} step="1" value={l.xp} class="input-short" required /></label>
+                <label>Name <input name="name" required maxlength={PASS_LIMITS.name} value={l.name} /></label>
+                <label>Reward <input name="reward" required maxlength={PASS_LIMITS.reward} value={l.reward} /></label>
+                <label>Sponsor <input name="sponsor" maxlength={PASS_LIMITS.sponsor} value={l.sponsor ?? ''} placeholder="optional" /></label>
+                <label>Role id <input name="role_id" inputmode="numeric" pattern="[0-9]{17,20}" value={l.role_id ?? ''} placeholder="optional" class="input-short" /></label>
+                <button class="btn btn-ghost btn-sm" name="action" value="level_save" type="submit">Save</button>
+                {l.reached === 0 && (
+                  <button class="btn btn-ghost btn-sm" name="action" value="level_remove" type="submit" data-confirm={`Remove level ${l.level}, ${l.name}?`}>Remove</button>
+                )}
+              </form>
+            </li>
+          ))}
+          {current && (
+            <li>
+              <form method="post" action="/board/ticks" class="participant-row">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="action" value="level_add" />
+                <input type="hidden" name="back" value={here} />
+                <label>XP <input name="xp" type="number" min="1" max={PASS_LIMITS.xp} step="1" class="input-short" required placeholder="100" /></label>
+                <label>New level <input name="name" required maxlength={PASS_LIMITS.name} placeholder="Regular" /></label>
+                <label>Reward <input name="reward" required maxlength={PASS_LIMITS.reward} placeholder="Overall patch" /></label>
+                <label>Sponsor <input name="sponsor" maxlength={PASS_LIMITS.sponsor} placeholder="optional" /></label>
+                <label>Role id <input name="role_id" inputmode="numeric" pattern="[0-9]{17,20}" placeholder="optional" class="input-short" /></label>
+                <button class="btn btn-primary btn-sm" type="submit">Add level</button>
+              </form>
+            </li>
+          )}
         </ul>
       </section>
     </>

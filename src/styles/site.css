@@ -6221,3 +6221,84 @@ details.admin-panel[open] > summary {
   justify-content: space-between;
   gap: 0.5rem;
 }
+
+/* The season pass track on the membership page: where the member stands,
+   a bar to the next line, and the season's levels with their rewards. */
+.season-pass {
+  grid-template-columns: 1fr !important;
+  gap: 0.35rem !important;
+}
+
+.pass-standing {
+  margin: 0;
+}
+
+.pass-bar {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.pass-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  border-radius: inherit;
+  transition: width 0.4s ease;
+}
+
+.pass-levels {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.pass-levels li {
+  display: grid;
+  grid-template-columns: 1.6rem minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: start;
+  color: var(--muted);
+}
+
+.pass-levels .pass-done,
+.pass-levels .pass-next {
+  color: inherit;
+}
+
+.pass-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.pass-done .pass-mark {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.pass-next .pass-mark {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.pass-xp {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pass-bar > span {
+    transition: none;
+  }
+}

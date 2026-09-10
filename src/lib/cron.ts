@@ -35,6 +35,7 @@ import { refreshEventAnnouncement } from './announce';
 import { postNews } from './news';
 import { pruneActivityBatches } from './activity';
 import { prunePlaytimeBatches } from './playtime';
+import { announceReached } from './pass';
 
 export const REMINDER_WINDOW = 24 * 3600; // the reminder goes out within the last day before the start
 const OPENING_GRACE = 24 * 3600; // an opening older than this is not announced any more
@@ -148,11 +149,12 @@ export interface HourlySummary {
   promotions: number;
   interest: number;
   archived: number;
+  levels: number; // members told they reached a season pass level
 }
 
 export async function runHourly(db: D1Database, env: Env, origin: string, now: number): Promise<HourlySummary> {
   const upcoming = await listUpcomingEvents(db, now, false);
-  const summary: HourlySummary = { digest: 0, milestones: 0, news: 0, reminders: 0, sales: 0, openings: 0, closings: 0, promotions: 0, interest: 0, archived: 0 };
+  const summary: HourlySummary = { digest: 0, milestones: 0, news: 0, reminders: 0, sales: 0, openings: 0, closings: 0, promotions: 0, interest: 0, archived: 0, levels: 0 };
 
   // News written ahead: published and posted at its time.
   for (const draft of await listDueAnnouncements(db, now)) {
@@ -240,6 +242,10 @@ export async function runHourly(db: D1Database, env: Env, origin: string, now: n
       }
     }
   }
+
+  // Season pass levels newly reached: recorded, announced to the general
+  // channel (a hidden member gets a DM instead), and their roles given.
+  summary.levels = await announceReached(db, env, origin, now);
 
   // Once an hour (the first run of the hour): the counts on every upcoming
   // announcement, in case a change slipped past the event-driven refresh.

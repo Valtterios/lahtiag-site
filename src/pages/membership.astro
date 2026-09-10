@@ -24,6 +24,7 @@ import { listMinecraftNames, serversLabel, narrowed, SERVERS, FRIENDS_PER_MEMBER
 import { voiceLabel } from '../lib/activity';
 import { seasonSummary, minecraftLine, lifetimeTotals } from '../lib/season';
 import { tickList } from '../lib/ticks';
+import { levelTitle, rewardText } from '../lib/pass';
 
 // A member's own page: their status, the actives request, and every
 // detail they gave on the application, editable by them. Needs a Discord
@@ -42,6 +43,10 @@ const season = session ? await seasonSummary(env.DB, session.discordId, Math.flo
 // worth showing in September as well as in May.
 const lifetime = session ? await lifetimeTotals(env.DB, session.discordId) : null;
 const isMember = entry?.status === 'member';
+// A level on the pass track: reached by XP or held from the ledger (a
+// reward once given stays), the next line to cross, or still ahead.
+const levelState = (l: { id: number; xp: number }): 'pass-done' | 'pass-next' | undefined =>
+  season && (l.xp <= season.pass.xp || season.held.includes(l.id)) ? 'pass-done' : season?.pass.next?.id === l.id ? 'pass-next' : undefined;
 const onLeaderboard = session ? await isLeaderboardOptIn(env.DB, session.discordId) : false;
 const mcNames = session ? await listMinecraftNames(env.DB, session.discordId) : [];
 const mcOwn = mcNames.find((n) => n.kind === 'own') ?? null;
@@ -274,6 +279,37 @@ const MESSAGES: Record<FieldError, string> = {
               <div class="season-facts-head">
                 <dt>Season {season.label}</dt>
                 <dd><strong>{season.tick_xp} XP</strong></dd>
+              </div>
+              <div class="season-pass" id="pass">
+                <dt>Pass</dt>
+                <dd>
+                  {season.pass.levels.length === 0 ? (
+                    'The board sets this season\'s levels in the autumn. Your XP counts already.'
+                  ) : (
+                    <>
+                      <p class="pass-standing">
+                        {season.pass.current ? <strong>{levelTitle(season.pass.current)}</strong> : <strong>No level yet</strong>}
+                        {season.pass.next
+                          ? <span> · {season.pass.to_next} XP to {levelTitle(season.pass.next)}</span>
+                          : <span> · every level reached</span>}
+                      </p>
+                      <div class="pass-bar" role="progressbar" aria-valuemin="0" aria-valuemax={season.pass.next?.xp ?? season.pass.xp} aria-valuenow={season.pass.xp} aria-label="Season pass progress">
+                        <span style={`width: ${Math.round(season.pass.fraction * 100)}%`}></span>
+                      </div>
+                      <ol class="pass-levels">
+                        {season.pass.levels.map((l) => (
+                          <li class={levelState(l)}>
+                            <span class="pass-mark" aria-hidden="true">{levelState(l) === 'pass-done' ? '✓' : l.level}</span>
+                            <span class="pass-level">
+                              <strong>{l.name}</strong> <span class="pass-xp">{l.xp} XP</span>
+                              <br />{rewardText(l)}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    </>
+                  )}
+                </dd>
               </div>
               <div>
                 <dt>Discord</dt>

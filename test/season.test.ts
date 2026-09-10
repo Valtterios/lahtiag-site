@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { passProgress } from '../src/lib/pass';
 import { env } from 'cloudflare:test';
 import { seasonEvents, seasonStartUnix, seasonSummary, minecraftLine, seasonLines } from '../src/lib/season';
 
@@ -27,7 +28,7 @@ describe('the season so far', () => {
   });
 
   it('names the play time or its absence', () => {
-    const base = { label: '2026–27', events: 0, messages: 0, voice_minutes: 0, playtime: [{ server: 'smp', label: 'SMP', minutes: 0 }], ticks: [], tick_xp: 0, claims_pending: 0 };
+    const base = { label: '2026–27', events: 0, messages: 0, voice_minutes: 0, playtime: [{ server: 'smp', label: 'SMP', minutes: 0 }], ticks: [], tick_xp: 0, claims_pending: 0, pass: passProgress(0, []), held: [] };
     expect(minecraftLine({ ...base, minecraft_name: 'AinoV' }, '')).toBe('No play time yet under AinoV.');
     expect(minecraftLine({ ...base, minecraft_name: 'AinoV', playtime: [{ server: 'smp', label: 'SMP', minutes: 130 }, { server: 'gtnh', label: 'GT:NH modpack', minutes: 0 }] }, '')).toBe('SMP 2 h 10 min, as AinoV.');
   });

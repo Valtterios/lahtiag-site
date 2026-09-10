@@ -598,10 +598,23 @@ post, **Post to Discord** under the post sends it again.
   Minecraft name, and the membership page. A member hidden from the
   history page's leaderboard is hidden here too. Until the rules are
   set the XP is the ticks, so post it once there is something on it.
+- **The levels.** The bottom of the season page, Season pass levels, is
+  where the pass gets its rungs: an XP line, a name, the reward, the
+  sponsor whose name goes on it, and a Discord role id if the level
+  gives one. Levels are numbered by XP, lowest first, so adding one in
+  the middle renumbers the rest. Within the hour of a member's XP
+  crossing a line the bot posts to the general channel who reached
+  what and what it pays; a member hidden from the leaderboard is told
+  by DM instead. Each crossing is told once, and a level once reached
+  stays with the member even if a tick is removed or the line is moved
+  later; a level someone has reached cannot be removed, only edited.
+  The Reached by column is the figure for the season report.
+- **On the member's side.** `/pass` (or `/season`) in Discord shows
+  their XP, their level, and how much is missing to the next one with
+  its reward; the membership page has the whole track under Pass.
 - **The participant role.** The pass's first reward is a Discord role.
   Make it on the server, pick it under Discord roles on the register
-  page (register access), and the pass hands it out once the rules are
-  set.
+  page (register access), and paste its id on the level that gives it.
 
 | | |
 |---|---|

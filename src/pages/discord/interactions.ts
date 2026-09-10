@@ -231,8 +231,9 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     return json({ type: 5 });
   }
 
-  // /season: the person's own season so far, privately. A listing, so it stays.
-  if (interaction.type === 2 && interaction.data?.name === 'season') {
+  // /season and /pass: the person's own season so far, privately, with
+  // where they stand on the pass. A listing, so it stays.
+  if (interaction.type === 2 && (interaction.data?.name === 'season' || interaction.data?.name === 'pass')) {
     locals.cfContext.waitUntil(fleeting(handleSeason(env, interaction, url.origin)));
     return json({ type: 5, data: { flags: 64 } });
   }
