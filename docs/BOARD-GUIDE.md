@@ -688,6 +688,16 @@ post, **Post to Discord** under the post sends it again.
   long each whitelisted name was online on each server, read from the
   servers' own statistics every five minutes. A member sees their own
   season on the membership page.
+- **The modpack chat is in Discord.** The GT:NH server's chat, joins and
+  leaves show in the bridge channel, each player under their own name
+  and skin, and what people write in that channel shows in the game as
+  `[Discord] Name: text`. Nothing to do; it runs on the server machine.
+- **Where everyone is in the modpack.** `/gtnh` posts a board of every
+  player's tier (Stone Age, Steam, LV, MV, HV and on), read from the
+  quest book: a tier counts once a tenth of its chapter's quests are
+  done. A member sees their own under their name on the membership
+  page's Minecraft tab, and the bridge channel says when someone reaches
+  a new tier.
 - **The old list.** The names that were on the server before the site
   took over are on the list as board names. A member who whitelists that
   same name takes it over, and from then on it follows their membership.

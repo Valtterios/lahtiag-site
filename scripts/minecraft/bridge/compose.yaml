@@ -1,0 +1,26 @@
+# The Minecraft chat bridge and GT:NH progress tracker on auraserver:
+# /opt/lahtiag-bridge. `docker compose up -d` here after
+# lahtiag-bridge-setcreds has written .env. Host networking so the bridge
+# reaches the instance's AMP API on 127.0.0.1; the instance's Minecraft
+# folder mounted read-only for the log, the user cache and the quest book.
+services:
+  bridge:
+    image: node:22-alpine
+    container_name: lahtiag-bridge
+    restart: unless-stopped
+    network_mode: host
+    working_dir: /app
+    command: ["node", "bridge.mjs"]
+    env_file: .env
+    environment:
+      STATE_DIR: /state
+      MC_DIR: /mc
+    volumes:
+      - ./bridge.mjs:/app/bridge.mjs:ro
+      - ./state:/state
+      - /mnt/storage/amp-instances/LahtiAGModpack01/Minecraft:/mc:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"

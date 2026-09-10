@@ -21,6 +21,7 @@ revision: September 2026.
   - [Shop items on the spot](#shop-items-on-the-spot)
 - [The Minecraft whitelist](#the-minecraft-whitelist)
 - [The Discord activity listener](#the-discord-activity-listener)
+- [The Minecraft chat bridge and GT:NH progress](#the-minecraft-chat-bridge-and-gtnh-progress)
 - [Editing this handbook](#editing-this-handbook)
 - [Editing the site's pages](#editing-the-sites-pages)
 - [The moving parts](#the-moving-parts)
@@ -1271,6 +1272,91 @@ messages from 23 February 2024 to 31 August 2026, across 27 channels and
 3 archived threads. Voice is not in it: minutes have no history to walk,
 so what was spoken before the listener existed is gone for good.
 
+## The Minecraft chat bridge and GT:NH progress
+
+The modpack server's chat is bridged with a Discord channel, and the site
+knows where each player is in the pack: which tier of the quest book they
+have reached. No mod on the server: everything comes from the server's
+own files and the instance's AMP console on the host, the way the
+whitelist and play-time syncs work.
+
+**What it does.** `scripts/minecraft/bridge/bridge.mjs` (container
+`lahtiag-bridge` in `/opt/lahtiag-bridge` on auraserver, plain Node 22,
+no dependencies) does three things:
+
+- **Game to Discord.** It follows the server log (`logs/latest.log`,
+  which it re-opens when the server restarts) and posts to the channel
+  through a webhook: chat under the player's own name with the skin's
+  face from `/membership/minecraft/face/<uuid>` as the avatar, joins and
+  leaves, achievements earned, the server coming up ("Done") or going
+  down, and console `say` lines as "Server". Colour codes and Markdown
+  are neutralised, and nothing the game says can ping anyone
+  (`allowed_mentions` is empty). It starts at the end of the log, so
+  nothing said before the bridge is repeated. Consecutive lines from the
+  same voice merge into one message.
+- **Discord to game.** The bot's gateway connection watches the one
+  channel (`BRIDGE_CHANNEL_ID`). A person's message (not a bot's, not
+  the webhook's own) goes in-game as `[Discord] Name: text` through the
+  instance's AMP API (`Core/SendConsoleMessage` with a `tellraw`), with
+  mentions as names, custom emoji as `:names:`, attachments noted, cut
+  at 240 characters. This needs the **Message Content** intent, which is
+  privileged: turn it on for the bot under Bot → Privileged Gateway
+  Intents in the Discord developer portal, or the gateway refuses the
+  connection (the log says so and the container stops). When the server
+  is off or starting (AMP state not Ready) the message is dropped with a
+  log line, not queued.
+- **Progress.** Every `PROGRESS_EVERY` seconds (300) it reads the quest
+  book: `world/betterquesting/QuestDatabase.json` for which quests
+  belong to which chapter (only when the file changed; it is 10 MB) and
+  `QuestProgress/<uuid>.json` per player for which quests have a
+  completion entry (party members share progress, and each one's file
+  carries it). The chapters that are tiers ("Tier 3 - HV") are counted,
+  the others (bees, Thaumcraft, power) are not. Players whose file
+  changed since the last run are posted to `POST /api/minecraft/progress`
+  as a snapshot, with the whitelist token. **The tier rule lives on the
+  site** (`src/lib/gtnh.ts`, `tierOf`): the highest chapter with a tenth
+  of its quests done, so a stray quest from a later chapter moves nobody
+  up. The answer says each player's tier and whether it went up, and
+  the bridge announces a step up in the channel ("⚡ **Name** reached
+  **HV (Tier 3)** on GT:NH · 12 of 115 HV quests done"), once per tier;
+  a player's first sighting is a baseline, never news. The state (last
+  tiers, file times) is `state/state.json`. `node bridge.mjs --dry-run`
+  reads the quest book and prints what would be sent, no tokens needed.
+
+The table is `minecraft_progress` (one row per player and server: name,
+tier, when that tier was first seen, the per-chapter counts as JSON, the
+totals). It shows on the membership page's Minecraft tab under each name
+("GT:NH · MV (Tier 2) · 286 quests · 7 of 115 HV quests") and in Discord
+with `/gtnh`, a board of every player under their Minecraft name, the
+furthest first, posted for everyone and folded to a line after a minute
+like `/pass`. Minecraft names are what everyone on the server sees
+anyway; no Discord names or membership facts are on the board.
+
+**Install** (auraserver, as root):
+
+1. Create the channel in Discord (say `#gtnh-chat`) and a webhook in it
+   (channel settings → Integrations → Webhooks; the name and picture are
+   overridden per message, so any will do). Copy the channel id (right
+   click → Copy Channel ID, with developer mode on) and the webhook URL.
+2. Turn on the Message Content intent for the bot in the developer
+   portal.
+3. `mkdir -p /opt/lahtiag-bridge/state`, copy `bridge.mjs` and
+   `compose.yaml` from `scripts/minecraft/bridge/` there and `env.example`
+   as `/opt/lahtiag-bridge/.env` (chmod 600); copy `setcreds` to
+   `/usr/local/bin/lahtiag-bridge-setcreds` (executable). The compose
+   file mounts the instance's Minecraft folder read-only at `/mc` and
+   uses host networking to reach AMP on 127.0.0.1:8089.
+4. `lahtiag-bridge-setcreds`: it asks for the channel id and the webhook
+   URL, takes the bot token from the activity listener's `.env` and the
+   AMP user, password and site token from
+   `/etc/lahtiag-whitelist-gtnh.conf`, and starts the container. Follow
+   it with `docker logs -f lahtiag-bridge`; "gateway ready as" and "quest
+   book read" mean both halves are up.
+
+Another server gets its own copy of the folder with `SERVER=`,
+`SERVER_LABEL=`, `AMP_URL=` and the mount changed; the tier tracker
+simply finds no quest book on a vanilla server and does nothing.
+
 ## Editing this handbook
 
 This file is the technical handbook. The board reads it rendered at
@@ -1340,6 +1426,7 @@ no subdirectories.
 | Helsinki time handling | `src/lib/time.ts` — storage is UTC unix seconds, always |
 | Brand assets | `public/brand/`; the Canva kit is the source of truth (blue #4169e1, yellow #ffde59, ink #1e1e1e, Chakra Petch ≈ the wordmark) |
 | Minecraft play time | `scripts/minecraft/playtime-sync.py` + `lahtiag-playtime@.service/.timer` on auraserver; API `src/pages/api/minecraft/playtime.ts`; `src/lib/playtime.ts` |
+| The Minecraft chat bridge and GT:NH progress | `scripts/minecraft/bridge/` (bridge.mjs, compose.yaml, env.example, setcreds); on auraserver as container `lahtiag-bridge` in `/opt/lahtiag-bridge`; API `src/pages/api/minecraft/progress.ts`; tiers `src/lib/gtnh.ts`; `/gtnh` in `src/pages/discord/interactions.ts` |
 | The Discord activity listener | `scripts/discord-listener/` (listener.mjs, compose.yaml, setcreds); on auraserver as container `lahtiag-listener` in `/opt/lahtiag-listener`; API `src/pages/api/discord/activity.ts`, counting `src/lib/activity.ts` |
 
 Secrets (set with `npx wrangler secret put NAME`, never committed):

@@ -74,6 +74,7 @@ import { seasonSummary, seasonLines } from '../../lib/season';
 import { passCardPng, homePage, pageCount, clampPage } from '../../lib/pass-card';
 import { xpGuideLines } from '../../lib/xp-guide';
 import { scheduleCollapse } from '../../lib/collapse';
+import { progressBoard, progressBoardLines } from '../../lib/gtnh';
 import { listClaimableKinds, createClaim, decideClaim, claimLine, claimDecisionDm, CLAIM_NOTE_MAX } from '../../lib/claims';
 import { getTickKind, kindWorth, listTickKinds } from '../../lib/ticks';
 import { xpStandings, leaderboardEmbed } from '../../lib/xp';
@@ -261,6 +262,13 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   }
   if (interaction.type === 2 && interaction.data?.name === 'leaderboard') {
     locals.cfContext.waitUntil(fleeting(handleLeaderboard(env, interaction, url.origin)));
+    return json({ type: 5 });
+  }
+
+  // /gtnh: where everyone is in the modpack, posted for everyone like
+  // /pass, and folded to a line after a minute.
+  if (interaction.type === 2 && interaction.data?.name === 'gtnh') {
+    locals.cfContext.waitUntil(fleeting(handleGtnh(env, interaction)));
     return json({ type: 5 });
   }
 
@@ -454,6 +462,18 @@ async function handleLeaderboard(env: WorkerEnv, interaction: Interaction, origi
     [leaderboardEmbed(standings, interaction.member?.user?.id ?? null, now)],
     NO_MENTIONS,
   );
+  return 'keep';
+}
+
+// /gtnh: the players' tiers from the quest book, the furthest first
+// (src/lib/gtnh.ts), under the players' Minecraft names, which everyone
+// on the server sees anyway.
+async function handleGtnh(env: WorkerEnv, interaction: Interaction): Promise<Outcome> {
+  const now = Math.floor(Date.now() / 1000);
+  await rememberInvoker(env, interaction, now);
+  const rows = await progressBoard(env.DB);
+  const posted = await editInteractionReply(interaction.application_id, interaction.token, progressBoardLines(rows), [], [], NO_MENTIONS, SUPPRESS_EMBEDS);
+  if (posted) await scheduleCollapse(env.DB, posted, '⚙️ The GT:NH progress board was here · `/gtnh` shows it again', now);
   return 'keep';
 }
 

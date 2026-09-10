@@ -133,6 +133,7 @@ const commands = [
   { name: 'claim', description: 'Claim a tick for the battle pass; the board approves it' },
   { name: 'xp', description: 'How to earn battle pass XP, and what you have collected so far' },
   { name: 'leaderboard', description: "This season's XP leaderboard (everyone sees it)" },
+  { name: 'gtnh', description: 'Where everyone is in the GT:NH modpack: tiers from the quest book (everyone sees it)' },
   {
     name: 'whitelist',
     description: 'The LahtiAG Minecraft servers\' whitelist',

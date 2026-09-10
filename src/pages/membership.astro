@@ -21,6 +21,7 @@ import { postActivesRequest } from '../lib/board-channel';
 import { applyRoles, loadRoleConfig } from '../lib/roles';
 import { formatHelsinkiDate, formatHelsinkiRange } from '../lib/time';
 import { listMinecraftNames, serversLabel, narrowed, SERVERS, FRIENDS_PER_MEMBER } from '../lib/minecraft';
+import { progressByUuid, progressLine } from '../lib/gtnh';
 import { voiceLabel } from '../lib/activity';
 import { seasonSummary, minecraftLine, lifetimeTotals } from '../lib/season';
 import { tickList } from '../lib/ticks';
@@ -52,6 +53,8 @@ const levelState = (l: { id: number; xp: number }): 'pass-done' | 'pass-next' | 
   season && (l.xp <= season.pass.xp || season.held.includes(l.id)) ? 'pass-done' : season?.pass.next?.id === l.id ? 'pass-next' : undefined;
 const onLeaderboard = session ? await isLeaderboardOptIn(env.DB, session.discordId) : false;
 const mcNames = session ? await listMinecraftNames(env.DB, session.discordId) : [];
+// Where each of the names is in the GT:NH modpack (src/lib/gtnh.ts), by UUID.
+const gtnh = await progressByUuid(env.DB, mcNames.map((n) => n.uuid).filter((u): u is string => Boolean(u)));
 // The ways to earn XP: the board's tick kinds, for the pass section.
 const ways = session ? (await listTickKinds(env.DB)).filter((k) => k.xp > 0) : [];
 const mcOwn = mcNames.find((n) => n.kind === 'own') ?? null;
@@ -540,6 +543,7 @@ const MESSAGES: Record<FieldError, string> = {
                       {n.uuid ? <img class="mc-face" src={`/membership/minecraft/face/${n.uuid}`} width="32" height="32" alt="" loading="lazy" /> : <span class="mc-face mc-face-empty" />}
                       <span class="mc-name">{n.name}</span>
                       <span class="mc-meta">{n.kind === 'own' ? 'you' : 'your friend'}{narrowed(n.servers) && ` · ${serversLabel(n.servers)} only`}</span>
+                      {n.uuid && gtnh.has(n.uuid) && <span class="mc-meta mc-progress">GT:NH · {progressLine(gtnh.get(n.uuid)!)}</span>}
                       <span class={`status-badge ${n.approved_at === null ? 'status-muted' : 'status-member'}`}>{n.approved_at === null ? 'Waiting for the board' : 'On the servers'}</span>
                       <form method="post" action="/membership/minecraft" class="inline-form">
                         <input type="hidden" name="csrf" value={csrf} />

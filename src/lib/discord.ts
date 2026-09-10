@@ -320,12 +320,19 @@ export async function editInteractionReply(
   embeds: unknown[] = [],
   allowedMentions?: unknown,
   flags?: number, // SUPPRESS_EMBEDS keeps a link's preview card off a listing
-): Promise<void> {
-  await fetch(`${API}/webhooks/${applicationId}/${interactionToken}/messages/@original`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ content, components, embeds, ...(allowedMentions ? { allowed_mentions: allowedMentions } : {}), ...(flags ? { flags } : {}) }),
-  }).catch(() => {});
+): Promise<{ id: string; channel_id: string } | null> {
+  try {
+    const response = await fetch(`${API}/webhooks/${applicationId}/${interactionToken}/messages/@original`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content, components, embeds, ...(allowedMentions ? { allowed_mentions: allowedMentions } : {}), ...(flags ? { flags } : {}) }),
+    });
+    if (!response.ok) return null;
+    const message = (await response.json()) as { id?: string; channel_id?: string };
+    return message.id && message.channel_id ? { id: message.id, channel_id: message.channel_id } : null;
+  } catch {
+    return null;
+  }
 }
 
 // Errors and confirmations clear themselves, the way a notification would.

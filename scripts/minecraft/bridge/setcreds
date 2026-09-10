@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""Fill in /opt/lahtiag-bridge/.env: the channel id and the webhook URL
+asked for on the terminal, the bot token copied from the activity listener's
+.env when it is there (asked for otherwise), and the AMP user, password and
+site token copied from the whitelist sync's config for the same server, so
+nothing passes through a chat or a shell history. Then (re)starts the
+bridge. Run as root:  lahtiag-bridge-setcreds
+"""
+import getpass
+import os
+import re
+import subprocess
+import sys
+
+DIR = os.environ.get('LAHTIAG_BRIDGE_DIR', '/opt/lahtiag-bridge')
+ENV = os.path.join(DIR, '.env')
+LISTENER_ENV = '/opt/lahtiag-listener/.env'
+
+if os.geteuid() != 0:
+    sys.exit('run as root (sudo lahtiag-bridge-setcreds)')
+
+
+def read_env(path):
+    out = {}
+    if os.path.exists(path):
+        for line in open(path):
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                k, v = line.split('=', 1)
+                out[k.strip()] = v.strip()
+    return out
+
+
+env = read_env(ENV)
+server = env.get('SERVER', 'gtnh')
+sync = read_env(f'/etc/lahtiag-whitelist-{server}.conf')
+listener = read_env(LISTENER_ENV)
+
+channel = input(f"Discord channel id to bridge [{env.get('BRIDGE_CHANNEL_ID') or 'none yet'}]: ").strip() or env.get('BRIDGE_CHANNEL_ID', '')
+webhook = getpass.getpass('Webhook URL in that channel (not shown; enter keeps the current): ').strip() or env.get('BRIDGE_WEBHOOK_URL', '')
+token = listener.get('DISCORD_BOT_TOKEN') or env.get('DISCORD_BOT_TOKEN') or getpass.getpass('Discord bot token (not shown): ').strip()
+if not (channel and webhook and token):
+    sys.exit('channel id, webhook URL and bot token are all needed; nothing saved')
+values = {
+    'BRIDGE_CHANNEL_ID': channel,
+    'BRIDGE_WEBHOOK_URL': webhook,
+    'DISCORD_BOT_TOKEN': token,
+    'AMP_URL': sync.get('AMP_URL') or env.get('AMP_URL', 'http://127.0.0.1:8089'),
+    'AMP_USER': sync.get('AMP_USER') or env.get('AMP_USER', ''),
+    'AMP_PASS': sync.get('AMP_PASS') or env.get('AMP_PASS', ''),
+    'SITE_TOKEN': sync.get('TOKEN') or env.get('SITE_TOKEN', ''),
+}
+text = open(ENV).read() if os.path.exists(ENV) else ''
+for key, value in values.items():
+    text, n = re.subn(rf'(?m)^{key}=.*$', lambda _m, line=f'{key}={value}': line, text)
+    if n == 0:
+        text = text.rstrip('\n') + f'\n{key}={value}\n'
+tmp = ENV + '.tmp'
+with open(tmp, 'w') as f:
+    f.write(text)
+os.chmod(tmp, 0o600)
+os.replace(tmp, ENV)
+missing = [k for k in ('AMP_USER', 'AMP_PASS', 'SITE_TOKEN') if not values[k]]
+print(f'saved to {ENV}' + (f" (still empty: {', '.join(missing)}; fill them in by hand)" if missing else ''))
+subprocess.run(['docker', 'compose', 'up', '-d', '--force-recreate'], cwd=DIR, check=False)
+print('follow it with: docker logs -f lahtiag-bridge')

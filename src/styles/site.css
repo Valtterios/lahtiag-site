@@ -1773,6 +1773,11 @@ a:hover {
   flex: 1 1 auto;
 }
 
+.mc-row .mc-progress {
+  flex-basis: 100%;
+  color: var(--ink);
+}
+
 .mc-row form {
   margin-left: auto;
 }
