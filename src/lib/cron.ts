@@ -1,4 +1,4 @@
-// The hourly job (a Cron Trigger on the Worker, src/worker.ts): the
+// The five-minute job (a Cron Trigger on the Worker, src/worker.ts): the
 // day-before reminder into each event's channel, the "signups are open"
 // post when an opening moment passes, waitlist promotions that still
 // need telling, and a fresh read of Discord's Interested counts. Every
@@ -37,6 +37,7 @@ import { pruneActivityBatches } from './activity';
 import { prunePlaytimeBatches } from './playtime';
 import { announceReached } from './pass';
 import { announceAutoTicks } from './auto-ticks';
+import { collapseDue } from './collapse';
 
 export const REMINDER_WINDOW = 24 * 3600; // the reminder goes out within the last day before the start
 const OPENING_GRACE = 24 * 3600; // an opening older than this is not announced any more
@@ -152,11 +153,16 @@ export interface HourlySummary {
   archived: number;
   levels: number; // members told they reached a battle pass level
   auto: number; // members told of XP the bot paid from play time, chat or events
+  collapsed: number; // card pictures folded to a line
 }
 
 export async function runHourly(db: D1Database, env: Env, origin: string, now: number): Promise<HourlySummary> {
   const upcoming = await listUpcomingEvents(db, now, false);
-  const summary: HourlySummary = { digest: 0, milestones: 0, news: 0, reminders: 0, sales: 0, openings: 0, closings: 0, promotions: 0, interest: 0, archived: 0, levels: 0, auto: 0 };
+  const summary: HourlySummary = { digest: 0, milestones: 0, news: 0, reminders: 0, sales: 0, openings: 0, closings: 0, promotions: 0, interest: 0, archived: 0, levels: 0, auto: 0, collapsed: 0 };
+
+  // Cards posted a minute or more ago fold to a line first, since that
+  // is the one thing here a person is watching for.
+  summary.collapsed = await collapseDue(db, env, now);
 
   // News written ahead: published and posted at its time.
   for (const draft of await listDueAnnouncements(db, now)) {
@@ -253,7 +259,7 @@ export async function runHourly(db: D1Database, env: Env, origin: string, now: n
 
   // Once an hour (the first run of the hour): the counts on every upcoming
   // announcement, in case a change slipped past the event-driven refresh.
-  if (new Date(now * 1000).getUTCMinutes() < 15) {
+  if (new Date(now * 1000).getUTCMinutes() < 5) {
     for (const event of upcoming) if (event.discord_message_id) await refreshEventAnnouncement(db, env, event.id, origin);
   }
 

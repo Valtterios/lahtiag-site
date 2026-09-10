@@ -860,13 +860,15 @@ export async function editWebhookMessageFile(webhookUrl: string, messageId: stri
 }
 
 // Edit the deferred reply with a picture attached (the /profile card).
+// Returns the message as Discord has it (its id and channel), so a
+// caller can come back to it later, or null when the edit failed.
 export async function editInteractionReplyWithFile(
   applicationId: string,
   interactionToken: string,
   content: string,
   file: MessageFile,
   components: unknown[] = [],
-): Promise<boolean> {
+): Promise<{ id: string; channel_id: string } | null> {
   try {
     const form = new FormData();
     // The attachments list is the whole list: naming only the new file is
@@ -878,10 +880,18 @@ export async function editInteractionReplyWithFile(
     );
     form.append('files[0]', new Blob([file.bytes as BlobPart], { type: file.type }), file.name);
     const response = await fetch(`${API}/webhooks/${applicationId}/${interactionToken}/messages/@original`, { method: 'PATCH', body: form });
-    return response.ok;
+    if (!response.ok) return null;
+    const message = (await response.json()) as { id?: string; channel_id?: string };
+    return message.id && message.channel_id ? { id: message.id, channel_id: message.channel_id } : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+// Folds a message up: the text given, no attachments, no buttons, no
+// preview card. How a card posted for everyone becomes a footprint.
+export async function collapseChannelMessage(botToken: string, channelId: string, messageId: string, text: string): Promise<BotResult<unknown> & { status?: number }> {
+  return botCall(botToken, 'PATCH', `/channels/${channelId}/messages/${messageId}`, { content: text, attachments: [], components: [], allowed_mentions: NO_MENTIONS, flags: SUPPRESS_EMBEDS });
 }
 
 // A private message from the bot. Fails quietly when the person has DMs

@@ -73,6 +73,7 @@ import { editChannelMessage as editBoardMessage, dmUser as dmMember, SUPPRESS_EM
 import { seasonSummary, seasonLines } from '../../lib/season';
 import { passCardPng, homePage, pageCount, clampPage } from '../../lib/pass-card';
 import { xpGuideLines } from '../../lib/xp-guide';
+import { scheduleCollapse } from '../../lib/collapse';
 import { listClaimableKinds, createClaim, decideClaim, claimLine, claimDecisionDm, CLAIM_NOTE_MAX } from '../../lib/claims';
 import { getTickKind, kindWorth, listTickKinds } from '../../lib/ticks';
 import { xpStandings, leaderboardEmbed } from '../../lib/xp';
@@ -489,14 +490,20 @@ async function handlePassCard(env: WorkerEnv, interaction: Interaction, origin: 
   const p = clampPage(page ?? homePage(season.pass), season.pass.levels.length);
   const name = await passName(env, interaction, targetId);
   const png = await passCardPng({ name, season: season.label, progress: season.pass, held: season.held }, p);
-  const ok = await editInteractionReplyWithFile(
+  const posted = await editInteractionReplyWithFile(
     interaction.application_id,
     interaction.token,
     '',
     { name: `pass-${p}.png`, bytes: png, type: 'image/png' },
     passButtons(p, pages, targetId, origin),
   );
-  if (!ok) await editInteractionReply(interaction.application_id, interaction.token, 'The pass could not be drawn. Try again in a moment.');
+  if (!posted) {
+    await editInteractionReply(interaction.application_id, interaction.token, 'The pass could not be drawn. Try again in a moment.');
+    return 'keep';
+  }
+  // A minute on show, then a footprint (src/lib/collapse.ts). A page turn
+  // edits the same message, so the first posting's note covers it.
+  if (page === null) await scheduleCollapse(env.DB, posted, `🎫 **${cleanText(name)}**'s battle pass was here · \`/pass\` shows it again`, now);
   return 'keep';
 }
 
@@ -980,17 +987,20 @@ async function handleProfile(env: WorkerEnv, interaction: Interaction, origin: s
     await editInteractionReply(interaction.application_id, interaction.token, 'The card could not be drawn. Try again in a moment.');
     return;
   }
-  const ok = await editInteractionReplyWithFile(
+  const posted = await editInteractionReplyWithFile(
     interaction.application_id,
     interaction.token,
     '',
     { name: 'card.png', bytes: png, type: 'image/png' },
     turnButton(targetId, false, origin),
   );
-  if (!ok) {
+  if (!posted) {
     await editInteractionReply(interaction.application_id, interaction.token, 'The card could not be posted. Try again in a moment.');
     return;
   }
+  // A minute on show, then a footprint (src/lib/collapse.ts).
+  const name = await passName(env, interaction, targetId);
+  await scheduleCollapse(env.DB, posted, `🪪 **${cleanText(name)}**'s card was here · \`/profile\` shows it again`, Math.floor(Date.now() / 1000));
   return 'keep';
 }
 
