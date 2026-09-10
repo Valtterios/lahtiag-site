@@ -20,10 +20,11 @@ export function kindTerms(kind: Pick<TickKind, 'xp' | 'season_cap' | 'period' | 
   return `${kind.xp} XP, ${cap}`;
 }
 
+// One line a kind, its description as small print under it.
 export function waysLines(kinds: TickKind[]): string[] {
   const live = kinds.filter((k) => k.retired_at === null && k.xp > 0);
   if (live.length === 0) return ['The board has not put any XP on the list yet.'];
-  return live.map((k) => `• **${k.name}** — ${kindTerms(k)}${k.auto_source ? ' · the bot gives it' : k.claimable ? ' · you can claim it' : ''}${k.description ? `\n  ${k.description}` : ''}`);
+  return live.map((k) => `• **${k.name}** · ${kindTerms(k)}${k.auto_source ? '' : k.claimable ? ' · claimable' : ''}${k.description ? `\n-# ${k.description}` : ''}`);
 }
 
 // A member's ticks this season, oldest first, with what each paid.
@@ -31,20 +32,23 @@ export function collectedLines(ticks: SeasonTick[]): string[] {
   if (ticks.length === 0) return ['Nothing yet. The first tick starts it.'];
   return applyCaps(ticks, (t) => t).map((t) => {
     const what = t.event ? `${t.kind} (${t.event})` : t.kind;
-    return t.counted ? `✅ ${formatHelsinkiDate(t.given_at)} · ${what} · **${t.xp} XP**` : `▫️ ${formatHelsinkiDate(t.given_at)} · ${what} · over the cap, 0 XP`;
+    return t.counted ? `✅ ${what} · **${t.xp} XP** · ${formatHelsinkiDate(t.given_at)}` : `▫️ ${what} · over the cap · ${formatHelsinkiDate(t.given_at)}`;
   });
 }
 
-export function xpGuideLines(kinds: TickKind[], summary: SeasonSummary, origin: string): string {
+// The whole answer. No link in it: the Membership page button under
+// it goes there, and a bare link would hang a preview card off the list.
+export function xpGuideLines(kinds: TickKind[], summary: SeasonSummary): string {
   const claimable = kinds.some((k) => k.retired_at === null && k.claimable);
+  const paying = kinds.some((k) => k.retired_at === null && k.auto_source);
   return [
-    `**How to earn XP · season ${summary.label}**`,
+    `## ✨ How to earn XP`,
     ...waysLines(kinds),
-    `📅 Events attended: ${summary.events} · 💬 Discord: ${summary.messages} messages, ${voiceLabel(summary.voice_minutes)} in voice${kinds.some((k) => k.retired_at === null && k.auto_source) ? '' : ' · counted, and paying XP once the board has set what they are worth'}.`,
+    ...(paying ? [] : [`-# Events (${summary.events} attended), Discord (${summary.messages} messages, ${voiceLabel(summary.voice_minutes)} in voice) and Minecraft are counted, and pay once the board has set what they are worth.`]),
     '',
-    `**Collected so far: ${summary.tick_xp} XP**`,
+    `## 🎫 Collected this season · ${summary.tick_xp} XP`,
     ...collectedLines(summary.ticks),
-    ...(summary.claims_pending > 0 ? [`⏳ ${summary.claims_pending} claim${summary.claims_pending === 1 ? '' : 's'} waiting for the board.`] : []),
-    `${claimable ? '`/claim` asks the board for a tick · ' : ''}\`/pass\` shows the levels · ${origin}/membership#pass`,
+    ...(summary.claims_pending > 0 ? [`⏳ ${summary.claims_pending} claim${summary.claims_pending === 1 ? '' : 's'} waiting for the board`] : []),
+    `-# ${claimable ? '/claim asks the board for a tick · ' : ''}/pass shows the levels`,
   ].join('\n');
 }

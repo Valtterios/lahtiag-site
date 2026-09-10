@@ -76,7 +76,7 @@ import { xpGuideLines } from '../../lib/xp-guide';
 import { listClaimableKinds, createClaim, decideClaim, claimLine, claimDecisionDm, CLAIM_NOTE_MAX } from '../../lib/claims';
 import { getTickKind, kindWorth, listTickKinds } from '../../lib/ticks';
 import { xpStandings, leaderboardEmbed } from '../../lib/xp';
-import { NO_MENTIONS } from '../../lib/discord';
+import { NO_MENTIONS, SUPPRESS_EMBEDS } from '../../lib/discord';
 
 // The Discord bot: an HTTP Interactions endpoint inside the same Worker
 // (spec, Discord bot). No gateway, no second host, same database.
@@ -436,7 +436,7 @@ async function handleSeason(env: WorkerEnv, interaction: Interaction, origin: st
   const now = Math.floor(Date.now() / 1000);
   await rememberInvoker(env, interaction, now);
   const [summary, claimable] = await Promise.all([seasonSummary(env.DB, userId, now), listClaimableKinds(env.DB)]);
-  await editInteractionReply(interaction.application_id, interaction.token, seasonLines(summary, origin), seasonButtons(origin, claimable.length > 0, false));
+  await editInteractionReply(interaction.application_id, interaction.token, seasonLines(summary, origin), seasonButtons(origin, claimable.length > 0, false), [], undefined, SUPPRESS_EMBEDS);
   return 'keep';
 }
 
@@ -507,7 +507,7 @@ async function handleXpGuide(env: WorkerEnv, interaction: Interaction, origin: s
   const now = Math.floor(Date.now() / 1000);
   await rememberInvoker(env, interaction, now);
   const [summary, kinds] = await Promise.all([seasonSummary(env.DB, userId, now), listTickKinds(env.DB)]);
-  await editInteractionReply(interaction.application_id, interaction.token, xpGuideLines(kinds, summary, origin), seasonButtons(origin, kinds.some((k) => k.claimable), false));
+  await editInteractionReply(interaction.application_id, interaction.token, xpGuideLines(kinds, summary), seasonButtons(origin, kinds.some((k) => k.claimable), false), [], undefined, SUPPRESS_EMBEDS);
   return 'keep';
 }
 

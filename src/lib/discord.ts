@@ -319,11 +319,12 @@ export async function editInteractionReply(
   components: unknown[] = [],
   embeds: unknown[] = [],
   allowedMentions?: unknown,
+  flags?: number, // SUPPRESS_EMBEDS keeps a link's preview card off a listing
 ): Promise<void> {
   await fetch(`${API}/webhooks/${applicationId}/${interactionToken}/messages/@original`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ content, components, embeds, ...(allowedMentions ? { allowed_mentions: allowedMentions } : {}) }),
+    body: JSON.stringify({ content, components, embeds, ...(allowedMentions ? { allowed_mentions: allowedMentions } : {}), ...(flags ? { flags } : {}) }),
   }).catch(() => {});
 }
 
