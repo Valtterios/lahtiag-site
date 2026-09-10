@@ -26,6 +26,8 @@ import { seasonSummary, minecraftLine, lifetimeTotals } from '../lib/season';
 import { tickList } from '../lib/ticks';
 import { levelTitle, rewardText } from '../lib/pass';
 import { homePage, pageCount } from '../lib/pass-card';
+import { kindTerms } from '../lib/xp-guide';
+import { listTickKinds } from '../lib/ticks';
 
 // A member's own page: their status, the actives request, and every
 // detail they gave on the application, editable by them. Needs a Discord
@@ -50,6 +52,8 @@ const levelState = (l: { id: number; xp: number }): 'pass-done' | 'pass-next' | 
   season && (l.xp <= season.pass.xp || season.held.includes(l.id)) ? 'pass-done' : season?.pass.next?.id === l.id ? 'pass-next' : undefined;
 const onLeaderboard = session ? await isLeaderboardOptIn(env.DB, session.discordId) : false;
 const mcNames = session ? await listMinecraftNames(env.DB, session.discordId) : [];
+// The ways to earn XP: the board's tick kinds, for the pass section.
+const ways = session ? (await listTickKinds(env.DB)).filter((k) => k.xp > 0) : [];
 const mcOwn = mcNames.find((n) => n.kind === 'own') ?? null;
 const mcFriends = mcNames.filter((n) => n.kind === 'friend');
 // The line under the name on the membership card: the class for members,
@@ -333,6 +337,21 @@ const MESSAGES: Record<FieldError, string> = {
               <div>
                 <dt>Ticks</dt>
                 <dd>{season.ticks.length > 0 ? tickList(season.ticks) : 'None from the board yet'}</dd>
+              </div>
+              <div>
+                <dt>Earn XP</dt>
+                <dd>
+                  {ways.length === 0 ? (
+                    'The board has not put any XP on the list yet.'
+                  ) : (
+                    <ul class="xp-ways">
+                      {ways.map((k) => (
+                        <li><strong>{k.name}</strong> · {kindTerms(k)}{k.claimable ? ' · claim it with /claim' : ''}{k.description ? <><br /><span class="member-meta">{k.description}</span></> : null}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <span class="member-meta">Events, Discord and Minecraft are counted and pay XP once the board has set what they are worth.</span>
+                </dd>
               </div>
               {season.claims_pending > 0 && (
                 <div>

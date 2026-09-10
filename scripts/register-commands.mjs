@@ -131,6 +131,7 @@ const commands = [
     options: [{ type: 6, name: 'user', description: "Someone else's pass", required: false }],
   },
   { name: 'claim', description: 'Claim a tick for the battle pass; the board approves it' },
+  { name: 'xp', description: 'How to earn battle pass XP, and what you have collected so far' },
   { name: 'leaderboard', description: "This season's XP leaderboard (everyone sees it)" },
   {
     name: 'whitelist',

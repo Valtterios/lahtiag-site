@@ -72,6 +72,7 @@ import { applyRoles as applyRegisterRoles, loadRoleConfig as loadRegisterRoleCon
 import { editChannelMessage as editBoardMessage, dmUser as dmMember, SUPPRESS_EMBEDS as NO_EMBEDS, dismissReply } from '../../lib/discord';
 import { seasonSummary, seasonLines } from '../../lib/season';
 import { passCardPng, homePage, pageCount, clampPage } from '../../lib/pass-card';
+import { xpGuideLines } from '../../lib/xp-guide';
 import { listClaimableKinds, createClaim, decideClaim, claimLine, claimDecisionDm, CLAIM_NOTE_MAX } from '../../lib/claims';
 import { getTickKind, kindWorth } from '../../lib/ticks';
 import { xpStandings, leaderboardEmbed } from '../../lib/xp';
@@ -236,6 +237,11 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   // stand on the pass. A listing, so it stays.
   if (interaction.type === 2 && interaction.data?.name === 'season') {
     locals.cfContext.waitUntil(fleeting(handleSeason(env, interaction, url.origin)));
+    return json({ type: 5, data: { flags: 64 } });
+  }
+  // /xp: how XP is earned and what the caller has collected, privately.
+  if (interaction.type === 2 && interaction.data?.name === 'xp') {
+    locals.cfContext.waitUntil(fleeting(handleXpGuide(env, interaction, url.origin)));
     return json({ type: 5, data: { flags: 64 } });
   }
   // /pass: the pass as a picture, for everyone to see like /profile,
@@ -415,6 +421,7 @@ function seasonButtons(origin: string, claimable: boolean, withSeason: boolean):
       type: 1,
       components: [
         ...(withSeason ? [{ type: 2, style: 1, label: 'My season', custom_id: 's:me', emoji: { name: '📅' } }] : []),
+        { type: 2, style: 2, label: 'How to earn XP', custom_id: 's:xp', emoji: { name: '✨' } },
         ...(claimable ? [{ type: 2, style: withSeason ? 2 : 1, label: 'Claim a tick', custom_id: 's:claim', emoji: { name: '🙋' } }] : []),
         { type: 2, style: 2, label: 'Link my Minecraft name', custom_id: 's:mc', emoji: { name: '⛏️' } },
         { type: 2, style: 5, label: 'Membership page', url: `${origin}/membership` },
@@ -492,6 +499,18 @@ async function handlePassCard(env: WorkerEnv, interaction: Interaction, origin: 
   return 'keep';
 }
 
+// /xp and the "How to earn XP" button: the ways, and the caller's own
+// ticks so far, privately. A listing, so it stays.
+async function handleXpGuide(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
+  const userId = interaction.member?.user?.id;
+  if (!userId) return;
+  const now = Math.floor(Date.now() / 1000);
+  await rememberInvoker(env, interaction, now);
+  const [summary, kinds] = await Promise.all([seasonSummary(env.DB, userId, now), listTickKinds(env.DB)]);
+  await editInteractionReply(interaction.application_id, interaction.token, xpGuideLines(kinds, summary, origin), seasonButtons(origin, kinds.some((k) => k.claimable), false));
+  return 'keep';
+}
+
 // Whose name goes on the picture: the nick or name the interaction
 // carries for them, else the cached one (a button press carries nobody).
 async function passName(env: WorkerEnv, interaction: Interaction, targetId: string): Promise<string> {
@@ -521,6 +540,7 @@ function passButtons(page: number, pages: number, targetId: string, origin: stri
             ]
           : []),
         { type: 2, style: 1, label: 'My season', custom_id: 's:me', emoji: { name: '📅' } },
+        { type: 2, style: 2, label: 'How to earn XP', custom_id: 's:xp', emoji: { name: '✨' } },
         { type: 2, style: 5, label: 'Membership page', url: `${origin}/membership#pass` },
       ],
     },
@@ -531,6 +551,7 @@ function passButtons(page: number, pages: number, targetId: string, origin: stri
 async function handleSeasonButton(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
   const id = interaction.data?.custom_id ?? '';
   if (id === 's:me') return handleSeason(env, interaction, origin);
+  if (id === 's:xp') return handleXpGuide(env, interaction, origin);
   if (id === 's:claim') return handleClaimStart(env, interaction);
   await editInteractionReply(interaction.application_id, interaction.token, 'Unknown button.');
 }

@@ -609,6 +609,12 @@ post, **Post to Discord** under the post sends it again.
   stays with the member even if a tick is removed or the line is moved
   later; a level someone has reached cannot be removed, only edited.
   The Reached by column is the figure for the season report.
+- **How XP is earned.** `/xp` in Discord, and the How to earn XP button
+  under `/pass` and `/season`, list the ticks with what each pays and
+  how many count, then the member's own ticks this season with what
+  each paid, over-cap ones marked. The membership page has the same
+  list under Earn XP. The list is the tick kinds as the board keeps
+  them, so a kind's description is worth writing for members.
 - **On the member's side.** `/pass` in Discord posts the pass as a
   picture for everyone to see, like `/profile`: the XP, the level, the
   rungs with their rewards and sponsors, five to a page with buttons
