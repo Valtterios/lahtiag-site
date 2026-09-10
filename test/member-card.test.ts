@@ -87,8 +87,8 @@ describe('the card Discord gets', () => {
     await db().prepare('INSERT INTO discord_activity (discord_id, day, messages, voice_minutes, updated_at) VALUES (?1, ?2, 20, 5, 1)').bind('7', '2026-09-01').run();
 
     const shown = await cardFace(db(), who('7'), NOW);
-    expect(shown.figures.map((f) => f.label)).toEqual(['Events', 'Wins', 'Messages', 'Minecraft']);
-    expect(shown.figures[2].value).toBe('20');
+    expect(shown.figures.map((f) => f.label)).toEqual(['Events', 'Wins', 'XP', 'Chat', 'MC']);
+    expect(shown.figures[3].value).toBe('20');
     expect(shown.record.length).toBeGreaterThan(0);
 
     await db().prepare('UPDATE members SET leaderboard_hidden = 1 WHERE discord_id = ?1').bind('7').run();

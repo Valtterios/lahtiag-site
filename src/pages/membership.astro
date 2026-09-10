@@ -58,14 +58,15 @@ const statusLabel = entry ? (entry.status === 'member' ? MEMBER_TYPE_LABELS[entr
 const RELATION: Record<string, string> = { ticket: 'Ticket', going: 'Going', maybe: 'Maybe', waitlist: 'On the waitlist', interested: 'Interested' };
 const pendingLink = session && !entry ? await getPendingLinkByDiscord(env.DB, session.discordId) : null;
 
-// Four figures for the card, in the order they read best: what they turned
-// up to, what they won, and how much of each place they have used. Only on
+// Five figures for the card, in the order they read best: what they turned
+// up to, what they won, what the pass has paid them, and how much of each place they have used. Only on
 // an issued card; before that there is nothing to put on it.
 const figures =
   isMember && stats && lifetime
     ? [
         { label: 'Events', value: String(stats.attended) },
         { label: 'Wins', value: String(stats.wins) },
+        { label: 'XP', value: String(lifetime.xp) },
         { label: 'Messages', value: String(lifetime.messages) },
         { label: 'Minecraft', value: lifetime.minecraft_minutes > 0 ? voiceLabel(lifetime.minecraft_minutes) : '—' },
       ]

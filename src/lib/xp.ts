@@ -69,6 +69,30 @@ export async function xpStandings(db: D1Database, now: number): Promise<Standing
   return rows;
 }
 
+// Every season's XP together, each season capped on its own, for the
+// membership card. A member's ticks are few, so one read and a sort by
+// season is enough.
+export async function lifetimeXp(db: D1Database, discordId: string): Promise<number> {
+  const { results } = await db
+    .prepare(
+      `SELECT t.kind_id, t.given_at, t.xp, k.season_cap, k.period
+       FROM ticks t
+       JOIN tick_kinds k ON k.id = t.kind_id
+       JOIN register r ON r.id = t.register_id
+       WHERE r.discord_id = ?1`,
+    )
+    .bind(discordId)
+    .all<{ kind_id: number; given_at: number; xp: number; season_cap: number; period: TickPeriod }>();
+  const bySeason = new Map<number, typeof results>();
+  for (const row of results) {
+    const year = seasonStartYear(row.given_at);
+    bySeason.set(year, [...(bySeason.get(year) ?? []), row]);
+  }
+  let total = 0;
+  for (const rows of bySeason.values()) total += applyCaps(rows, (t) => t).reduce((sum, t) => sum + (t.counted ? t.xp : 0), 0);
+  return total;
+}
+
 // A name to print inside the table (no mentions render in a code block):
 // the cached Discord name, else the handle on the register entry.
 export function shownName(s: Standing): string {

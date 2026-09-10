@@ -13,7 +13,7 @@ const UUID_FRIEND = '1a1a1a1a-1a1a-4a1a-8a1a-1a1a1a1a1a1a';
 
 describe('a member’s whole record', () => {
   it('is zero before anything is counted', async () => {
-    expect(await lifetimeTotals(env.DB, AINO)).toEqual({ messages: 0, voice_minutes: 0, minecraft_minutes: 0 });
+    expect(await lifetimeTotals(env.DB, AINO)).toEqual({ messages: 0, voice_minutes: 0, minecraft_minutes: 0, xp: 0 });
   });
 
   it('adds up every season, theirs only, and only their own Minecraft name', async () => {
@@ -43,7 +43,7 @@ describe('a member’s whole record', () => {
       .bind(AINO, UUID_FRIEND)
       .run();
 
-    expect(await lifetimeTotals(env.DB, AINO)).toEqual({ messages: 42, voice_minutes: 17, minecraft_minutes: 120 });
-    expect(await lifetimeTotals(env.DB, BO)).toEqual({ messages: 900, voice_minutes: 900, minecraft_minutes: 0 });
+    expect(await lifetimeTotals(env.DB, AINO)).toEqual({ messages: 42, voice_minutes: 17, minecraft_minutes: 120, xp: 0 });
+    expect(await lifetimeTotals(env.DB, BO)).toEqual({ messages: 900, voice_minutes: 900, minecraft_minutes: 0, xp: 0 });
   });
 });

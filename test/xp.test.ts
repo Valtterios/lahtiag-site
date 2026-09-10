@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { env } from 'cloudflare:test';
-import { xpStandings, leaderboardEmbed, leaderboardTable, ownLine, shownName, XP_NOTE } from '../src/lib/xp';
+import { xpStandings, lifetimeXp, leaderboardEmbed, leaderboardTable, ownLine, shownName, XP_NOTE } from '../src/lib/xp';
 import { addTickKind, giveTick, listTickKinds } from '../src/lib/ticks';
 
 const NOW = Date.UTC(2026, 8, 7, 12) / 1000;
@@ -74,5 +74,13 @@ describe('the XP leaderboard', () => {
     const embed = leaderboardEmbed(standings, IDS[1], NOW, 1) as { description: string; color: number };
     expect(embed.color).toBe(0x2b5cff);
     expect(embed.description).toBe('```\n 1  Aino              130 XP\n```\nYou: #1 with 130 XP.');
+  });
+
+  it('adds every season together for the card, each capped on its own', async () => {
+    // Aino: this season 100 (helped, capped once) + 30 (gear) = 130; Bo has
+    // 130 this season and 30 from last season, capped in its own season.
+    expect(await lifetimeXp(env.DB, IDS[0])).toBe(130);
+    expect(await lifetimeXp(env.DB, IDS[1])).toBe(160);
+    expect(await lifetimeXp(env.DB, '100000000000000009')).toBe(0);
   });
 });

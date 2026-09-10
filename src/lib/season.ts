@@ -12,6 +12,7 @@ import { memberSeasonTicks, tickList, tickXp, type SeasonTick } from './ticks';
 import { memberPendingClaims } from './claims';
 import { helsinkiToUnix } from './time';
 import { listPassLevels, memberReached, passLines, passProgress, type PassProgress } from './pass';
+import { lifetimeXp } from './xp';
 
 export interface SeasonSummary {
   label: string; // '2026–27'
@@ -78,17 +79,19 @@ export interface LifetimeTotals {
   messages: number;
   voice_minutes: number;
   minecraft_minutes: number;
+  xp: number; // every season's pass XP together
 }
 
 // Everything a member has to show, every season together. The membership
 // card carries these rather than the season's, so a card is worth having
 // in September as well as in May.
 export async function lifetimeTotals(db: D1Database, discordId: string): Promise<LifetimeTotals> {
-  const [activity, minecraft_minutes] = await Promise.all([
+  const [activity, minecraft_minutes, xp] = await Promise.all([
     lifetimeActivity(db, discordId),
     lifetimePlaytime(db, discordId),
+    lifetimeXp(db, discordId),
   ]);
-  return { messages: activity.messages, voice_minutes: activity.voice_minutes, minecraft_minutes };
+  return { messages: activity.messages, voice_minutes: activity.voice_minutes, minecraft_minutes, xp };
 }
 
 // The Minecraft line: the time played under the member's own name, or the

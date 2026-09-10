@@ -72,7 +72,6 @@ import { applyRoles as applyRegisterRoles, loadRoleConfig as loadRegisterRoleCon
 import { editChannelMessage as editBoardMessage, dmUser as dmMember, SUPPRESS_EMBEDS as NO_EMBEDS, dismissReply } from '../../lib/discord';
 import { seasonSummary, seasonLines } from '../../lib/season';
 import { passCardPng, homePage, pageCount, clampPage } from '../../lib/pass-card';
-import { passLines } from '../../lib/pass';
 import { listClaimableKinds, createClaim, decideClaim, claimLine, claimDecisionDm, CLAIM_NOTE_MAX } from '../../lib/claims';
 import { getTickKind, kindWorth } from '../../lib/ticks';
 import { xpStandings, leaderboardEmbed } from '../../lib/xp';
@@ -239,10 +238,11 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     locals.cfContext.waitUntil(fleeting(handleSeason(env, interaction, url.origin)));
     return json({ type: 5, data: { flags: 64 } });
   }
-  // /pass: the pass as a picture, privately, paged by its buttons.
+  // /pass: the pass as a picture, for everyone to see like /profile,
+  // paged by its buttons.
   if (interaction.type === 2 && interaction.data?.name === 'pass') {
     locals.cfContext.waitUntil(fleeting(handlePassCard(env, interaction, url.origin, null)));
-    return json({ type: 5, data: { flags: 64 } });
+    return json({ type: 5 });
   }
 
   // /claim: ask the board for a tick, privately, step by step (the panel
@@ -309,7 +309,8 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     }
     // A page of the pass picture: swapped into the message that is there.
     if (id.startsWith('s:pass:')) {
-      locals.cfContext.waitUntil(fleeting(handlePassCard(env, interaction, url.origin, Number(id.slice('s:pass:'.length)))));
+      const [, , page] = id.split(':');
+      locals.cfContext.waitUntil(fleeting(handlePassCard(env, interaction, url.origin, Number(page))));
       return json({ type: 6 });
     }
     locals.cfContext.waitUntil(fleeting(handleSeasonButton(env, interaction, url.origin)));
@@ -456,40 +457,67 @@ async function rememberInvoker(env: WorkerEnv, interaction: Interaction, now: nu
 }
 
 // /pass, and its page buttons: the picture with the season's rungs, one
-// page of them at a time, the reader's own name on it. A page number
-// swaps the picture in place; without one the picture opens on the page
-// with the next rung to reach.
+// page of them at a time, posted for everyone like /profile. Whose it is
+// comes with the command (the `user` option, else the caller) and rides
+// in the buttons' ids after that, so anyone can turn the pages of a pass
+// someone else posted. Somebody hidden from the leaderboard keeps their
+// pass to themselves, the same as their card; their own they can post.
+// Without a page number the picture opens on the page with the next
+// rung to reach.
 async function handlePassCard(env: WorkerEnv, interaction: Interaction, origin: string, page: number | null): Promise<Outcome> {
-  const userId = interaction.member?.user?.id;
-  if (!userId) return;
+  const invoker = interaction.member?.user;
+  const fromButton = interaction.data?.custom_id?.split(':')[3];
+  const picked = interaction.data?.options?.find((o) => o.name === 'user')?.value;
+  const targetId = fromButton || (typeof picked === 'string' ? picked : invoker?.id);
+  if (!targetId) return;
   const now = Math.floor(Date.now() / 1000);
   await rememberInvoker(env, interaction, now);
-  const season = await seasonSummary(env.DB, userId, now);
+  if (targetId !== invoker?.id && !(await isLeaderboardOptIn(env.DB, targetId))) {
+    await editInteractionReply(interaction.application_id, interaction.token, 'That member keeps their pass to themselves.');
+    return;
+  }
+  const season = await seasonSummary(env.DB, targetId, now);
   const pages = pageCount(season.pass.levels.length);
   const p = clampPage(page ?? homePage(season.pass), season.pass.levels.length);
-  const name = interaction.member?.nick ?? interaction.member?.user?.global_name ?? interaction.member?.user?.username ?? 'Member';
+  const name = await passName(env, interaction, targetId);
   const png = await passCardPng({ name, season: season.label, progress: season.pass, held: season.held }, p);
   const ok = await editInteractionReplyWithFile(
     interaction.application_id,
     interaction.token,
-    passLines(season.pass, origin)[0],
+    '',
     { name: `pass-${p}.png`, bytes: png, type: 'image/png' },
-    passButtons(p, pages, origin),
+    passButtons(p, pages, targetId, origin),
   );
   if (!ok) await editInteractionReply(interaction.application_id, interaction.token, 'The pass could not be drawn. Try again in a moment.');
   return 'keep';
 }
 
-function passButtons(page: number, pages: number, origin: string): unknown[] {
+// Whose name goes on the picture: the nick or name the interaction
+// carries for them, else the cached one (a button press carries nobody).
+async function passName(env: WorkerEnv, interaction: Interaction, targetId: string): Promise<string> {
+  const invoker = interaction.member?.user;
+  const resolved = interaction.data?.resolved?.users?.[targetId];
+  const who = resolved ?? (targetId === invoker?.id ? invoker : undefined);
+  const cached = await cachedMember(env, targetId);
+  const candidates = [
+    targetId === invoker?.id ? interaction.member?.nick : interaction.data?.resolved?.members?.[targetId]?.nick,
+    who?.global_name,
+    who?.username,
+    cached?.username,
+  ].filter((n): n is string => Boolean(n));
+  return candidates.find((n) => cleanText(n) === n.trim()) ?? candidates.map(cleanText).find((n) => n.length > 0) ?? 'Member';
+}
+
+function passButtons(page: number, pages: number, targetId: string, origin: string): unknown[] {
   return [
     {
       type: 1,
       components: [
         ...(pages > 1
           ? [
-              { type: 2, style: 2, label: 'Previous', custom_id: `s:pass:${page - 1}`, disabled: page <= 1 },
-              { type: 2, style: 2, label: `Page ${page} / ${pages}`, custom_id: 's:pass:0', disabled: true },
-              { type: 2, style: 2, label: 'Next', custom_id: `s:pass:${page + 1}`, disabled: page >= pages },
+              { type: 2, style: 2, label: 'Previous', custom_id: `s:pass:${page - 1}:${targetId}`, disabled: page <= 1 },
+              { type: 2, style: 2, label: `Page ${page} / ${pages}`, custom_id: `s:pass:0:${targetId}`, disabled: true },
+              { type: 2, style: 2, label: 'Next', custom_id: `s:pass:${page + 1}:${targetId}`, disabled: page >= pages },
             ]
           : []),
         { type: 2, style: 1, label: 'My season', custom_id: 's:me', emoji: { name: '📅' } },

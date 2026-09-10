@@ -372,12 +372,14 @@ export async function memberCardPng(face: CardFace, back: boolean, source: strin
 }
 
 // What the card says, built from the same numbers the web card uses.
-export function cardFigures(stats: MemberStats, messages: number, minecraftMinutes: number): { label: string; value: string }[] {
+export function cardFigures(stats: MemberStats, xp: number, messages: number, minecraftMinutes: number): { label: string; value: string }[] {
   return [
     { label: 'Events', value: String(stats.attended) },
     { label: 'Wins', value: String(stats.wins) },
-    { label: 'Messages', value: String(messages) },
-    { label: 'Minecraft', value: minecraftMinutes > 0 ? voiceLabel(minecraftMinutes) : '-' },
+    { label: 'XP', value: String(xp) },
+    // Five columns leave 140 px for a label; MESSAGES and MINECRAFT don't fit.
+    { label: 'Chat', value: String(messages) },
+    { label: 'MC', value: minecraftMinutes > 0 ? voiceLabel(minecraftMinutes) : '-' },
   ];
 }
 
@@ -427,7 +429,7 @@ export async function cardFace(
     honour: entry?.honour ?? null,
     memberSince: stats.member_since,
     avatar: await fetchAvatar(who.discordId, who.avatarHash),
-    figures: lifetime ? cardFigures(stats, lifetime.messages, lifetime.minecraft_minutes) : [],
+    figures: lifetime ? cardFigures(stats, lifetime.xp, lifetime.messages, lifetime.minecraft_minutes) : [],
     record: lifetime ? cardRecord(stats, lifetime.voice_minutes) : [],
   };
 }

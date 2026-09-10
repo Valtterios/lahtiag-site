@@ -609,9 +609,13 @@ post, **Post to Discord** under the post sends it again.
   stays with the member even if a tick is removed or the line is moved
   later; a level someone has reached cannot be removed, only edited.
   The Reached by column is the figure for the season report.
-- **On the member's side.** `/pass` (or `/season`) in Discord shows
-  their XP, their level, and how much is missing to the next one with
-  its reward; the membership page has the whole track under Pass.
+- **On the member's side.** `/pass` in Discord posts the pass as a
+  picture for everyone to see, like `/profile`: the XP, the level, the
+  rungs with their rewards and sponsors, five to a page with buttons
+  to turn them; `/pass user:` posts someone else's, unless they are
+  hidden from the leaderboard. `/season` is the private text version,
+  and the membership page has the whole track under Pass. The
+  membership card carries the all-time XP, every season together.
 - **The participant role.** The pass's first reward is a Discord role.
   Make it on the server, pick it under Discord roles on the register
   page (register access), and paste its id on the level that gives it.
