@@ -74,7 +74,7 @@ import { seasonSummary, seasonLines } from '../../lib/season';
 import { passCardPng, homePage, pageCount, clampPage } from '../../lib/pass-card';
 import { xpGuideLines } from '../../lib/xp-guide';
 import { listClaimableKinds, createClaim, decideClaim, claimLine, claimDecisionDm, CLAIM_NOTE_MAX } from '../../lib/claims';
-import { getTickKind, kindWorth } from '../../lib/ticks';
+import { getTickKind, kindWorth, listTickKinds } from '../../lib/ticks';
 import { xpStandings, leaderboardEmbed } from '../../lib/xp';
 import { NO_MENTIONS } from '../../lib/discord';
 
