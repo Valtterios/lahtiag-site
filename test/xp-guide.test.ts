@@ -22,15 +22,21 @@ describe('the XP guide', () => {
       '• **Brought gear** · 30 XP, every one counts\n-# A controller, a cable, a screen.',
     ]);
     expect(waysLines([])).toEqual(['The board has not put any XP on the list yet.']);
+    // A kind already held drops out of the how-to.
+    const held = { kind_id: 1, kind: 'Helped at an event', event: null, given_at: NOW, xp: 100, season_cap: 1, period: 'season' as const };
+    expect(waysLines([kind({}), kind({ id: 2, name: 'Brought gear', xp: 30, season_cap: 0, claimable: false })], [held])).toEqual(['• **Brought gear** · 30 XP, every one counts']);
+    expect(waysLines([kind({})], [held])[0]).toContain('every kind on the list');
   });
 
-  it('lists what was collected, over-cap ticks marked', () => {
+  it('lists what was collected by kind, with the terms and the over-cap count', () => {
     const t = { kind_id: 1, kind: 'Helped at an event', event: null as string | null, xp: 100, season_cap: 1, period: 'season' as const };
     expect(collectedLines([])).toEqual(['Nothing yet. The first tick starts it.']);
-    expect(collectedLines([{ ...t, given_at: NOW, event: 'Autumn LAN' }, { ...t, given_at: NOW + 60 }])).toEqual([
-      '✅ Helped at an event (Autumn LAN) · **100 XP** · 7 Sept 2026',
-      '▫️ Helped at an event · over the cap · 7 Sept 2026',
+    expect(collectedLines([{ ...t, given_at: NOW, event: 'Autumn LAN' }, { ...t, given_at: NOW + 60 }], [kind({})])).toEqual([
+      '✅ **Helped at an event** · **100 XP** from 1 (+1 over the cap) · 100 XP, up to 1 per season · Autumn LAN',
     ]);
+    const chat = { kind_id: 2, kind: 'Chatted', event: null, xp: 5, season_cap: 0, period: 'season' as const };
+    expect(collectedLines([{ ...chat, given_at: NOW }, { ...chat, given_at: NOW + 60 }])).toEqual(['✅ **Chatted** · **10 XP** from 2 · 5 XP, every one counts · 7 Sept 2026']);
+    expect(collectedLines([{ ...t, given_at: NOW }])).toEqual(['✅ **Helped at an event** · **100 XP** · 100 XP, up to 1 per season · 7 Sept 2026']);
   });
 
   it('puts it together', () => {
