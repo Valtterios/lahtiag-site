@@ -234,7 +234,7 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   }
 
   // /season: the person's own season so far, privately, with where they
-  // stand on the pass. A listing, so it stays.
+  // stand on the pass. Clears itself like the other private answers.
   if (interaction.type === 2 && interaction.data?.name === 'season') {
     locals.cfContext.waitUntil(fleeting(handleSeason(env, interaction, url.origin)));
     return json({ type: 5, data: { flags: 64 } });
@@ -437,8 +437,8 @@ async function handleSeason(env: WorkerEnv, interaction: Interaction, origin: st
   const now = Math.floor(Date.now() / 1000);
   await rememberInvoker(env, interaction, now);
   const [summary, claimable] = await Promise.all([seasonSummary(env.DB, userId, now), listClaimableKinds(env.DB)]);
+  // A glance, like the other private answers: it clears itself.
   await editInteractionReply(interaction.application_id, interaction.token, seasonLines(summary, origin), seasonButtons(origin, claimable.length > 0, false), [], undefined, SUPPRESS_EMBEDS);
-  return 'keep';
 }
 
 async function handleLeaderboard(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
@@ -501,7 +501,7 @@ async function handlePassCard(env: WorkerEnv, interaction: Interaction, origin: 
 }
 
 // /xp and the "How to earn XP" button: the ways, and the caller's own
-// ticks so far, privately. A listing, so it stays.
+// ticks so far, privately. A glance, so it clears itself.
 async function handleXpGuide(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
   const userId = interaction.member?.user?.id;
   if (!userId) return;
@@ -509,7 +509,6 @@ async function handleXpGuide(env: WorkerEnv, interaction: Interaction, origin: s
   await rememberInvoker(env, interaction, now);
   const [summary, kinds] = await Promise.all([seasonSummary(env.DB, userId, now), listTickKinds(env.DB)]);
   await editInteractionReply(interaction.application_id, interaction.token, xpGuideLines(kinds, summary), seasonButtons(origin, kinds.some((k) => k.claimable), true, false), [], undefined, SUPPRESS_EMBEDS);
-  return 'keep';
 }
 
 // Whose name goes on the picture: the nick or name the interaction
