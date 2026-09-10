@@ -53,9 +53,9 @@ describe('the XP leaderboard', () => {
 
     const standings = await xpStandings(env.DB, NOW);
     expect(standings).toEqual([
-      { discord_id: IDS[0], username: 'Aino', handle: null, xp: 130, hidden: false, rank: 1 },
-      { discord_id: IDS[1], username: null, handle: null, xp: 130, hidden: false, rank: 1 },
-      { discord_id: IDS[2], username: 'Cecilia', handle: null, xp: 100, hidden: true, rank: 3 },
+      { discord_id: IDS[0], username: 'Aino', avatar_hash: null, handle: null, xp: 130, hidden: false, rank: 1 },
+      { discord_id: IDS[1], username: null, avatar_hash: null, handle: null, xp: 130, hidden: false, rank: 1 },
+      { discord_id: IDS[2], username: 'Cecilia', avatar_hash: null, handle: null, xp: 100, hidden: true, rank: 3 },
     ]);
     // The name in the table: the cached Discord name, else the register's handle, else a stub.
     expect(shownName(standings[0])).toBe('Aino');

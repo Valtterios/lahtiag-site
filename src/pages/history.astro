@@ -5,6 +5,9 @@ import Base from '../layouts/Base.astro';
 import { listResults, leaderboard, listPhotoAlbums, listPastEvents, coverVersions, type ResultRow, type EventWithCounts } from '../lib/db';
 import { avatarUrl } from '../lib/discord';
 import { formatHelsinki, formatHelsinkiRange } from '../lib/time';
+import { xpStandings, shownName, type Standing } from '../lib/xp';
+import { listPassLevels, passProgress } from '../lib/pass';
+import { seasonLabel, seasonStartYear } from '../lib/activity';
 
 // This file takes the /history path over from the generic [id].astro: the
 // Markdown is only the intro; the page itself is the archive. Every decided
@@ -20,12 +23,20 @@ const { Content } = await render(entry);
 const now = Math.floor(Date.now() / 1000);
 let results: ResultRow[] = [];
 let board: Awaited<ReturnType<typeof leaderboard>> = { events: [], wins: [] };
+// The battle pass: this season's XP, the ten highest of those not hidden,
+// each with the level their XP reaches (src/lib/xp.ts, src/lib/pass.ts).
+let xp: (Standing & { level: string | null })[] = [];
 let past: EventWithCounts[] = [];
 let covers = new Map<number, number>();
 const albums = new Map<number, Awaited<ReturnType<typeof listPhotoAlbums>>[number]>();
 try {
   results = await listResults(env.DB);
   board = await leaderboard(env.DB, now);
+  const levels = await listPassLevels(env.DB, seasonStartYear(now));
+  xp = (await xpStandings(env.DB, now))
+    .filter((s) => !s.hidden)
+    .slice(0, 10)
+    .map((s) => ({ ...s, level: passProgress(s.xp, levels).current?.name ?? null }));
   past = await listPastEvents(env.DB, now, 100);
   covers = await coverVersions(env.DB, past.map((e) => e.id));
   for (const a of await listPhotoAlbums(env.DB, 200)) albums.set(a.event_id, a);
@@ -65,11 +76,21 @@ const champions = new Map(results.map((r) => [r.event_id, r.champion_name]));
       </>
     )}
 
-    {(board.events.length > 0 || board.wins.length > 0) && (
+    {(board.events.length > 0 || board.wins.length > 0 || xp.length > 0) && (
       <>
         <h2>Leaderboard</h2>
         <p class="event-meta">Every member is on it; hide yourself on your membership page.</p>
         <div class="leaderboard">
+          {xp.length > 0 && (
+            <div>
+              <h3>Battle pass {seasonLabel(now)}</h3>
+              <ol>
+                {xp.map((r) => (
+                  <li><img src={avatarUrl(r.discord_id, r.avatar_hash)} alt="" width="24" height="24" loading="lazy" /> {shownName(r)} <span class="event-meta">{r.xp} XP{r.level ? ` · ${r.level}` : ''}</span></li>
+                ))}
+              </ol>
+            </div>
+          )}
           {board.events.length > 0 && (
             <div>
               <h3>Most events</h3>

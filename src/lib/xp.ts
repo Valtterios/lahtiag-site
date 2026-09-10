@@ -11,6 +11,7 @@ import { seasonLabel, seasonStartYear } from './activity';
 export interface Standing {
   discord_id: string;
   username: string | null; // the cached Discord name, when the member has used the site or the bot
+  avatar_hash: string | null; // with it, for the history page's list
   handle: string | null; // the Discord name on their register entry, the fallback
   xp: number;
   hidden: boolean; // opted out of leaderboards
@@ -48,16 +49,16 @@ export async function xpStandings(db: D1Database, now: number): Promise<Standing
     );
   }
   const ids = [...totals.keys()];
-  const names = new Map<string, { username: string; hidden: boolean }>();
+  const names = new Map<string, { username: string; avatar_hash: string | null; hidden: boolean }>();
   if (ids.length > 0) {
     const { results: members } = await db
-      .prepare(`SELECT discord_id, username, leaderboard_hidden FROM members WHERE discord_id IN (${ids.map(() => '?').join(',')})`)
+      .prepare(`SELECT discord_id, username, avatar_hash, leaderboard_hidden FROM members WHERE discord_id IN (${ids.map(() => '?').join(',')})`)
       .bind(...ids)
-      .all<{ discord_id: string; username: string; leaderboard_hidden: number }>();
-    for (const m of members) names.set(m.discord_id, { username: m.username, hidden: m.leaderboard_hidden === 1 });
+      .all<{ discord_id: string; username: string; avatar_hash: string | null; leaderboard_hidden: number }>();
+    for (const m of members) names.set(m.discord_id, { username: m.username, avatar_hash: m.avatar_hash, hidden: m.leaderboard_hidden === 1 });
   }
   const rows = ids
-    .map((id) => ({ discord_id: id, username: names.get(id)?.username ?? null, handle: handles.get(id) ?? null, xp: totals.get(id) ?? 0, hidden: names.get(id)?.hidden ?? false, rank: 0 }))
+    .map((id) => ({ discord_id: id, username: names.get(id)?.username ?? null, avatar_hash: names.get(id)?.avatar_hash ?? null, handle: handles.get(id) ?? null, xp: totals.get(id) ?? 0, hidden: names.get(id)?.hidden ?? false, rank: 0 }))
     .filter((r) => r.xp > 0)
     // Ties: by name, the ones with a cached name first.
     .sort((a, b) => b.xp - a.xp || Number(a.username === null) - Number(b.username === null) || (a.username ?? '').localeCompare(b.username ?? ''));

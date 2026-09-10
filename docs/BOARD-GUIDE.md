@@ -343,7 +343,7 @@ at the door.*
 
 ![The Hall of Fame](images/site/history-hall.png)
 
-*The history page: the Hall of Fame with the final bracket picture, and the leaderboard.*
+*The history page: the Hall of Fame with the final bracket picture, and the leaderboard, which has the season's battle pass XP beside events and wins.*
 
 - **An event with no date yet.** Tick *Date to be announced* and the
   site stops naming a day: the events page, the front page and the
