@@ -55,6 +55,8 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
     season_cap: form.get('season_cap'),
     period: form.get('period') ?? 'season',
     claimable: form.get('claimable'),
+    auto_source: form.get('auto_source'),
+    auto_step: form.get('auto_step'),
   });
 
   try {

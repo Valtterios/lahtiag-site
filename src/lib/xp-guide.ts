@@ -6,20 +6,24 @@
 // Minecraft are counted already but pay nothing until the board says
 // what they are worth, and that is said plainly rather than left out.
 import { applyCaps, TICK_PERIOD_LABELS, type SeasonTick, type TickKind } from './ticks';
+import { countLabel } from './auto-ticks';
 import type { SeasonSummary } from './season';
 import { formatHelsinkiDate } from './time';
 import { voiceLabel } from './activity';
 
-// "100 XP, up to 1 per season" / "30 XP, every one counts".
-export function kindTerms(kind: Pick<TickKind, 'xp' | 'season_cap' | 'period'>): string {
+// "100 XP, up to 1 per season" / "30 XP, every one counts" / "20 XP per
+// 1 h on Minecraft, up to 10 per week".
+export function kindTerms(kind: Pick<TickKind, 'xp' | 'season_cap' | 'period' | 'auto_source' | 'auto_step'>): string {
   const cap = kind.season_cap === 0 ? 'every one counts' : `up to ${kind.season_cap} ${TICK_PERIOD_LABELS[kind.period]}`;
+  if (kind.auto_source === 'events') return `${kind.xp} XP per event attended, ${cap}`;
+  if (kind.auto_source) return `${kind.xp} XP per ${countLabel(kind.auto_source, kind.auto_step)}, ${cap}`;
   return `${kind.xp} XP, ${cap}`;
 }
 
 export function waysLines(kinds: TickKind[]): string[] {
   const live = kinds.filter((k) => k.retired_at === null && k.xp > 0);
   if (live.length === 0) return ['The board has not put any XP on the list yet.'];
-  return live.map((k) => `• **${k.name}** — ${kindTerms(k)}${k.claimable ? ' · you can claim it' : ''}${k.description ? `\n  ${k.description}` : ''}`);
+  return live.map((k) => `• **${k.name}** — ${kindTerms(k)}${k.auto_source ? ' · the bot gives it' : k.claimable ? ' · you can claim it' : ''}${k.description ? `\n  ${k.description}` : ''}`);
 }
 
 // A member's ticks this season, oldest first, with what each paid.
@@ -36,7 +40,7 @@ export function xpGuideLines(kinds: TickKind[], summary: SeasonSummary, origin: 
   return [
     `**How to earn XP · season ${summary.label}**`,
     ...waysLines(kinds),
-    `📅 Events (${summary.events} attended), 💬 Discord (${summary.messages} messages, ${voiceLabel(summary.voice_minutes)} in voice) and ⛏️ Minecraft are counted, and pay XP once the board has set what they are worth.`,
+    `📅 Events attended: ${summary.events} · 💬 Discord: ${summary.messages} messages, ${voiceLabel(summary.voice_minutes)} in voice${kinds.some((k) => k.retired_at === null && k.auto_source) ? '' : ' · counted, and paying XP once the board has set what they are worth'}.`,
     '',
     `**Collected so far: ${summary.tick_xp} XP**`,
     ...collectedLines(summary.ticks),

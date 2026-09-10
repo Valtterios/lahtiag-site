@@ -609,6 +609,16 @@ post, **Post to Discord** under the post sends it again.
   stays with the member even if a tick is removed or the line is moved
   later; a level someone has reached cannot be removed, only edited.
   The Reached by column is the figure for the season report.
+- **Ticks the bot gives.** A kind can be Given by the bot instead of the
+  board: pick Minecraft play time, Time in voice, Discord messages or
+  Events attended, and for the first three say in Per how many minutes
+  or messages one tick stands for. Within the hour the bot gives each
+  member one tick per step their season total has crossed (events pay
+  one tick each), tells the general channel who got what, and the
+  pass levels follow. The cap works as for any tick; a tick over the
+  cap is given quietly. A first set worth trying: Minecraft 60 min at
+  20 XP up to 10 per week, voice 60 min at 10 XP, 50 messages at 5 XP
+  up to 20 per week, and Attended an event at 50 XP.
 - **How XP is earned.** `/xp` in Discord, and the How to earn XP button
   under `/pass` and `/season`, list the ticks with what each pays and
   how many count, then the member's own ticks this season with what

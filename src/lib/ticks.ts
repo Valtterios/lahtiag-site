@@ -17,6 +17,14 @@ export const TICK_PERIODS = ['season', 'month', 'week'] as const;
 export type TickPeriod = (typeof TICK_PERIODS)[number];
 export const TICK_PERIOD_LABELS: Record<TickPeriod, string> = { season: 'per season', month: 'per month', week: 'per week' };
 
+// What the bot can pay a tick from by itself (src/lib/auto-ticks.ts):
+// so many minutes on the Minecraft servers or in voice, so many
+// messages, or each event attended.
+export const AUTO_SOURCES = ['minecraft', 'voice', 'messages', 'events'] as const;
+export type AutoSource = (typeof AUTO_SOURCES)[number];
+export const AUTO_SOURCE_LABELS: Record<AutoSource, string> = { minecraft: 'Minecraft play time', voice: 'Time in voice', messages: 'Discord messages', events: 'Events attended' };
+export const AUTO_UNITS: Record<AutoSource, string> = { minecraft: 'min', voice: 'min', messages: 'messages', events: 'event' };
+
 export interface TickKind {
   id: number;
   name: string;
@@ -26,6 +34,8 @@ export interface TickKind {
   season_cap: number; // how many count per member and period; 0 = every one
   period: TickPeriod; // the period that cap counts in
   claimable: boolean; // members may ask for it themselves (src/lib/claims.ts)
+  auto_source: AutoSource | null; // given by the bot from this count, or by the board when null
+  auto_step: number; // the count one tick stands for (minutes, messages); moot for events
   retired_at: number | null;
   given: number; // ticks ever given under it
 }
@@ -57,6 +67,8 @@ export interface SeasonTick {
 }
 
 export interface TickKindInput {
+  auto_source?: unknown;
+  auto_step?: unknown;
   name: unknown;
   description: unknown;
   xp: unknown;
@@ -72,7 +84,7 @@ export interface TickableMember {
   discord_id: string | null;
 }
 
-export const TICK_LIMITS = { name: 60, description: 160, note: 200, xp: 10_000, season_cap: 100 } as const;
+export const TICK_LIMITS = { name: 60, description: 160, note: 200, xp: 10_000, season_cap: 100, auto_step: 100_000 } as const;
 
 function clean(value: unknown, max: number): string {
   return String(value ?? '')
@@ -83,7 +95,7 @@ function clean(value: unknown, max: number): string {
 
 // --- the kinds ---------------------------------------------------------------
 
-const KIND_COLUMNS = `k.id, k.name, k.description, k.sort, k.xp, k.season_cap, k.period, (k.claimable = 1) AS claimable, k.retired_at,
+const KIND_COLUMNS = `k.id, k.name, k.description, k.sort, k.xp, k.season_cap, k.period, (k.claimable = 1) AS claimable, k.auto_source, k.auto_step, k.retired_at,
   (SELECT COUNT(*) FROM ticks t WHERE t.kind_id = k.id) AS given`;
 
 // D1 hands booleans back as 0/1.
@@ -111,7 +123,7 @@ function whole(raw: unknown, max: number): number {
   return n;
 }
 
-function validKind(input: TickKindInput): { name: string; description: string | null; xp: number; season_cap: number; period: TickPeriod; claimable: boolean } {
+function validKind(input: TickKindInput): { name: string; description: string | null; xp: number; season_cap: number; period: TickPeriod; claimable: boolean; auto_source: AutoSource | null; auto_step: number } {
   const name = clean(input.name, TICK_LIMITS.name);
   const description = clean(input.description, TICK_LIMITS.description);
   if (name.length < 2 || name.length > TICK_LIMITS.name) throw new RuleError('bad_input', 'A tick needs a name of 2 to 60 characters.');
@@ -119,13 +131,22 @@ function validKind(input: TickKindInput): { name: string; description: string | 
   const periodRaw = String(input.period ?? 'season');
   const period = TICK_PERIODS.find((p) => p === periodRaw);
   if (!period) throw new RuleError('bad_input', 'The period is per season, per month or per week.');
+  const sourceRaw = String(input.auto_source ?? '').trim();
+  const auto_source = sourceRaw === '' ? null : AUTO_SOURCES.find((s) => s === sourceRaw);
+  if (auto_source === undefined) throw new RuleError('bad_input', 'The source is Minecraft, voice, messages, events, or the board.');
+  // Events pay one tick each; the others need to know how much counts as one.
+  const auto_step = auto_source === null ? 0 : auto_source === 'events' ? 1 : whole(input.auto_step, TICK_LIMITS.auto_step);
+  if (auto_source !== null && auto_step < 1) throw new RuleError('bad_input', 'Say how many minutes or messages one tick stands for.');
   return {
     name,
     description: description === '' ? null : description,
     xp: whole(input.xp, TICK_LIMITS.xp),
     season_cap: whole(input.season_cap, TICK_LIMITS.season_cap),
     period,
-    claimable: input.claimable === true || input.claimable === 'on' || input.claimable === '1',
+    // A tick the bot gives is not one to ask for.
+    claimable: auto_source === null && (input.claimable === true || input.claimable === 'on' || input.claimable === '1'),
+    auto_source,
+    auto_step,
   };
 }
 
@@ -139,12 +160,12 @@ async function nameTaken(db: D1Database, name: string, exceptId: number | null):
 }
 
 export async function addTickKind(db: D1Database, input: TickKindInput, by: string, now: number): Promise<TickKind> {
-  const { name, description, xp, season_cap, period, claimable } = validKind(input);
+  const { name, description, xp, season_cap, period, claimable, auto_source, auto_step } = validKind(input);
   if (await nameTaken(db, name, null)) throw new RuleError('duplicate', `There is already a tick called ${name}.`);
   const last = await db.prepare('SELECT COALESCE(MAX(sort), 0) AS sort FROM tick_kinds').first<{ sort: number }>();
   const result = await db
-    .prepare('INSERT INTO tick_kinds (name, description, sort, xp, season_cap, period, claimable, created_by, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)')
-    .bind(name, description, (last?.sort ?? 0) + 1, xp, season_cap, period, claimable ? 1 : 0, by, now)
+    .prepare('INSERT INTO tick_kinds (name, description, sort, xp, season_cap, period, claimable, auto_source, auto_step, created_by, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)')
+    .bind(name, description, (last?.sort ?? 0) + 1, xp, season_cap, period, claimable ? 1 : 0, auto_source, auto_step, by, now)
     .run();
   const id = Number(result.meta.last_row_id);
   return (await getTickKind(db, id))!;
@@ -155,12 +176,12 @@ export async function addTickKind(db: D1Database, input: TickKindInput, by: stri
 // passes the current season), while other seasons keep what they were
 // paid.
 export async function saveTickKind(db: D1Database, id: number, input: TickKindInput, applySeason: number | null = null): Promise<TickKind> {
-  const { name, description, xp, season_cap, period, claimable } = validKind(input);
+  const { name, description, xp, season_cap, period, claimable, auto_source, auto_step } = validKind(input);
   if (!(await getTickKind(db, id))) throw new RuleError('missing', 'No such tick.');
   if (await nameTaken(db, name, id)) throw new RuleError('duplicate', `There is already a tick called ${name}.`);
   await db
-    .prepare('UPDATE tick_kinds SET name = ?2, description = ?3, xp = ?4, season_cap = ?5, period = ?6, claimable = ?7 WHERE id = ?1')
-    .bind(id, name, description, xp, season_cap, period, claimable ? 1 : 0)
+    .prepare('UPDATE tick_kinds SET name = ?2, description = ?3, xp = ?4, season_cap = ?5, period = ?6, claimable = ?7, auto_source = ?8, auto_step = ?9 WHERE id = ?1')
+    .bind(id, name, description, xp, season_cap, period, claimable ? 1 : 0, auto_source, auto_step)
     .run();
   if (applySeason !== null) {
     const { from, to } = seasonRange(applySeason);

@@ -6,7 +6,7 @@ import { requireAnyBoard } from '../../lib/board-access';
 import { listPastEvents, listUpcomingEvents } from '../../lib/db';
 import { activityChannels, channelSeason, seasonName, seasonStartYear, voiceLabel } from '../../lib/activity';
 import { availableSeasons, pickSeason, seasonTotals, serverStats, weeklyStats, weekLabel } from '../../lib/season-stats';
-import { kindWorth, listTickKinds, listTickableMembers, listTicks, markCounted, TICK_LIMITS, TICK_PERIODS, TICK_PERIOD_LABELS } from '../../lib/ticks';
+import { kindWorth, listTickKinds, listTickableMembers, listTicks, markCounted, AUTO_SOURCES, AUTO_SOURCE_LABELS, TICK_LIMITS, TICK_PERIODS, TICK_PERIOD_LABELS } from '../../lib/ticks';
 import { listPendingClaims } from '../../lib/claims';
 import { listPassLevels, PASS_LIMITS } from '../../lib/pass';
 import { formatHelsinkiDate } from '../../lib/time';
@@ -233,10 +233,12 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
       <section class="numbers season-section" id="ticks">
         <h2 class="section-label">Ticks</h2>
         <p class="queue-intro">
-          What the board notes by hand for the battle pass, because nothing can count it: helping at an event, and whatever
-          the board adds to the list below. A member sees their own ticks under <code>/season</code> and on the membership page,
-          and can ask for the kinds marked claimable with <code>/claim</code>. Ticks for an event can also be given from the
-          event's Manage participants.
+          What pays XP on the battle pass. Some the board notes by hand, because nothing can count it: helping at an event, and whatever
+          the board adds to the list below. Some the bot gives by itself from what the site counts: a kind with a source and a step,
+          such as Minecraft play time at 60 minutes, pays one tick per hour of the season, and events attended pay one tick each;
+          within the hour the general channel is told who got what. A member sees their own ticks under <code>/xp</code> and on the
+          membership page, and can ask for the kinds marked claimable with <code>/claim</code>. Ticks for an event can also be given
+          from the event's Manage participants.
         </p>
         {current && activeKinds.length > 0 && members.length > 0 && (
           <form method="post" action="/board/ticks" class="participant-row tick-form">
@@ -298,7 +300,8 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
 
         <h3 class="section-label">The list of ticks</h3>
         <p class="queue-intro">
-          Add a kind here and it is on the give list at once. XP is what one tick is worth; the cap is how many of them count per member
+          Add a kind here and it is on the give list at once. Given by says who gives it: the board by hand, or the bot from a count, one tick
+          per so many minutes or messages (Per), or one per event attended. XP is what one tick is worth; the cap is how many of them count per member
           in a season, a month or a week, judged by when the tick was given; a cap of 0 means every tick counts and the period is moot. Ticks over the cap are noted, not paid,
           and show in brackets above. Changing the XP changes every tick of this season; past seasons keep what they were paid.
           Retiring a kind keeps what was given under it.
@@ -319,7 +322,14 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
                     {TICK_PERIODS.map((p) => <option value={p} selected={k.period === p}>{TICK_PERIOD_LABELS[p]}</option>)}
                   </select>
                 </label>
-                <label class="check"><input type="checkbox" name="claimable" checked={k.claimable} /> <span>members can claim it</span></label>
+                <label>Given by
+                  <select name="auto_source">
+                    <option value="" selected={k.auto_source === null}>the board</option>
+                    {AUTO_SOURCES.map((s) => <option value={s} selected={k.auto_source === s}>{AUTO_SOURCE_LABELS[s]}</option>)}
+                  </select>
+                </label>
+                <label>Per <input name="auto_step" type="number" min="0" max={TICK_LIMITS.auto_step} step="1" value={k.auto_step || ''} placeholder="60" class="input-short" title="Minutes or messages one tick stands for; events pay one each" /></label>
+                <label class="check"><input type="checkbox" name="claimable" checked={k.claimable} disabled={k.auto_source !== null} /> <span>members can claim it</span></label>
                 <span class="queue-meta">{k.given} given{k.retired_at !== null ? ' · retired' : ''}</span>
                 <button class="btn btn-ghost btn-sm" name="action" value="kind_save" type="submit">Save</button>
                 {k.retired_at === null ? (
@@ -344,6 +354,13 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? Astro.url.searchParams.g
                   {TICK_PERIODS.map((p) => <option value={p}>{TICK_PERIOD_LABELS[p]}</option>)}
                 </select>
               </label>
+              <label>Given by
+                <select name="auto_source">
+                  <option value="" selected>the board</option>
+                  {AUTO_SOURCES.map((s) => <option value={s}>{AUTO_SOURCE_LABELS[s]}</option>)}
+                </select>
+              </label>
+              <label>Per <input name="auto_step" type="number" min="0" max={TICK_LIMITS.auto_step} step="1" placeholder="60" class="input-short" title="Minutes or messages one tick stands for; events pay one each" /></label>
               <label class="check"><input type="checkbox" name="claimable" /> <span>members can claim it</span></label>
               <button class="btn btn-primary btn-sm" type="submit">Add to the list</button>
             </form>

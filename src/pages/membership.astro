@@ -350,7 +350,7 @@ const MESSAGES: Record<FieldError, string> = {
                       ))}
                     </ul>
                   )}
-                  <span class="member-meta">Events, Discord and Minecraft are counted and pay XP once the board has set what they are worth.</span>
+                  {!ways.some((k) => k.auto_source) && <span class="member-meta">Events, Discord and Minecraft are counted and pay XP once the board has set what they are worth.</span>}
                 </dd>
               </div>
               {season.claims_pending > 0 && (
