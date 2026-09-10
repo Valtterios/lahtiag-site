@@ -22,7 +22,8 @@ const W = 900;
 const HEAD = 150; // the blue band
 const BAR_TOP = 190; // the progress bar
 const ROWS_TOP = 250;
-const ROW_H = 78;
+const ROW_H = 78; // name and reward
+const ROW_SPONSORED = 106; // and a line for whose name is on the level
 const ROW_GAP = 12;
 const FOOT = 60;
 const X0 = 40;
@@ -56,10 +57,17 @@ export function pageLevels(levels: PassLevel[], page: number): PassLevel[] {
   return levels.slice((p - 1) * PAGE_SIZE, p * PAGE_SIZE);
 }
 
+// A sponsored level has a line more: the sponsor's name is what the
+// sponsor gets for the prize, so it is never squeezed or cut.
+export function rowHeight(level: Pick<PassLevel, 'sponsor'>): number {
+  return level.sponsor ? ROW_SPONSORED : ROW_H;
+}
+
 // The picture's height follows the rungs on the page, so a short season
 // gets a short card rather than empty rows.
-export function cardHeight(rows: number): number {
-  return ROWS_TOP + Math.max(1, rows) * (ROW_H + ROW_GAP) - ROW_GAP + FOOT;
+export function cardHeight(rows: Pick<PassLevel, 'sponsor'>[]): number {
+  const body = rows.length === 0 ? ROW_H : rows.reduce((h, l) => h + rowHeight(l) + ROW_GAP, 0) - ROW_GAP;
+  return ROWS_TOP + body + FOOT;
 }
 
 // Digits only in the biggest size; the XP figure goes in that when it fits.
@@ -75,7 +83,7 @@ export async function passCardPng(input: PassCardInput, page = homePage(input.pr
   const pages = pageCount(levels.length);
   const p = clampPage(page, levels.length);
   const rows = pageLevels(levels, p);
-  const H = cardHeight(rows.length);
+  const H = cardHeight(rows);
   const c = new Canvas(W, H, BG);
 
   // Header band: the season, the name, the level held; the XP figure on the right.
@@ -105,12 +113,13 @@ export async function passCardPng(input: PassCardInput, page = homePage(input.pr
   }
 
   // The rungs: number or tick in a box, name and reward, the XP line on the right.
-  rows.forEach((l, i) => {
-    const y = ROWS_TOP + i * (ROW_H + ROW_GAP);
+  let y = ROWS_TOP;
+  for (const l of rows) {
+    const h = rowHeight(l);
     const done = l.xp <= progress.xp || input.held.includes(l.id);
     const next = progress.next?.id === l.id;
-    c.rect(X0, y, barW, ROW_H, next ? PALE : WHITE);
-    c.rect(X0, y, 6, ROW_H, done ? YELLOW : next ? BLUE : LIGHT);
+    c.rect(X0, y, barW, h, next ? PALE : WHITE);
+    c.rect(X0, y, 6, h, done ? YELLOW : next ? BLUE : LIGHT);
     // The box: filled for a reached rung, outlined for the rest.
     const bx = X0 + 24;
     const by = y + 17;
@@ -123,21 +132,20 @@ export async function passCardPng(input: PassCardInput, page = homePage(input.pr
       const n = String(l.level);
       c.text(bx + 22 - Canvas.textWidth(n) / 2, by + 5, n, next ? BLUE : GRAY, 's');
     }
-    // Right column: the XP line, and under it whose name is on the level.
-    // The sponsor's name is what a sponsor gets for the prize, so it is
-    // never the part that is cut; the reward on the left gives way first.
+    // Name and reward, the XP line top right, and the sponsor's name on
+    // a line of its own when there is one.
     const tx = bx + 66;
     const ink = done || next ? INK : GRAY;
     const xpText = `${l.xp} XP`;
-    const sponsor = l.sponsor ? Canvas.fit(cleanText(`from ${l.sponsor}`), 440) : '';
-    const rightW = Math.max(Canvas.textWidth(xpText), Canvas.textWidth(sponsor));
+    const xpW = Canvas.textWidth(xpText, 'l');
     const right = W - X0 - 24;
-    const textW = right - rightW - 24 - tx;
+    const textW = right - xpW - 24 - tx;
     c.text(tx, y + 6, Canvas.fit(cleanText(l.name), textW, 'l'), ink, 'l');
-    c.text(tx, y + 46, Canvas.fit(cleanText(l.reward), textW), ink, 's');
-    c.text(right - Canvas.textWidth(xpText), y + 8, xpText, done ? BLUE : ink, 's');
-    if (sponsor) c.text(right - Canvas.textWidth(sponsor), y + 42, sponsor, done || next ? GRAY : LIGHT, 's');
-  });
+    c.text(tx, y + 46, Canvas.fit(cleanText(l.reward), right - tx), ink, 's');
+    c.text(right - xpW, y + 14, xpText, done ? BLUE : ink, 'l');
+    if (l.sponsor) c.text(tx, y + 72, Canvas.fit(cleanText(`from ${l.sponsor}`), right - tx), done || next ? GRAY : LIGHT, 's');
+    y += h + ROW_GAP;
+  }
   if (rows.length === 0) {
     const y = ROWS_TOP;
     c.rect(X0, y, barW, ROW_H, WHITE);

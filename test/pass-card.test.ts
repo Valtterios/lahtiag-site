@@ -21,7 +21,8 @@ describe('paging', () => {
     expect(clampPage(9, 12)).toBe(3);
     expect(clampPage(Number.NaN, 12)).toBe(1);
     expect(pageLevels(many, 3).map((l) => l.level)).toEqual([11, 12]);
-    expect(cardHeight(2)).toBeLessThan(cardHeight(5));
+    expect(cardHeight(many.slice(0, 2))).toBeLessThan(cardHeight(many.slice(0, 5)));
+    expect(cardHeight([level(3)])).toBeGreaterThan(cardHeight([level(1)])); // a sponsored rung has a line more
   });
 });
 
