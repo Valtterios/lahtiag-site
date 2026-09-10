@@ -598,7 +598,7 @@ post, **Post to Discord** under the post sends it again.
   Minecraft name, and the membership page. A member hidden from the
   history page's leaderboard is hidden here too. Until the rules are
   set the XP is the ticks, so post it once there is something on it.
-- **The levels.** The bottom of the season page, Season pass levels, is
+- **The levels.** The bottom of the season page, Battle pass levels, is
   where the pass gets its rungs: an XP line, a name, the reward, the
   sponsor whose name goes on it, and a Discord role id if the level
   gives one. Levels are numbered by XP, lowest first, so adding one in

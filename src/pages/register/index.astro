@@ -509,7 +509,7 @@ const days = (t: number) => Math.floor((now - t) / 86400);
               <p class="queue-meta">
                 The event ping is only what the Publish card starts with: every event can add roles or take one off before it goes out.
                 The champion role goes to the latest tournament's winner or winning team and comes off the previous holders.
-                The participant role is the season pass's first reward; it is given by the pass once the board has set the rules, nothing uses it yet.
+                The participant role is the battle pass's first reward: paste its id on the level that gives it, on the season page.
               </p>
               {rolePlan && !rolePlan.ok && rolePlan.reason === 'intent' && (
                 <p class="warn-tag">

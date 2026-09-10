@@ -90,7 +90,7 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
       case 'level_add': {
         const level = await addPassLevel(env.DB, seasonStartYear(now), levelInput(), access.who, now);
         locals.cfContext.waitUntil(
-          postBoardLine(env.DB, env, `🎫 Season pass level added: **${level.level} · ${level.name}** at ${level.xp} XP, reward ${level.reward}${level.sponsor ? ` from ${level.sponsor}` : ''} (by ${access.who}).`),
+          postBoardLine(env.DB, env, `🎫 Battle pass level added: **${level.level} · ${level.name}** at ${level.xp} XP, reward ${level.reward}${level.sponsor ? ` from ${level.sponsor}` : ''} (by ${access.who}).`),
         );
         return go('ok', 'level_added');
       }

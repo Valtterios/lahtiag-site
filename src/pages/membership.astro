@@ -283,7 +283,7 @@ const MESSAGES: Record<FieldError, string> = {
                 <dd><strong>{season.tick_xp} XP</strong></dd>
               </div>
               <div class="season-pass" id="pass">
-                <dt>Pass</dt>
+                <dt>Battle pass</dt>
                 <dd>
                   {season.pass.levels.length === 0 ? (
                     'The board sets this season\'s levels in the autumn. Your XP counts already.'
@@ -295,10 +295,10 @@ const MESSAGES: Record<FieldError, string> = {
                           ? <span> · {season.pass.to_next} XP to {levelTitle(season.pass.next)}</span>
                           : <span> · every level reached</span>}
                       </p>
-                      <div class="pass-bar" role="progressbar" aria-valuemin="0" aria-valuemax={season.pass.next?.xp ?? season.pass.xp} aria-valuenow={season.pass.xp} aria-label="Season pass progress">
+                      <div class="pass-bar" role="progressbar" aria-valuemin="0" aria-valuemax={season.pass.next?.xp ?? season.pass.xp} aria-valuenow={season.pass.xp} aria-label="Battle pass progress">
                         <span style={`width: ${Math.round(season.pass.fraction * 100)}%`}></span>
                       </div>
-                      <img class="pass-card" src={`/membership/pass.png?page=${homePage(season.pass)}`} alt="Your season pass as Discord shows it" width="900" height="600" loading="lazy" />
+                      <img class="pass-card" src={`/membership/pass.png?page=${homePage(season.pass)}`} alt="Your battle pass as Discord shows it" width="900" height="600" loading="lazy" />
                       {pageCount(season.pass.levels.length) > 1 && (
                         <p class="pass-pages">
                           Pages: {Array.from({ length: pageCount(season.pass.levels.length) }, (_, i) => (

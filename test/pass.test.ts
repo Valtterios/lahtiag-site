@@ -59,7 +59,7 @@ describe('passProgress', () => {
   it('writes the /season lines', () => {
     expect(passLines(passProgress(40, []), 'https://lahtiag.fi')[0]).toContain('has not set this season');
     const lines = passLines(passProgress(175, levels), 'https://lahtiag.fi');
-    expect(lines[0]).toBe('🎫 Season pass: **175 XP** · **Level 1 · Regular**');
+    expect(lines[0]).toBe('🎫 Battle pass: **175 XP** · **Level 1 · Regular**');
     expect(lines[1]).toBe('▰▰▰▰▰▱▱▱▱▱ **75 XP** to Level 2 · Veteran: Hoodie (from SteelSeries)');
     expect(lines[2]).toContain('/membership#pass');
     expect(passLines(passProgress(900, levels), 'x')[1]).toContain('Every level of the season reached');
@@ -69,7 +69,7 @@ describe('passProgress', () => {
   });
 
   it('writes the announcement and the DM', () => {
-    expect(reachedLine('Aino', [levels[0]], YEAR)).toBe('🎫 **Aino** reached **Level 1 · Regular** on the 2026–27 season pass! Reward: Patch.');
+    expect(reachedLine('Aino', [levels[0]], YEAR)).toBe('🎫 **Aino** reached **Level 1 · Regular** on the 2026–27 battle pass! Reward: Patch.');
     const two = reachedLine('Bo *bold*', [levels[1], levels[0]], YEAR);
     expect(two).toContain('**Bo bold** reached **Level 2 · Veteran**');
     expect(two).toContain('• Level 1 · Regular: Patch\n• Level 2 · Veteran: Hoodie from SteelSeries'); // brackets are stripped with the rest of the markdown
@@ -131,7 +131,7 @@ describe('the ledger', () => {
     expect(summary.tick_xp).toBe(100);
     expect(summary.pass.current?.id).toBe(one.id);
     expect(summary.held).toContain(two.id);
-    expect(seasonLines(summary, 'https://lahtiag.fi')).toContain('🎫 Season pass: **100 XP** · **Level 1 · Regular**');
+    expect(seasonLines(summary, 'https://lahtiag.fi')).toContain('🎫 Battle pass: **100 XP** · **Level 1 · Regular**');
     expect(await recordReached(env.DB, NOW + 40)).toEqual([]);
   });
 });

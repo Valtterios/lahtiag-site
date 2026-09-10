@@ -551,7 +551,7 @@ async function handleClaimStart(env: WorkerEnv, interaction: Interaction): Promi
     await reply(CLAIM_ERRORS.not_member);
     return;
   }
-  await reply('🙋 **Claim a tick** for the season pass · step 1 of 3. Which tick?', [
+  await reply('🙋 **Claim a tick** for the battle pass · step 1 of 3. Which tick?', [
     {
       type: 1,
       components: [

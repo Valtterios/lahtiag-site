@@ -167,9 +167,9 @@ export function rewardText(level: Pick<PassLevel, 'reward' | 'sponsor'>): string
 // The pass block of the /season answer.
 export function passLines(progress: PassProgress, origin: string): string[] {
   if (progress.levels.length === 0) {
-    return [`🎫 Season pass: **${progress.xp} XP**. The board has not set this season's levels yet; the XP counts already.`];
+    return [`🎫 Battle pass: **${progress.xp} XP**. The board has not set this season's levels yet; the XP counts already.`];
   }
-  const lines = [`🎫 Season pass: **${progress.xp} XP**${progress.current ? ` · **${levelTitle(progress.current)}**` : ' · no level yet'}`];
+  const lines = [`🎫 Battle pass: **${progress.xp} XP**${progress.current ? ` · **${levelTitle(progress.current)}**` : ' · no level yet'}`];
   if (progress.next) {
     lines.push(`${bar(progress.fraction)} **${progress.to_next} XP** to ${levelTitle(progress.next)}: ${rewardText(progress.next)}`);
   } else {
@@ -238,14 +238,14 @@ function safe(text: string): string {
 export function reachedLine(name: string, levels: PassLevel[], seasonYear: number): string {
   const top = [...levels].sort((a, b) => b.level - a.level)[0];
   const rewards = [...levels].sort((a, b) => a.level - b.level).map((l) => `${levelTitle(l)}: ${safe(rewardText(l))}`);
-  const head = `🎫 **${safe(name)}** reached **${levelTitle(top)}** on the ${seasonName(seasonYear)} season pass!`;
+  const head = `🎫 **${safe(name)}** reached **${levelTitle(top)}** on the ${seasonName(seasonYear)} battle pass!`;
   return levels.length === 1 ? `${head} Reward: ${safe(rewardText(top))}.` : `${head}\n${rewards.map((r) => `• ${r}`).join('\n')}`;
 }
 
 // The private version, for a member who is hidden from leaderboards.
 export function reachedDm(levels: PassLevel[], seasonYear: number, origin: string): string {
   const rewards = [...levels].sort((a, b) => a.level - b.level).map((l) => `• ${levelTitle(l)}: ${rewardText(l)}`);
-  return `🎫 You reached ${levels.length === 1 ? 'a new level' : `${levels.length} new levels`} on the ${seasonName(seasonYear)} season pass.\n${rewards.join('\n')}\nYou are hidden from the leaderboard, so the server was not told. ${origin}/membership#pass`;
+  return `🎫 You reached ${levels.length === 1 ? 'a new level' : `${levels.length} new levels`} on the ${seasonName(seasonYear)} battle pass.\n${rewards.join('\n')}\nYou are hidden from the leaderboard, so the server was not told. ${origin}/membership#pass`;
 }
 
 export interface PassEnv {

@@ -70,11 +70,19 @@ export function cardHeight(rows: Pick<PassLevel, 'sponsor'>[]): number {
   return ROWS_TOP + body + FOOT;
 }
 
-// Digits only in the biggest size; the XP figure goes in that when it fits.
+// The XP figure, digits in the biggest size when they fit, with the
+// unit beside them on the same baseline; right-aligned to x.
 function xpFigure(c: Canvas, x: number, y: number, xp: number): void {
   const text = String(xp);
-  if (Canvas.textWidth(text, 'xl') <= 260) c.text(x - Canvas.textWidth(text, 'xl'), y, text, WHITE, 'xl');
-  else c.text(x - Canvas.textWidth(text, 'l'), y + 30, text, WHITE, 'l');
+  const unitW = Canvas.textWidth('XP', 'l');
+  const big = Canvas.textWidth(text, 'xl') + 14 + unitW <= 330;
+  const size = big ? 'xl' : 'l';
+  const digitsW = Canvas.textWidth(text, size);
+  // Each face's bitmap has its baseline a fixed way down; these offsets
+  // put the unit's baseline on the digits'.
+  const unitY = big ? y + 38 : y;
+  c.text(x - unitW, unitY, 'XP', 0xffeba4, 'l');
+  c.text(x - unitW - 14 - digitsW, big ? y : unitY, text, WHITE, size);
 }
 
 export async function passCardPng(input: PassCardInput, page = homePage(input.progress)): Promise<Uint8Array> {
@@ -89,12 +97,11 @@ export async function passCardPng(input: PassCardInput, page = homePage(input.pr
   // Header band: the season, the name, the level held; the XP figure on the right.
   c.rect(0, 0, W, HEAD, BLUE);
   c.rect(0, HEAD, W, 8, YELLOW);
-  c.text(X0, 22, `LAHTIAG SEASON PASS ${input.season.replace('–', '-')}`, 0xffeba4, 's');
+  c.text(X0, 22, `LAHTIAG BATTLE PASS ${input.season.replace('–', '-')}`, 0xffeba4, 's');
   c.text(X0, 52, Canvas.fit(cleanText(input.name), W - 80 - 300, 'l'), WHITE, 'l');
   const standing = progress.current ? levelTitle(progress.current) : levels.length === 0 ? 'Levels come in the autumn' : 'No level yet';
   c.text(X0, 110, Canvas.fit(cleanText(standing), W - 80 - 300), WHITE, 's');
   xpFigure(c, W - X0, 30, progress.xp);
-  c.text(W - X0 - Canvas.textWidth('XP'), 110, 'XP', 0xffeba4, 's');
 
   // The bar to the next rung, with what is missing said under it.
   const barW = W - 2 * X0;

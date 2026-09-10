@@ -149,7 +149,7 @@ export interface HourlySummary {
   promotions: number;
   interest: number;
   archived: number;
-  levels: number; // members told they reached a season pass level
+  levels: number; // members told they reached a battle pass level
 }
 
 export async function runHourly(db: D1Database, env: Env, origin: string, now: number): Promise<HourlySummary> {

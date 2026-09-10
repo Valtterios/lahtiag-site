@@ -127,10 +127,10 @@ const commands = [
   { name: 'season', description: 'Your season so far: events, Discord activity, Minecraft play time, XP' },
   {
     name: 'pass',
-    description: 'Your season pass as a picture: XP, level, and the rewards (everyone sees it)',
+    description: 'Your battle pass as a picture: XP, level, and the rewards (everyone sees it)',
     options: [{ type: 6, name: 'user', description: "Someone else's pass", required: false }],
   },
-  { name: 'claim', description: 'Claim a tick for the season pass; the board approves it' },
+  { name: 'claim', description: 'Claim a tick for the battle pass; the board approves it' },
   { name: 'leaderboard', description: "This season's XP leaderboard (everyone sees it)" },
   {
     name: 'whitelist',
