@@ -469,7 +469,7 @@ tailLog();
 setInterval(tailLog, TAIL_EVERY);
 setInterval(loadUserCache, 600_000);
 connect(false);
-setTimeout(() => void pushProgress(true), 5000);
+setTimeout(() => void pushProgress(false), 5000); // the state remembers what was sent; a fresh state sends everyone
 setInterval(() => void pushProgress(false), PROGRESS_EVERY);
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
