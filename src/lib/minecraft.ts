@@ -1,5 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { RuleError } from './db';
+import { DISCORD_GUILD_ID } from './config';
+import { setGuildMemberRole } from './discord';
 
 // The Minecraft server's whitelist lives here; the server pulls it every
 // few minutes (scripts/minecraft/whitelist-sync.py) through
@@ -421,6 +423,19 @@ export async function whitelistNames(db: D1Database, server?: ServerSlug | null)
 }
 
 // The server's bearer token, compared without leaking where it differs.
+// The Minecraft role opens the game channels (the bridged chats, the
+// rules, the guides) to the people who play. Given when a member puts
+// their own name on the whitelist, or the board hands one to them:
+// having a name on the server is the clearest sign they want the
+// channels. Adding a role a member already holds changes nothing, and
+// nothing here fails the whitelisting when the role cannot be given.
+// True when the role is set up, so the reply can say the channels opened.
+export async function grantMinecraftRole(env: { DISCORD_BOT_TOKEN?: string; MINECRAFT_ROLE_ID?: string }, discordId: string): Promise<boolean> {
+  if (!env.DISCORD_BOT_TOKEN || !env.MINECRAFT_ROLE_ID) return false;
+  const result = await setGuildMemberRole(env.DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, discordId, env.MINECRAFT_ROLE_ID, true);
+  return result === 'ok';
+}
+
 export function bearerToken(request: Request): string | null {
   const match = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') ?? '');
   return match ? match[1] : null;

@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession } from '../../lib/guard';
 import { RuleError } from '../../lib/db';
-import { setOwnMinecraftName, addMinecraftFriend, removeMinecraftName, friendRequestLine } from '../../lib/minecraft';
+import { setOwnMinecraftName, addMinecraftFriend, removeMinecraftName, friendRequestLine, grantMinecraftRole } from '../../lib/minecraft';
 import { postBoardLine, approveButtons } from '../../lib/board-channel';
 import { dmUser } from '../../lib/discord';
 
@@ -21,6 +21,7 @@ export const POST: APIRoute = async ({ request, redirect, url, locals }) => {
   try {
     if (action === 'own') {
       const own = await setOwnMinecraftName(env.DB, session.discordId, name, now);
+      locals.cfContext.waitUntil(grantMinecraftRole(env, session.discordId)); // the Minecraft channels open with the name
       // The member who had brought them as a friend gets their slot back.
       if (own.takenFrom && env.DISCORD_BOT_TOKEN) {
         locals.cfContext.waitUntil(dmUser(env.DISCORD_BOT_TOKEN, own.takenFrom, `**${own.name}** is a member now and took their whitelist name with them. Your friend slot is free again: ${url.origin}/membership#minecraft`));

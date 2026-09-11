@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { env } from 'cloudflare:test';
 import {
   setOwnMinecraftName,
@@ -219,5 +219,24 @@ describe('linking a board name to its member', () => {
     expect(suggestLink('AinoV', members)?.discord_id).toBe('2');
     expect(suggestLink('xX_Lasse_Xx', members)).toBeNull();
     expect(suggestLink('ai', members)).toBeNull();
+  });
+});
+
+describe('the Minecraft role', () => {
+  it('is given on whitelisting when set up, and skipped quietly otherwise', async () => {
+    const { grantMinecraftRole } = await import('../src/lib/minecraft');
+    expect(await grantMinecraftRole({}, '100000000000000001')).toBe(false);
+    expect(await grantMinecraftRole({ DISCORD_BOT_TOKEN: 't' }, '100000000000000001')).toBe(false);
+    const calls: { url: string; method?: string }[] = [];
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      calls.push({ url: String(input), method: init?.method });
+      return new Response(null, { status: 204 });
+    });
+    try {
+      expect(await grantMinecraftRole({ DISCORD_BOT_TOKEN: 't', MINECRAFT_ROLE_ID: '555' }, '100000000000000001')).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(calls).toEqual([{ url: 'https://discord.com/api/v10/guilds/1210598510999633971/members/100000000000000001/roles/555', method: 'PUT' }]);
   });
 });

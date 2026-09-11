@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../lib/guard';
-import { approveMinecraftName, declineMinecraftName, dropMinecraftName, linkBoardName } from '../../lib/minecraft';
+import { approveMinecraftName, declineMinecraftName, dropMinecraftName, linkBoardName, grantMinecraftRole } from '../../lib/minecraft';
 import { RuleError } from '../../lib/db';
 import { dmUser } from '../../lib/discord';
 import { postBoardLine } from '../../lib/board-channel';
@@ -43,6 +43,7 @@ export const POST: APIRoute = async ({ request, redirect, url, locals }) => {
     if (!/^\d{17,20}$/.test(discordId)) return redirect('/whitelist?err=bad_input', 303);
     try {
       const row = await linkBoardName(env.DB, name, discordId, admin.session.discordId, now);
+      locals.cfContext.waitUntil(grantMinecraftRole(env, discordId));
       if (token) await dmUser(token, discordId, `⛏️ The board linked the Minecraft name **${row.name}** to you: it is on the whitelist as yours, on every server, and follows your membership. ${url.origin}/membership#minecraft`);
       locals.cfContext.waitUntil(postBoardLine(env.DB, env, `⛏️ Whitelist: **${row.name}** linked to <@${discordId}> by ${admin.session.username}.`));
       return redirect('/whitelist?ok=linked', 303);

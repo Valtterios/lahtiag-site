@@ -37,6 +37,7 @@ type WorkerEnv = {
   DISCORD_BOT_TOKEN?: string;
   MEMBER_ROLE_ID: string;
   ACTIVES_ROLE_ID: string;
+  MINECRAFT_ROLE_ID?: string; // opens the Minecraft channels; given on whitelisting (src/lib/minecraft.ts)
   // Ticket payments (src/lib/stripe.ts). Off until both exist.
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;

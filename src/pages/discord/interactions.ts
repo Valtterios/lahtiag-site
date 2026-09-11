@@ -51,6 +51,7 @@ import { MEMBER_TYPE_LABELS } from '../../lib/register';
 import { DISCORD_GUILD_ID } from '../../lib/config';
 import {
   setOwnMinecraftName,
+  grantMinecraftRole,
   addMinecraftFriend,
   removeMinecraftName,
   listMinecraftNames,
@@ -693,7 +694,8 @@ async function handleSeasonModal(env: WorkerEnv, interaction: Interaction, origi
       if (p.takenFrom && env.DISCORD_BOT_TOKEN) {
         await dmMember(env.DISCORD_BOT_TOKEN, p.takenFrom, `**${p.name}** is a member now and took their whitelist name with them. Your friend slot is free again: ${page}`);
       }
-      await reply(`✅ **${p.name}** is on the whitelist as you, on every server. The server picks it up within a few minutes.`, faceEmbed(origin, p.name, p.uuid, 'Your skin? Then it is the right account.'));
+      const opened = await grantMinecraftRole(env, userId);
+      await reply(`✅ **${p.name}** is on the whitelist as you, on every server. The server picks it up within a few minutes.${opened ? ' The Minecraft channels are open to you now.' : ''}`, faceEmbed(origin, p.name, p.uuid, 'Your skin? Then it is the right account.'));
       return;
     }
     if (modalId.startsWith('s:modal:claim:')) {
@@ -736,7 +738,8 @@ async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin:
       if (p.takenFrom && env.DISCORD_BOT_TOKEN) {
         await dmMember(env.DISCORD_BOT_TOKEN, p.takenFrom, `**${p.name}** is a member now and took their whitelist name with them. Your friend slot is free again: ${page}`);
       }
-      await reply(`✅ **${p.name}** is on the whitelist as you, on every server. ${soon}`, faceEmbed(origin, p.name, p.uuid, 'Your skin? Then it is the right account.'));
+      const opened = await grantMinecraftRole(env, userId);
+      await reply(`✅ **${p.name}** is on the whitelist as you, on every server. ${soon}${opened ? ' The Minecraft channels are open to you now.' : ''}`, faceEmbed(origin, p.name, p.uuid, 'Your skin? Then it is the right account.'));
     } else if (sub.name === 'friend') {
       const p = await addMinecraftFriend(env.DB, userId, raw, now, undefined, servers);
       if (p.approved) {
@@ -770,6 +773,7 @@ async function handleWhitelist(env: WorkerEnv, interaction: Interaction, origin:
       } else if (sub.name === 'link') {
         const memberId = String(opts.get('member') ?? '');
         const row = await linkBoardName(env.DB, raw, memberId, userId, now);
+        await grantMinecraftRole(env, memberId);
         if (env.DISCORD_BOT_TOKEN) await dmMember(env.DISCORD_BOT_TOKEN, memberId, `⛏️ The board linked the Minecraft name **${row.name}** to you: it is on the whitelist as yours, on every server, and follows your membership. ${page}`);
         await postBoardLine(env.DB, env, `⛏️ Whitelist: **${row.name}** linked to <@${memberId}> by ${interaction.member?.nick ?? interaction.member?.user?.global_name ?? interaction.member?.user?.username ?? 'the board'}.`);
         await reply(`✅ **${row.name}** is <@${memberId}>'s own name now, on every server. They got a DM.`, row.uuid ? faceEmbed(origin, row.name, row.uuid, 'The account behind that name.') : []);

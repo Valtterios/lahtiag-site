@@ -688,6 +688,10 @@ post, **Post to Discord** under the post sends it again.
   long each whitelisted name was online on each server, read from the
   servers' own statistics every five minutes. A member sees their own
   season on the membership page.
+- **The Minecraft channels open with a name.** The Minecraft category is
+  for the role of the same name, and the bot gives the role when a member
+  puts their own name on the whitelist or the board links one to them.
+  Anyone else picks it under Channels & Roles.
 - **The modpack chat is in Discord.** The GT:NH server's chat, joins and
   leaves show in the bridge channel, each player under their own name
   and skin, and what people write in that channel shows in the game as

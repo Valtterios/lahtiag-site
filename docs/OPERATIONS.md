@@ -1353,6 +1353,15 @@ anyway; no Discord names or membership facts are on the board.
    it with `docker logs -f lahtiag-bridge`; "gateway ready as" and "quest
    book read" mean both halves are up.
 
+**The Minecraft role.** `MINECRAFT_ROLE_ID` in `wrangler.toml` names the
+role the Minecraft category is visible to. `grantMinecraftRole` in
+`src/lib/minecraft.ts` gives it when a member sets their own name
+(`/whitelist me`, the modal under `/season`, the membership page) or the
+board links a board name to them (`/whitelist link`, lahtiag.fi/whitelist).
+A role the member already holds is a no-op on Discord's side; a failure
+never fails the whitelisting. Empty = off, and the replies say nothing
+about channels.
+
 Another server gets its own copy of the folder with `SERVER=`,
 `SERVER_LABEL=`, `AMP_URL=` and the mount changed; the tier tracker
 simply finds no quest book on a vanilla server and does nothing.
