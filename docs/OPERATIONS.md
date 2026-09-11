@@ -1364,7 +1364,12 @@ about channels.
 
 Another server gets its own copy of the folder with `SERVER=`,
 `SERVER_LABEL=`, `AMP_URL=` and the mount changed; the tier tracker
-simply finds no quest book on a vanilla server and does nothing.
+simply finds no quest book on a vanilla server and does nothing. The SMP's
+copy is prepared at `/opt/lahtiag-bridge-smp` (container
+`lahtiag-bridge-smp`, the LahtiAG02 instance, AMP on 8081), not started:
+`LAHTIAG_BRIDGE_DIR=/opt/lahtiag-bridge-smp lahtiag-bridge-setcreds`
+with the SMP channel's id and webhook starts it. Advancements are
+bridged the same way as the old game's achievements.
 
 ## Editing this handbook
 

@@ -140,7 +140,9 @@ const LINE = /^\[\d\d:\d\d:\d\d\] \[[^\]]+\/INFO\]: (.*)$/;
 const NAME = '[A-Za-z0-9_]{1,16}';
 const CHAT = new RegExp(`^<(${NAME})> (.*)$`);
 const JOIN = new RegExp(`^(${NAME}) (joined|left) the game$`);
-const ACHIEVEMENT = new RegExp(`^(${NAME}) has just earned the achievement \\[(.+)\\]$`);
+// 1.7.10 says "earned the achievement"; today's game says "made the
+// advancement", "completed the challenge" or "reached the goal".
+const ACHIEVEMENT = new RegExp(`^(${NAME}) has (?:just earned the achievement|made the advancement|completed the challenge|reached the goal) \\[(.+)\\]$`);
 const UUID_LINE = new RegExp(`^UUID of player (${NAME}) is ([0-9a-f-]{36})$`);
 let tail = { ino: null, position: 0, rest: '' };
 
@@ -179,7 +181,7 @@ function onLogLine(line) {
   let x;
   if ((x = CHAT.exec(text))) return say(escapeMd(x[2]), x[1], faceOf(x[1]));
   if ((x = JOIN.exec(text))) return say(`${x[2] === 'joined' ? '➡️' : '⬅️'} **${x[1]}** ${x[2]} the game`);
-  if ((x = ACHIEVEMENT.exec(text))) return say(`🏆 **${x[1]}** earned the achievement **${escapeMd(x[2])}**`);
+  if ((x = ACHIEVEMENT.exec(text))) return say(`🏆 **${x[1]}** got **${escapeMd(x[2])}**`);
   if ((x = UUID_LINE.exec(text))) return void uuids.set(x[1].toLowerCase(), x[2].toLowerCase());
   if (/^Done \(/.test(text)) return say(`🟢 The ${LABEL} server is up`);
   if (/^Stopping the server/.test(text)) return say(`🔴 The ${LABEL} server is going down`);
