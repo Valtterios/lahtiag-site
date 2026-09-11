@@ -105,7 +105,7 @@ MEMBER_ROLE_ID = ""
 ACTIVES_ROLE_ID = ""
 # The role that opens the Minecraft category, given when a member puts their
 # own name on the whitelist (src/lib/minecraft.ts grantMinecraftRole). Empty = off.
-MINECRAFT_ROLE_ID = ""
+MINECRAFT_ROLE_ID = "1210628236334202910"
 
 [[d1_databases]]
 binding = "DB"
@@ -180,7 +180,7 @@ REGISTER_ADMINS = "hanna.toth-mogyorosi@lahtiag.fi,cristian.radu@lahtiag.fi,valt
 # Needs the DISCORD_BOT_TOKEN secret and the bot's own role above these two.
 MEMBER_ROLE_ID = ""
 ACTIVES_ROLE_ID = ""
-MINECRAFT_ROLE_ID = ""
+MINECRAFT_ROLE_ID = "1210628236334202910"
 
 [[env.preview.d1_databases]]
 binding = "DB"
