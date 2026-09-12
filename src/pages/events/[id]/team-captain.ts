@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession } from '../../../lib/guard';
-import { captainAddToTeam, captainRemoveFromTeam, captainSetTeamPlace, RuleError } from '../../../lib/db';
+import { captainAddToTeam, captainRemoveFromTeam, captainSetTeamPlace, captainLockTeam, RuleError } from '../../../lib/db';
 import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
 import { later, notifyTeamPlacement } from '../../../lib/event-channel';
 
@@ -21,6 +21,10 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   const now = Math.floor(Date.now() / 1000);
   const action = String(form.get('action') ?? '');
   try {
+    if (action === 'lock' || action === 'unlock') {
+      await captainLockTeam(env.DB, id, teamId, session.discordId, action === 'lock', now);
+      return redirect(`${back}?ok=${action === 'lock' ? 'team_locked' : 'team_unlocked'}#teams`, 303);
+    }
     if (action === 'kick') await captainRemoveFromTeam(env.DB, id, teamId, session.discordId, target, now);
     else if (action === 'place') await captainSetTeamPlace(env.DB, id, teamId, session.discordId, target, form.get('reserve') === '1', now);
     else await captainAddToTeam(env.DB, id, teamId, session.discordId, target, now);

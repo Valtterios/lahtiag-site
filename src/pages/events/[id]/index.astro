@@ -250,6 +250,7 @@ const FLASH: Record<string, string> = {
   too_few: 'A bracket needs at least two teams or players. Players without a team are grouped into teams when you generate.',
   not_open: 'Signups are not open yet. Press Interested and come back when they open.',
   not_captain: 'Only the team founder can change the team.',
+  locked: 'That team is invite-only; ask its captain to add you.',
   not_full: 'A seat is free: sign up instead of waiting.',
   no_waitlist: 'This event has no waitlist.',
   duplicate: 'You are already going.',
@@ -283,6 +284,8 @@ const OK: Record<string, string> = {
   published: 'Published and posted on Discord.',
   team_saved: 'Team created. Put people in it with the team pickers below.',
   team_added: 'Added to your team.',
+  team_locked: 'Your team is invite-only now: you add people, nobody joins on their own.',
+  team_unlocked: 'Your team is open: anyone signed up can join it.',
   team_kicked: 'Taken out of the team; they are still signed up.',
   placed: 'Moved between the line-up and the bench.',
   grouped: 'Players without a team were grouped into teams.',
@@ -836,6 +839,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               <div class="team-card">
                 <h3>
                   {team.name}
+                  {team.locked === 1 && <span class="status-badge status-muted" title="The captain adds people; nobody joins on their own">Invite only</span>}
                   <span class="event-meta"> {lineUp.length} / {event.team_size}{event.team_reserves > 0 ? `, ${bench.length} / ${event.team_reserves} on the bench` : ''}</span>
                 </h3>
                 <ul class="roster">
@@ -901,6 +905,14 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                           </li>
                         ))}
                 </ul>
+                {captain && (
+                  <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="event_team_id" value={team.id} />
+                    <input type="hidden" name="action" value={team.locked === 1 ? 'unlock' : 'lock'} />
+                    <button class="btn btn-ghost btn-sm" type="submit">{team.locked === 1 ? 'Open the team to anyone' : 'Make the team invite-only'}</button>
+                  </form>
+                )}
                 {captain && slotsLeft > 0 && freeAgents.length > 0 && (
                   <form method="post" action={`/events/${event.id}/team-captain`} class="participant-row">
                     <input type="hidden" name="csrf" value={csrf} />
@@ -915,7 +927,10 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                     <button class="btn btn-ghost btn-sm" type="submit">Add</button>
                   </form>
                 )}
-                {session && open && !inThisTeam && slotsLeft > 0 && (!ticketed || hasTicket) && (
+                {session && open && !inThisTeam && slotsLeft > 0 && team.locked === 1 && team.created_by !== session.discordId && (
+                  <p class="queue-meta">Invite only: the captain adds people.</p>
+                )}
+                {session && open && !inThisTeam && slotsLeft > 0 && (!ticketed || hasTicket) && (team.locked !== 1 || team.created_by === session.discordId) && (
                   <form method="post" action={`/events/${event.id}/team`} class="inline-form">
                     <input type="hidden" name="csrf" value={csrf} />
                     <input type="hidden" name="action" value="join" />

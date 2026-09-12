@@ -18,6 +18,7 @@ export class RuleError extends Error {
       | 'started'
       | 'bad_input'
       | 'poor' // coins: not enough for the stake
+      | 'locked' // a team its captain keeps invite-only
       | 'no_market' // coins: nothing to bet on for this event
       | 'bad_name' // a Minecraft name: 3 to 16 letters, digits or underscores
       | 'name_taken'
@@ -136,6 +137,7 @@ export interface EventTeamRow {
   name: string;
   created_by: string;
   created_at: number;
+  locked: number; // 1 = invite-only: the captain adds people, nobody joins on their own
 }
 
 export interface AnnouncementRow {
@@ -1004,6 +1006,7 @@ export async function joinEventTeam(
     .bind(eventTeamId, eventId)
     .first<EventTeamRow>();
   if (!team) throw new RuleError('missing', 'No such team on this event.');
+  if (team.locked === 1 && team.created_by !== discordId) throw new RuleError('locked', 'That team is invite-only; its captain adds people.');
   // A full line-up is not a full team while the bench has room.
   const bench = await placeInTeam(db, event, eventTeamId, discordId);
   const wasIn = await teamOf(db, eventId, discordId);
@@ -3028,6 +3031,12 @@ async function captainTeam(db: D1Database, eventId: number, teamId: number, capt
   if (!team) throw new RuleError('missing', 'No such team on this event.');
   if (team.created_by !== captainId) throw new RuleError('not_captain', 'Only the team founder can do that.');
   return event;
+}
+
+// Invite-only or open to anyone: the captain's call, while signups are open.
+export async function captainLockTeam(db: D1Database, eventId: number, teamId: number, captainId: string, locked: boolean, now: number): Promise<void> {
+  await captainTeam(db, eventId, teamId, captainId, now);
+  await db.prepare('UPDATE event_teams SET locked = ?3 WHERE id = ?1 AND event_id = ?2').bind(teamId, eventId, locked ? 1 : 0).run();
 }
 
 export async function captainAddToTeam(db: D1Database, eventId: number, teamId: number, captainId: string, targetId: string, now: number): Promise<void> {

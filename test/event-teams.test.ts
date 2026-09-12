@@ -371,3 +371,21 @@ describe('seats reserved for members on a team event', () => {
     ).rejects.toMatchObject({ code: 'bad_input' });
   });
 });
+
+describe('invite-only teams', () => {
+  it('keeps everyone but the captain out until the captain opens it or adds them', async () => {
+    const { captainLockTeam, captainAddToTeam } = await import('../src/lib/db');
+    await wipe();
+    const eventId = await teamEvent(2, null);
+    await member('cap'); await member('kai');
+    const teamId = await createEventTeam(db(), eventId, 'Locked Shell', 'cap', NOW);
+    await expect(captainLockTeam(db(), eventId, teamId, 'kai', true, NOW)).rejects.toMatchObject({ code: 'not_captain' });
+    await captainLockTeam(db(), eventId, teamId, 'cap', true, NOW);
+    await expect(joinEventTeam(db(), eventId, teamId, 'kai', NOW)).rejects.toMatchObject({ code: 'locked' });
+    await setSignup(db(), eventId, 'kai', 'yes', NOW);
+    await captainAddToTeam(db(), eventId, teamId, 'cap', 'kai', NOW);
+    expect((await listEventTeams(db(), eventId))[0].locked).toBe(1);
+    await captainLockTeam(db(), eventId, teamId, 'cap', false, NOW);
+    expect((await listEventTeams(db(), eventId))[0].locked).toBe(0);
+  });
+});
