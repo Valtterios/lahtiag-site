@@ -56,7 +56,7 @@ const onLeaderboard = session ? await isLeaderboardOptIn(env.DB, session.discord
 const mcNames = session ? await listMinecraftNames(env.DB, session.discordId) : [];
 // Where each of the names is in the GT:NH modpack (src/lib/gtnh.ts), by UUID.
 // Coins (src/lib/coins.ts): a member's wallet, opened on first sight.
-const wallet = session && entry?.status === 'member' ? await (async () => { await ensureWallet(env.DB, session.discordId, Math.floor(Date.now() / 1000)); return { coins: await balance(env.DB, session.discordId), rows: await ledger(env.DB, session.discordId, 6) }; })() : null;
+const wallet = session && entry?.status === 'member' ? await (async () => { await ensureWallet(env.DB, session.discordId, Math.floor(Date.now() / 1000)); return { coins: await balance(env.DB, session.discordId), rows: await ledger(env.DB, session.discordId, 3) }; })() : null;
 const gtnh = await progressByUuid(env.DB, mcNames.map((n) => n.uuid).filter((u): u is string => Boolean(u)));
 // The ways to earn XP: the board's tick kinds, for the pass section.
 const ways = session ? (await listTickKinds(env.DB)).filter((k) => k.xp > 0) : [];
@@ -340,7 +340,7 @@ const MESSAGES: Record<FieldError, string> = {
                     <ul class="wallet-rows">
                       {wallet.rows.map((r) => <li>{ledgerLine(r)}</li>)}
                     </ul>
-                    <span class="member-meta">Play money for betting on tournament brackets: every XP pays coins, an allowance comes each month, champions get a purse. <code>/wallet</code>, <code>/bet</code> and <code>/odds</code> in Discord; a live bracket's event page has the pool.</span>
+                    <span class="member-meta">Play money for betting on brackets · <code>/wallet</code> in Discord has the rest</span>
                   </dd>
                 </div>
               )}
