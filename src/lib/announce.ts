@@ -11,11 +11,13 @@ import {
   createChannelMessage,
   createChannelMessageWithFile,
   editChannelMessage,
+  editChannelMessageWithFile,
   deleteChannelMessage,
   fetchWebhookChannel,
   postWebhook,
   postWebhookWithFile,
   editWebhookMessage,
+  editWebhookMessageFile,
   deleteWebhookMessage,
   eventAnnouncement,
   SUPPRESS_EMBEDS,
@@ -137,6 +139,28 @@ export async function refreshEventAnnouncement(db: D1Database, env: AnnounceEnv,
     }
   }
   await editWebhookMessage(env.DISCORD_WEBHOOK_URL, event.discord_message_id, text);
+}
+
+// A new cover on a published event: swap the picture on the announcement
+// where it stands. The bot's own message first — a message it posted can
+// only be edited by it, and the webhook's PATCH would never touch it —
+// the webhook as the fallback for the messages posted that way. The text
+// rides along with the bot's edit because its PATCH replaces the content;
+// the buttons are left out of the payload, so Discord keeps them.
+export async function replaceAnnouncementCover(db: D1Database, env: AnnounceEnv, eventId: number, origin: string): Promise<void> {
+  if (!env.DISCORD_WEBHOOK_URL) return;
+  const event = await getEvent(db, eventId);
+  if (!event?.discord_message_id) return;
+  const cover = await coverFile(db, eventId);
+  if (!cover) return;
+  if (env.DISCORD_BOT_TOKEN) {
+    const channel = await announceChannel(db, env);
+    if (channel) {
+      const edited = await editChannelMessageWithFile(env.DISCORD_BOT_TOKEN, channel, event.discord_message_id, announcementText(event, origin), cover, SUPPRESS_EMBEDS);
+      if (edited.ok) return;
+    }
+  }
+  await editWebhookMessageFile(env.DISCORD_WEBHOOK_URL, event.discord_message_id, cover);
 }
 
 // From a route: the post follows the numbers without holding up the response.
