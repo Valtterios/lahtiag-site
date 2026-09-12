@@ -20,7 +20,8 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     const matches = main ? await getBracket(env.DB, main.id) : [];
     const keys = bracketKeys(matches);
     const pick = String(form.get('pick') ?? '');
-    const scope = String(form.get('on') ?? 'winner') === 'match' && main ? (nextMatchOf(matches, main.id, pick)?.scope ?? null) : WINNER;
+    const given = String(form.get('scope') ?? '');
+    const scope = given ? given : String(form.get('on') ?? 'winner') === 'match' && main ? (nextMatchOf(matches, main.id, pick)?.scope ?? null) : WINNER;
     if (String(form.get('action')) === 'cancel') {
       await cancelBet(env.DB, id, session.discordId, now, String(form.get('scope') ?? WINNER));
       return back('ok=bet_back');

@@ -670,8 +670,9 @@ pass XP, paid by the bot as the XP comes in. Champions get 250.
   channel (elsewhere, add the event id) or on the event page; `me` works
   as the pick. That backs them to win the tournament; `on: their next
   match` backs them for one match instead, which opens a pool of its own
-  that pays out when that result is recorded. `/odds` shows the pools,
-  `/wallet` the balance. The same command with 0 coins takes a stake
+  that pays out when that result is recorded. `/odds` posts the betting
+  board for everyone, a picture of the pools with a button per side that
+  asks for a stake; `/wallet` shows the balance. The same command with 0 coins takes a stake
   back while its pool is open.
 - **The board** gives or takes coins with `/coins give @member <coins>
   <reason>`; a negative number takes. The reason shows in their wallet.

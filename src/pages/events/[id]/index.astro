@@ -663,20 +663,45 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                   ? 'Stakes are locked until the final is decided.'
                   : `Paid out on ${market?.winner ? (names.get(market.winner) ?? 'the champion') : 'the champion'}.`}{betting === 'open' ? ' A stake on a single match opens its own pool and pays out on that result.' : ''}
             </p>
-            {pools.filter((p) => p.odds.bets > 0 || p.market.scope === WINNER).map((p) => (
-              <div class="pool">
-                <h3>{p.market.scope === WINNER ? 'Tournament winner' : matchLabel(p.market.scope)} <span class="member-meta">· {marketState(p.market)} · {p.odds.pool} {COIN} from {p.odds.bets}</span></h3>
-                {p.odds.bets > 0 ? (
-                  <ul class="odds">
-                    {p.odds.picks.map((x) => (
-                      <li><strong>{names.get(x.pick) ?? 'Unknown'}</strong> · {x.staked} {COIN} from {x.backers} · pays {x.multiplier === null ? '—' : `${x.multiplier >= 10 ? Math.round(x.multiplier) : x.multiplier.toFixed(1)}×`}</li>
-                    ))}
+            {pools.filter((p) => p.odds.bets > 0 || p.market.scope === WINNER).map((p) => {
+              const state = marketState(p.market);
+              const sides = p.market.scope === WINNER ? betKeys : (() => { const m = parseMatchScope(p.market.scope); const match = m ? mainMatches.find((x) => x.round === m.round && x.slot === m.slot) : null; return match ? [match.side_a!, match.side_b!] : []; })();
+              const rows = sides.map((k) => p.odds.picks.find((x) => x.pick === k) ?? { pick: k, staked: 0, backers: 0, share: 0, multiplier: null });
+              const mineHere = bets.find((b) => b.scope === p.market.scope) ?? null;
+              return (
+                <div class={`pool pool-${state}`}>
+                  <h3>{p.market.scope === WINNER ? '🏆 Tournament winner' : `⚔️ ${matchLabel(p.market.scope)}`} <span class="pool-state">{state === 'open' ? 'open' : state === 'closed' ? 'locked' : 'paid out'} · {p.odds.pool} {COIN} from {p.odds.bets}</span></h3>
+                  <ul class="pool-sides">
+                    {rows.map((x) => {
+                      const won = p.market.winner === x.pick;
+                      const lost = p.market.winner !== null && !won;
+                      const canStake = canBet && state === 'open' && (ownSide === null || x.pick === ownSide);
+                      return (
+                        <li class={won ? 'side-won' : lost ? 'side-lost' : ''}>
+                          <div class="side-head">
+                            <strong>{won ? '★ ' : ''}{names.get(x.pick) ?? 'Unknown'}</strong>
+                            <span class="side-pay">{x.multiplier === null ? (state === 'open' ? 'no stakes yet' : '') : `pays ${x.multiplier >= 10 ? Math.round(x.multiplier) : x.multiplier.toFixed(1)}×`}</span>
+                          </div>
+                          <div class="side-bar" role="img" aria-label={`${Math.round(x.share * 100)}% of the pool`}><span style={`width: ${Math.max(2, Math.round(x.share * 100))}%`}></span></div>
+                          <div class="side-foot">
+                            <span class="member-meta">{x.staked} {COIN} from {x.backers}{mineHere?.pick === x.pick ? ` · yours: ${mineHere.amount} ${COIN}` : ''}</span>
+                            {canStake && (
+                              <form method="post" action={`/events/${event.id}/bet`} class="side-form">
+                                <input type="hidden" name="csrf" value={csrf} />
+                                <input type="hidden" name="pick" value={x.pick} />
+                                <input type="hidden" name="scope" value={p.market.scope} />
+                                <input type="number" name="coins" min={MIN_BET} max={purse + (mineHere?.amount ?? 0)} step="1" value={mineHere?.pick === x.pick ? mineHere.amount : Math.min(100, purse)} aria-label="Coins" required />
+                                <button class="btn btn-primary btn-sm" type="submit">{mineHere?.pick === x.pick ? 'Change' : 'Stake'}</button>
+                              </form>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
-                ) : (
-                  <p class="app-empty">No stakes yet{betting === 'open' ? '; be the first' : ''}.</p>
-                )}
-              </div>
-            ))}
+                </div>
+              );
+            })}
             {bets.map((b) => (
               <p class="member-meta">Your stake: <strong>{b.amount} {COIN}</strong> on {names.get(b.pick) ?? 'Unknown'} ({b.scope === WINNER ? 'tournament winner' : matchLabel(b.scope)}){b.result ? ` · ${b.result}${b.payout ? `, ${b.payout} ${COIN} back` : ''}` : ''}.
                 {canBet && !b.result && (
@@ -689,18 +714,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 )}
               </p>
             ))}
-            {canBet && (
-              <form method="post" action={`/events/${event.id}/bet`} class="signup-bar bet-form">
-                <input type="hidden" name="csrf" value={csrf} />
-                <label>On <select name="pick" required>
-                  {betKeys.filter((k) => ownSide === null || k === ownSide).map((k) => <option value={k} selected={bet?.pick === k}>{names.get(k) ?? 'Unknown'}</option>)}
-                </select></label>
-                <label>To <select name="on"><option value="winner">win the tournament</option><option value="match">win their next match</option></select></label>
-                <label>Coins <input type="number" name="coins" min={MIN_BET} max={purse + (bet?.amount ?? 0)} step="1" value={bet?.amount ?? Math.min(50, purse)} required /></label>
-                <button class="btn btn-primary" type="submit">Place my stake</button>
-                <span class="member-meta">You have {purse} {COIN}.</span>
-              </form>
-            )}
+            {canBet && <p class="member-meta">You have <strong>{purse} {COIN}</strong>. A stake on a side that has no pool yet opens one.</p>}
             {!session && betting === 'open' && <p class="member-meta">Sign in with Discord to bet; coins are for members.</p>}
           </section>
         )}

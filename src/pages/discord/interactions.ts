@@ -76,8 +76,9 @@ import { passCardPng, homePage, pageCount, clampPage } from '../../lib/pass-card
 import { xpGuideLines } from '../../lib/xp-guide';
 import { scheduleCollapse } from '../../lib/collapse';
 import { progressBoard, progressBoardLines } from '../../lib/gtnh';
-import { ensureWallet, balance, ledger, ledgerLine, grantCoins, placeBet, cancelBet, odds, oddsLines, ownKey, bracketKeys, getMarket, marketState, myBets, coins, COIN, WINNER, nextMatchOf, eventForChannel, listMarkets, parseMatchScope } from '../../lib/coins';
+import { ensureWallet, balance, ledger, ledgerLine, grantCoins, placeBet, cancelBet, odds, ownKey, bracketKeys, marketState, coins, COIN, WINNER, nextMatchOf, eventForChannel, listMarkets, parseMatchScope } from '../../lib/coins';
 import { mainBracket } from '../../lib/db';
+import { oddsCardPng, poolLabel } from '../../lib/odds-card';
 import { listClaimableKinds, createClaim, decideClaim, claimLine, claimDecisionDm, CLAIM_NOTE_MAX } from '../../lib/claims';
 import { getTickKind, kindWorth, listTickKinds } from '../../lib/ticks';
 import { xpStandings, leaderboardEmbed } from '../../lib/xp';
@@ -268,9 +269,22 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
     return json({ type: 5 });
   }
 
-  // Coins: the wallet, a stake, the pool. Private, and they clear themselves.
-  if (interaction.type === 2 && interaction.data?.name && ['wallet', 'bet', 'odds'].includes(interaction.data.name)) {
+  // Coins: the wallet and a stake are private and clear themselves; the
+  // betting board is posted for everyone, a button per side, and folds
+  // to a line after a minute like /pass.
+  if (interaction.type === 2 && interaction.data?.name && ['wallet', 'bet'].includes(interaction.data.name)) {
     locals.cfContext.waitUntil(fleeting(handleCoins(env, interaction, url.origin)));
+    return json({ type: 5, data: { flags: 64 } });
+  }
+  if (interaction.type === 2 && interaction.data?.name === 'odds') {
+    locals.cfContext.waitUntil(fleeting(handleOddsBoard(env, interaction, url.origin)));
+    return json({ type: 5 });
+  }
+  if (interaction.type === 3 && interaction.data?.custom_id?.startsWith('c:bet:')) {
+    return json(stakeModal(interaction.data.custom_id.slice('c:bet:'.length)));
+  }
+  if (interaction.type === 5 && interaction.data?.custom_id?.startsWith('c:modal:')) {
+    locals.cfContext.waitUntil(fleeting(handleStakeModal(env, interaction)));
     return json({ type: 5, data: { flags: 64 } });
   }
 
@@ -474,8 +488,87 @@ async function handleLeaderboard(env: WorkerEnv, interaction: Interaction, origi
   return 'keep';
 }
 
-// /wallet, /bet and /odds (src/lib/coins.ts). A bet names the team or
-// player the way /bracket win does; the pool is the main bracket's.
+// The betting board: the pools as a picture, a button per side that asks
+// for a stake. Posted where asked, for everyone.
+async function handleOddsBoard(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
+  const reply = (content: string) => editInteractionReply(interaction.application_id, interaction.token, content, [], [], NO_MENTIONS, SUPPRESS_EMBEDS);
+  const now = Math.floor(Date.now() / 1000);
+  await rememberInvoker(env, interaction, now);
+  const opts = optionMap(interaction.data?.options);
+  const event = opts.has('event') ? await getEvent(env.DB, Number(opts.get('event'))) : interaction.channel_id ? await eventForChannel(env.DB, interaction.channel_id) : null;
+  if (!event) return void (await reply(opts.has('event') ? `No event #${opts.get('event')}.` : "Which event? Use this in the event's channel, or give the event id."));
+  const main = await mainBracket(env.DB, event.id);
+  const matches = main ? await getBracket(env.DB, main.id) : [];
+  const names = await participantNames(env.DB, event.id);
+  const nameOf = (k: string) => cleanText(names.get(k) ?? 'Unknown');
+  const markets = await listMarkets(env.DB, event.id);
+  if (markets.length === 0) return void (await reply(`No betting on **${cleanText(event.title)}** yet; it opens when the bracket goes live.`));
+  const pools = [];
+  const rows: unknown[] = [];
+  for (const m of markets) {
+    const o = await odds(env.DB, event.id, m.scope);
+    const ms = parseMatchScope(m.scope);
+    const match = ms ? matches.find((x) => x.round === ms.round && x.slot === ms.slot) : null;
+    if (m.scope !== WINNER && (o.bets === 0 || !match)) continue;
+    const label = poolLabel(m.scope, match ? { a: nameOf(match.side_a ?? ''), b: nameOf(match.side_b ?? '') } : null);
+    pools.push({ market: m, odds: o, label });
+    // A button per side while the pool is open: the two of a match, the whole bracket for the winner.
+    if (marketState(m) !== 'open' || rows.length >= 4) continue;
+    const sides = m.scope === WINNER ? bracketKeys(matches) : [match!.side_a!, match!.side_b!];
+    // Scopes and keys carry colons of their own, so the id's parts are split by a bar.
+    rows.push({ type: 1, components: sides.slice(0, 5).map((k) => ({ type: 2, style: m.scope === WINNER ? 1 : 2, label: `${m.scope === WINNER ? '🏆' : '⚔️'} ${nameOf(k)}`.slice(0, 80), custom_id: `c:bet:${event.id}|${m.scope}|${k}` })) });
+  }
+  const png = await oddsCardPng({ title: event.title, pools, nameOf });
+  const posted = await editInteractionReplyWithFile(interaction.application_id, interaction.token, '', { name: 'odds.png', bytes: png, type: 'image/png' }, rows);
+  if (!posted) return void (await reply('The board could not be drawn. Try again in a moment.'));
+  await scheduleCollapse(env.DB, posted, `${COIN} The betting board for **${cleanText(event.title)}** was here · \`/odds\` shows it again`, now);
+  return 'keep';
+}
+
+// A side's button: how many coins, in a modal. `target` is
+// '<event>|<scope>|<pick>' as the button carried it.
+function stakeModal(target: string) {
+  const field = (component: Record<string, unknown>) => ({ type: 1, components: [component] });
+  return {
+    type: 9,
+    data: {
+      custom_id: `c:modal:${target}`,
+      title: 'Your stake',
+      components: [field({ type: 4, custom_id: 'coins', style: 1, label: 'Coins (0 takes your stake back)', required: true, min_length: 1, max_length: 7, placeholder: '100' })],
+    },
+  };
+}
+
+async function handleStakeModal(env: WorkerEnv, interaction: Interaction): Promise<Outcome> {
+  const reply = (content: string) => editInteractionReply(interaction.application_id, interaction.token, content, [], [], NO_MENTIONS, SUPPRESS_EMBEDS);
+  const userId = interaction.member?.user?.id;
+  if (!userId) return;
+  const [eventText, scope, pick] = (interaction.data?.custom_id ?? '').slice('c:modal:'.length).split('|');
+  const eventId = Number(eventText);
+  if (!Number.isInteger(eventId) || !scope || !pick) return;
+  let amount = NaN;
+  for (const row of interaction.data?.components ?? []) for (const component of row.components) if (component.custom_id === 'coins') amount = Number(component.value);
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    const main = await mainBracket(env.DB, eventId);
+    const matches = main ? await getBracket(env.DB, main.id) : [];
+    const names = await participantNames(env.DB, eventId);
+    const nameOf = (k: string) => cleanText(names.get(k) ?? 'Unknown');
+    if (amount === 0) {
+      const gone = await cancelBet(env.DB, eventId, userId, now, scope);
+      return void (await reply(gone ? `Stake of ${coins(gone.amount)} taken back. You have ${coins(await balance(env.DB, userId))}.` : 'You had no stake on that.'));
+    }
+    const bet = await placeBet(env.DB, eventId, userId, pick, amount, bracketKeys(matches), await ownKey(env.DB, eventId, userId), now, scope);
+    const o = await odds(env.DB, eventId, scope);
+    const line = o.picks.find((p) => p.pick === pick);
+    await reply(`${COIN} ${coins(bet.amount)} on **${nameOf(pick)}** ${scope === WINNER ? 'to win the tournament' : 'in that match'}. That pool is ${coins(o.pool)}; ${nameOf(pick)} pays ${line ? `${(line.multiplier ?? 1).toFixed(1)}×` : '—'} right now. You have ${coins(await balance(env.DB, userId))} left.`);
+  } catch (error) {
+    await reply(error instanceof RuleError ? (error.code === 'not_member' ? 'Coins are for members: `/join` to link or apply.' : error.message) : 'Something went wrong.');
+  }
+}
+
+// /wallet and /bet (src/lib/coins.ts). A bet names the team or player
+// the way /bracket win does; the pool is the main bracket's.
 async function handleCoins(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
   const reply = (content: string) => editInteractionReply(interaction.application_id, interaction.token, content, [], [], NO_MENTIONS, SUPPRESS_EMBEDS);
   const userId = interaction.member?.user?.id;
@@ -501,25 +594,6 @@ async function handleCoins(env: WorkerEnv, interaction: Interaction, origin: str
     const keys = bracketKeys(matches);
     const names = await participantNames(env.DB, eventId);
     const nameOf = (k: string) => cleanText(names.get(k) ?? 'Unknown');
-    const matchLabel = (scope: string) => {
-      const m = parseMatchScope(scope);
-      const match = m ? matches.find((x) => x.round === m.round && x.slot === m.slot) : null;
-      return match ? `${nameOf(match.side_a ?? '')} vs ${nameOf(match.side_b ?? '')}` : 'a match';
-    };
-    if (name === 'odds') {
-      const state = marketState(await getMarket(env.DB, eventId));
-      if (state === 'none') return void (await reply(`No betting on **${cleanText(event.title)}** yet; it opens when the bracket goes live.`));
-      const lines = [`${COIN} **${cleanText(event.title)}**`];
-      for (const m of await listMarkets(env.DB, eventId)) {
-        const o = await odds(env.DB, eventId, m.scope);
-        if (o.bets === 0 && m.scope !== WINNER) continue;
-        lines.push(`**${m.scope === WINNER ? 'Tournament winner' : matchLabel(m.scope)}** · ${marketState(m)} · pool ${coins(o.pool)} from ${o.bets}`, ...oddsLines(o, nameOf).map((l) => `· ${l}`));
-      }
-      const mine = await myBets(env.DB, eventId, userId);
-      if (mine.length > 0) lines.push(...mine.map((b) => `Your stake: ${coins(b.amount)} on ${nameOf(b.pick)} (${b.scope === WINNER ? 'winner' : matchLabel(b.scope)})${b.result ? ` · ${b.result}${b.payout ? `, ${coins(b.payout)}` : ''}` : ''}`));
-      else if (state === 'open') lines.push('You have no stake in this one. `/bet <team or player> <coins>`');
-      return void (await reply(lines.join('\n')));
-    }
     // /bet
     const own = await ownKey(env.DB, eventId, userId);
     const typed = String(opts.get('pick') ?? '').trim();

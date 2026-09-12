@@ -6363,10 +6363,98 @@ details.admin-panel[open] > summary {
 }
 
 .pool + .pool {
-  margin-top: 0.8rem;
+  margin-top: 1rem;
 }
 
 .pool h3 {
   font-size: 1rem;
-  margin: 0 0 0.2rem;
+  margin: 0 0 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.pool-state {
+  font-weight: 400;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.pool-open .pool-state {
+  color: #2f9e5b;
+}
+
+.pool-sides {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.pool-sides li {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--brand, #4169e1);
+  background: #fafbfd;
+}
+
+.pool-sides .side-won {
+  border-left-color: #ffde59;
+}
+
+.pool-sides .side-lost {
+  border-left-color: var(--line);
+  color: var(--muted);
+}
+
+.side-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.side-pay {
+  color: var(--brand, #4169e1);
+  font-weight: 700;
+}
+
+.side-lost .side-pay {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.side-bar {
+  height: 8px;
+  background: var(--line);
+  margin: 0.4rem 0;
+}
+
+.side-bar span {
+  display: block;
+  height: 100%;
+  background: var(--brand, #4169e1);
+}
+
+.side-won .side-bar span {
+  background: #ffde59;
+}
+
+.side-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.side-form {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.side-form input[type='number'] {
+  width: 6.5rem;
 }
