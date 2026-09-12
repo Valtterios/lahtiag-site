@@ -6460,6 +6460,23 @@ details.admin-panel[open] > summary {
   width: 6.5rem;
 }
 
-.team-lock {
-  margin: 0.75rem 0 0.5rem;
+.team-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+  margin-top: 0.6rem;
+}
+
+.team-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  vertical-align: middle;
 }

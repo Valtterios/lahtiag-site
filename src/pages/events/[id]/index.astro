@@ -839,8 +839,8 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               <div class="team-card">
                 <h3>
                   {team.name}
-                  {team.locked === 1 && <span class="status-badge status-muted" title="The captain adds people; nobody joins on their own">Invite only</span>}
                   <span class="event-meta"> {lineUp.length} / {event.team_size}{event.team_reserves > 0 ? `, ${bench.length} / ${event.team_reserves} on the bench` : ''}</span>
+                  {team.locked === 1 && <span class="team-badge" title="The captain adds people; nobody joins on their own">invite only</span>}
                 </h3>
                 <ul class="roster">
                   {members.length === 0 && <li class="queue-meta">Empty</li>}
@@ -905,14 +905,6 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                           </li>
                         ))}
                 </ul>
-                {session !== null && team.created_by === session.discordId && open && (
-                  <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form team-lock">
-                    <input type="hidden" name="csrf" value={csrf} />
-                    <input type="hidden" name="event_team_id" value={team.id} />
-                    <input type="hidden" name="action" value={team.locked === 1 ? 'unlock' : 'lock'} />
-                    <button class="btn btn-ghost btn-sm" type="submit">{team.locked === 1 ? 'Open the team to anyone' : 'Make the team invite-only'}</button>
-                  </form>
-                )}
                 {captain && slotsLeft > 0 && freeAgents.length > 0 && (
                   <form method="post" action={`/events/${event.id}/team-captain`} class="participant-row">
                     <input type="hidden" name="csrf" value={csrf} />
@@ -940,12 +932,24 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                     </button>
                   </form>
                 )}
-                {inThisTeam && open && (
-                  <form method="post" action={`/events/${event.id}/team`} class="inline-form">
-                    <input type="hidden" name="csrf" value={csrf} />
-                    <input type="hidden" name="action" value="leave" />
-                    <button class="btn-link" type="submit">Leave team</button>
-                  </form>
+                {open && (inThisTeam || (session !== null && team.created_by === session.discordId)) && (
+                  <div class="team-links">
+                    {inThisTeam && (
+                      <form method="post" action={`/events/${event.id}/team`} class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="leave" />
+                        <button class="btn-link" type="submit">Leave team</button>
+                      </form>
+                    )}
+                    {session !== null && team.created_by === session.discordId && (
+                      <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="event_team_id" value={team.id} />
+                        <input type="hidden" name="action" value={team.locked === 1 ? 'unlock' : 'lock'} />
+                        <button class="btn-link" type="submit">{team.locked === 1 ? 'Open to anyone' : 'Make invite-only'}</button>
+                      </form>
+                    )}
+                  </div>
                 )}
               </div>
             );
