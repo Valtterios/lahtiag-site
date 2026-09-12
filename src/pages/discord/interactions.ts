@@ -76,7 +76,7 @@ import { passCardPng, homePage, pageCount, clampPage } from '../../lib/pass-card
 import { xpGuideLines } from '../../lib/xp-guide';
 import { scheduleCollapse } from '../../lib/collapse';
 import { progressBoard, progressBoardLines } from '../../lib/gtnh';
-import { ensureWallet, balance, ledger, ledgerLine, grantCoins, placeBet, cancelBet, odds, oddsLines, ownKey, bracketKeys, getMarket, marketState, myBet, coins, COIN, MIN_BET } from '../../lib/coins';
+import { ensureWallet, balance, ledger, ledgerLine, grantCoins, placeBet, cancelBet, odds, oddsLines, ownKey, bracketKeys, getMarket, marketState, myBets, coins, COIN, WINNER, nextMatchOf, eventForChannel, listMarkets, parseMatchScope } from '../../lib/coins';
 import { mainBracket } from '../../lib/db';
 import { listClaimableKinds, createClaim, decideClaim, claimLine, claimDecisionDm, CLAIM_NOTE_MAX } from '../../lib/claims';
 import { getTickKind, kindWorth, listTickKinds } from '../../lib/ticks';
@@ -492,34 +492,54 @@ async function handleCoins(env: WorkerEnv, interaction: Interaction, origin: str
       const head = opened.started ? `${COIN} **Your wallet is open**: ${coins(have)} to start with.` : `${COIN} **Your wallet**: ${coins(have)}${opened.allowance ? ' · this month\'s allowance just came in' : ''}.`;
       return void (await reply([head, ...rows.map((r) => `· ${ledgerLine(r)}`), '-# Coins come from battle pass XP, a monthly allowance and winning bets. `/bet <event> <team or player> <coins>` while a bracket is live.'].join('\n')));
     }
-    const eventId = Number(opts.get('event'));
-    const event = await getEvent(env.DB, eventId);
-    if (!event) return void (await reply(`No event #${eventId}.`));
+    // The event: named, or the one this channel belongs to.
+    const event = opts.has('event') ? await getEvent(env.DB, Number(opts.get('event'))) : interaction.channel_id ? await eventForChannel(env.DB, interaction.channel_id) : null;
+    if (!event) return void (await reply(opts.has('event') ? `No event #${opts.get('event')}.` : 'Which event? Use this in the event\'s channel, or give the event id.'));
+    const eventId = event.id;
     const main = await mainBracket(env.DB, eventId);
     const matches = main ? await getBracket(env.DB, main.id) : [];
     const keys = bracketKeys(matches);
     const names = await participantNames(env.DB, eventId);
     const nameOf = (k: string) => cleanText(names.get(k) ?? 'Unknown');
+    const matchLabel = (scope: string) => {
+      const m = parseMatchScope(scope);
+      const match = m ? matches.find((x) => x.round === m.round && x.slot === m.slot) : null;
+      return match ? `${nameOf(match.side_a ?? '')} vs ${nameOf(match.side_b ?? '')}` : 'a match';
+    };
     if (name === 'odds') {
       const state = marketState(await getMarket(env.DB, eventId));
       if (state === 'none') return void (await reply(`No betting on **${cleanText(event.title)}** yet; it opens when the bracket goes live.`));
-      const o = await odds(env.DB, eventId);
-      const mine = await myBet(env.DB, eventId, userId);
-      return void (await reply([`${COIN} **${cleanText(event.title)}** · betting ${state} · pool ${coins(o.pool)} from ${o.bets}`, ...oddsLines(o, nameOf).map((l) => `· ${l}`), mine ? `Your stake: ${coins(mine.amount)} on ${nameOf(mine.pick)}${mine.result ? ` · ${mine.result}${mine.payout ? `, ${coins(mine.payout)}` : ''}` : ''}` : state === 'open' ? `You have no stake in this one. \`/bet ${eventId} <team or player> <coins>\`` : ''].filter(Boolean).join('\n')));
+      const lines = [`${COIN} **${cleanText(event.title)}**`];
+      for (const m of await listMarkets(env.DB, eventId)) {
+        const o = await odds(env.DB, eventId, m.scope);
+        if (o.bets === 0 && m.scope !== WINNER) continue;
+        lines.push(`**${m.scope === WINNER ? 'Tournament winner' : matchLabel(m.scope)}** · ${marketState(m)} · pool ${coins(o.pool)} from ${o.bets}`, ...oddsLines(o, nameOf).map((l) => `· ${l}`));
+      }
+      const mine = await myBets(env.DB, eventId, userId);
+      if (mine.length > 0) lines.push(...mine.map((b) => `Your stake: ${coins(b.amount)} on ${nameOf(b.pick)} (${b.scope === WINNER ? 'winner' : matchLabel(b.scope)})${b.result ? ` · ${b.result}${b.payout ? `, ${coins(b.payout)}` : ''}` : ''}`));
+      else if (state === 'open') lines.push('You have no stake in this one. `/bet <team or player> <coins>`');
+      return void (await reply(lines.join('\n')));
     }
     // /bet
-    const who = String(opts.get('pick') ?? '').trim().toLowerCase();
+    const own = await ownKey(env.DB, eventId, userId);
+    const typed = String(opts.get('pick') ?? '').trim();
+    const who = typed.toLowerCase();
     const amount = Number(opts.get('coins'));
-    if (who === 'none' || amount === 0) {
-      const gone = await cancelBet(env.DB, eventId, userId, now);
-      return void (await reply(gone ? `Stake of ${coins(gone.amount)} taken back. You have ${coins(await balance(env.DB, userId))}.` : 'You had no stake in this one.'));
+    const onMatch = String(opts.get('on') ?? 'winner') === 'match';
+    const pick = who === 'me' ? own : (keys.find((k) => nameOf(k).toLowerCase() === who) ?? keys.find((k) => nameOf(k).toLowerCase().startsWith(who)));
+    if (who === 'me' && !pick) return void (await reply("You're not in this bracket, so \"me\" is nobody. Name a team or player."));
+    if (!pick) return void (await reply(keys.length === 0 ? 'The bracket is not out yet.' : `No team or player called "${cleanText(typed)}" in the bracket. In it: ${keys.map(nameOf).join(', ')}.`));
+    const next = onMatch && main ? nextMatchOf(matches, main.id, pick) : null;
+    if (onMatch && !next) return void (await reply(`${nameOf(pick)} has no match waiting right now.`));
+    const scope = next ? next.scope : WINNER;
+    if (amount === 0) {
+      const gone = await cancelBet(env.DB, eventId, userId, now, scope);
+      return void (await reply(gone ? `Stake of ${coins(gone.amount)} taken back. You have ${coins(await balance(env.DB, userId))}.` : 'You had no stake on that.'));
     }
-    const pick = keys.find((k) => nameOf(k).toLowerCase() === who) ?? keys.find((k) => nameOf(k).toLowerCase().startsWith(who));
-    if (!pick) return void (await reply(keys.length === 0 ? 'The bracket is not out yet.' : `No team or player called "${cleanText(String(opts.get('pick') ?? ''))}" in the bracket. In it: ${keys.map(nameOf).join(', ')}.`));
-    const bet = await placeBet(env.DB, eventId, userId, pick, amount, keys, await ownKey(env.DB, eventId, userId), now);
-    const o = await odds(env.DB, eventId);
+    const bet = await placeBet(env.DB, eventId, userId, pick, amount, keys, own, now, scope);
+    const o = await odds(env.DB, eventId, scope);
     const line = o.picks.find((p) => p.pick === pick);
-    await reply(`${COIN} ${coins(bet.amount)} on **${nameOf(pick)}** for **${cleanText(event.title)}**. The pool is ${coins(o.pool)}; ${nameOf(pick)} pays ${line ? `${(line.multiplier ?? 1).toFixed(1)}×` : '—'} right now. You have ${coins(await balance(env.DB, userId))} left. \`/bet ${eventId} none\` takes it back while betting is open.`);
+    await reply(`${COIN} ${coins(bet.amount)} on **${nameOf(pick)}** ${next ? `to beat ${nameOf(next.match.side_a === pick ? next.match.side_b ?? '' : next.match.side_a ?? '')}` : `to win **${cleanText(event.title)}**`}. That pool is ${coins(o.pool)}; ${nameOf(pick)} pays ${line ? `${(line.multiplier ?? 1).toFixed(1)}×` : '—'} right now. You have ${coins(await balance(env.DB, userId))} left. The same command with 0 coins takes it back while it's open.`);
   } catch (error) {
     await reply(error instanceof RuleError ? (error.code === 'not_member' ? 'Coins are for members: `/join` to link or apply.' : error.message) : 'Something went wrong.');
   }

@@ -26,7 +26,7 @@ import {
   type MessageFile,
 } from './discord';
 import { bracketPng } from './bracket-image';
-import { openMarket, closeMarket, reopenMarket, settleMarket, unsettleMarket, refundStaleBets, bracketKeys, odds, payPurse, bettingOpenLine, settledLine, getMarket, marketState } from './coins';
+import { openMarket, closeMarket, reopenMarket, settleMarket, unsettleMarket, refundStaleBets, bracketKeys, odds, payPurse, bettingOpenLine, settledLine, getMarket, marketState, matchScope, COIN } from './coins';
 import { formatHelsinki, formatHelsinkiRange } from './time';
 
 // Participant keys ('u:<discord id>' / 't:<team id>') to display names.
@@ -494,11 +494,12 @@ export async function postBracketOut(db: D1Database, env: { DISCORD_BOT_TOKEN?: 
   await refreshLiveBracket(db, env, bracketId, origin, now);
   // Coins: the main bracket going live opens the betting; a redraw gives
   // back the stakes on anyone no longer in it.
-  if ((await mainBracket(db, event.id))?.id === bracketId) {
+  const isMain = (await mainBracket(db, event.id))?.id === bracketId;
+  if (isMain) {
     const opened = await openMarket(db, event.id, now);
-    await refundStaleBets(db, event.id, bracketKeys(matches), now);
     if (opened) await postEventLine(db, env, event.id, bettingOpenLine(event.id, `${origin}/events/${event.id}#betting`));
   }
+  if (regenerated) await refundStaleBets(db, event.id, isMain ? bracketKeys(matches) : await bracketKeys(await getBracket(db, (await mainBracket(db, event.id))?.id ?? bracketId)), now, bracketId);
 }
 
 export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, bracketId: number, origin: string, round: number, slot: number): Promise<void> {
@@ -516,8 +517,20 @@ export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: stri
   await postEventLine(db, env, event.id, resultLine(story, `${origin}${here.path}`, here.label), decided, picture);
   await refreshLiveBracket(db, env, bracketId, origin, now);
   if (decided) await postChampionCards(db, env, event.id, matches, now);
-  // Coins: the first result locks the stakes; the final pays the pool
-  // out and gives the champions their purse.
+  // Coins: a match with its own pool pays out on its result.
+  const decidedMatch = matches.find((m) => m.round === round && m.slot === slot);
+  if (decidedMatch?.winner) {
+    const scope = matchScope(bracketId, round, slot);
+    const pool = await odds(db, event.id, scope);
+    const settled = await settleMarket(db, event.id, decidedMatch.winner, now, scope);
+    if (settled && pool.bets > 0) {
+      const signups = await listSignups(db, event.id);
+      const line = settledLine(pool, settled, nameOf(names, decidedMatch.winner), (id) => safe(signups.find((s) => s.discord_id === id)?.username ?? 'Someone'));
+      if (line) await postEventLine(db, env, event.id, line.replace(`${COIN} `, `${COIN} Match pool: `));
+    }
+  }
+  // The first result on the main bracket locks the stakes on the winner;
+  // the final pays that pool out and gives the champions their purse.
   if ((await mainBracket(db, event.id))?.id === bracketId) {
     await closeMarket(db, event.id, now);
     if (decided) {
@@ -562,8 +575,10 @@ export async function postRevert(db: D1Database, env: { DISCORD_BOT_TOKEN?: stri
     }
   }
   await refreshLiveBracket(db, env, bracketId, origin, Math.floor(Date.now() / 1000));
-  // Coins: a reverted final takes the winnings back; with no result left
-  // in the main bracket the betting reopens.
+  // Coins: a reverted match takes its pool's winnings back; a reverted
+  // final the tournament's; with no result left in the main bracket the
+  // betting on the winner reopens.
+  await unsettleMarket(db, event.id, Math.floor(Date.now() / 1000), matchScope(bracketId, round, slot));
   if ((await mainBracket(db, event.id))?.id === bracketId) {
     const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
     if (round === total) await unsettleMarket(db, event.id, Math.floor(Date.now() / 1000));

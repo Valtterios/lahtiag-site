@@ -16,7 +16,7 @@
 // the payout. One bet per member per event; changing it while betting is
 // open replaces it.
 import type { D1Database } from '@cloudflare/workers-types';
-import { RuleError, listSignups, type BracketMatch } from './db';
+import { RuleError, listSignups, getEvent, type BracketMatch, type EventRow } from './db';
 import { helsinkiDay, seasonStartYear } from './activity';
 import { xpStandings } from './xp';
 import { isCurrentMember } from './minecraft';
@@ -40,8 +40,17 @@ export interface LedgerRow {
   created_at: number;
 }
 
+// What a bet is on: the bracket's champion, or one match.
+export const WINNER = 'winner';
+export const matchScope = (bracketId: number, round: number, slot: number): string => `m:${bracketId}:${round}:${slot}`;
+export function parseMatchScope(scope: string): { bracketId: number; round: number; slot: number } | null {
+  const m = /^m:(\d+):(\d+):(\d+)$/.exec(scope);
+  return m ? { bracketId: Number(m[1]), round: Number(m[2]), slot: Number(m[3]) } : null;
+}
+
 export interface Market {
   event_id: number;
+  scope: string;
   opened_at: number;
   closed_at: number | null;
   settled_at: number | null;
@@ -51,6 +60,7 @@ export interface Market {
 export interface Bet {
   id: number;
   event_id: number;
+  scope: string;
   discord_id: string;
   pick: string;
   amount: number;
@@ -163,52 +173,70 @@ export async function richest(db: D1Database, limit = 10): Promise<{ discord_id:
 
 // --- markets -----------------------------------------------------------------------------
 
-export async function getMarket(db: D1Database, eventId: number): Promise<Market | null> {
-  return db.prepare('SELECT * FROM coin_markets WHERE event_id = ?1').bind(eventId).first<Market>();
+export async function getMarket(db: D1Database, eventId: number, scope = WINNER): Promise<Market | null> {
+  return db.prepare('SELECT * FROM coin_markets WHERE event_id = ?1 AND scope = ?2').bind(eventId, scope).first<Market>();
+}
+
+export async function listMarkets(db: D1Database, eventId: number): Promise<Market[]> {
+  const { results } = await db.prepare('SELECT * FROM coin_markets WHERE event_id = ?1 ORDER BY opened_at').bind(eventId).all<Market>();
+  return results;
 }
 
 // Betting opens when the bracket goes live. Opening twice changes nothing.
-export async function openMarket(db: D1Database, eventId: number, now: number): Promise<boolean> {
-  const result = await db.prepare('INSERT OR IGNORE INTO coin_markets (event_id, opened_at) VALUES (?1, ?2)').bind(eventId, now).run();
+export async function openMarket(db: D1Database, eventId: number, now: number, scope = WINNER): Promise<boolean> {
+  const result = await db.prepare('INSERT OR IGNORE INTO coin_markets (event_id, scope, opened_at) VALUES (?1, ?2, ?3)').bind(eventId, scope, now).run();
   return (result.meta.changes ?? 0) > 0;
 }
 
 // The first result closes it: from then on the stakes are locked.
-export async function closeMarket(db: D1Database, eventId: number, now: number): Promise<boolean> {
-  const result = await db.prepare('UPDATE coin_markets SET closed_at = ?2 WHERE event_id = ?1 AND closed_at IS NULL').bind(eventId, now).run();
+export async function closeMarket(db: D1Database, eventId: number, now: number, scope = WINNER): Promise<boolean> {
+  const result = await db.prepare('UPDATE coin_markets SET closed_at = ?2 WHERE event_id = ?1 AND scope = ?3 AND closed_at IS NULL').bind(eventId, now, scope).run();
   return (result.meta.changes ?? 0) > 0;
 }
 
 // Betting reopens when every result has been reverted; a settled pool
 // must be unsettled first.
-export async function reopenMarket(db: D1Database, eventId: number): Promise<boolean> {
-  const result = await db.prepare('UPDATE coin_markets SET closed_at = NULL WHERE event_id = ?1 AND settled_at IS NULL').bind(eventId).run();
+export async function reopenMarket(db: D1Database, eventId: number, scope = WINNER): Promise<boolean> {
+  const result = await db.prepare('UPDATE coin_markets SET closed_at = NULL WHERE event_id = ?1 AND scope = ?2 AND settled_at IS NULL').bind(eventId, scope).run();
   return (result.meta.changes ?? 0) > 0;
 }
 
-export async function listBets(db: D1Database, eventId: number): Promise<Bet[]> {
-  const { results } = await db.prepare('SELECT * FROM coin_bets WHERE event_id = ?1 ORDER BY amount DESC, placed_at').bind(eventId).all<Bet>();
+export async function listBets(db: D1Database, eventId: number, scope = WINNER): Promise<Bet[]> {
+  const { results } = await db.prepare('SELECT * FROM coin_bets WHERE event_id = ?1 AND scope = ?2 ORDER BY amount DESC, placed_at').bind(eventId, scope).all<Bet>();
   return results;
 }
 
-export async function myBet(db: D1Database, eventId: number, discordId: string): Promise<Bet | null> {
-  return db.prepare('SELECT * FROM coin_bets WHERE event_id = ?1 AND discord_id = ?2').bind(eventId, discordId).first<Bet>();
+export async function myBets(db: D1Database, eventId: number, discordId: string): Promise<Bet[]> {
+  const { results } = await db.prepare('SELECT * FROM coin_bets WHERE event_id = ?1 AND discord_id = ?2 ORDER BY placed_at').bind(eventId, discordId).all<Bet>();
+  return results;
 }
 
-// A stake on one participant. Someone playing in the event may back
-// their own side and nobody else's: a stake on an opponent is a reason
-// to lose. Replacing an earlier bet gives that stake back first, so the
-// balance check is against the whole wallet.
-export async function placeBet(db: D1Database, eventId: number, discordId: string, pick: string, amount: number, pool: string[], own: string | null, now: number): Promise<Bet> {
+export async function myBet(db: D1Database, eventId: number, discordId: string, scope = WINNER): Promise<Bet | null> {
+  return db.prepare('SELECT * FROM coin_bets WHERE event_id = ?1 AND scope = ?2 AND discord_id = ?3').bind(eventId, scope, discordId).first<Bet>();
+}
+
+// A stake on one participant: for the tournament, or for one match
+// (`scope`), which needs both sides known and no result yet, and which
+// opens its own little pool on the first stake while the bracket is
+// live. Someone playing in the event may back their own side and nobody
+// else's: a stake on an opponent is a reason to lose. Replacing an
+// earlier bet gives that stake back first, so the balance check is
+// against the whole wallet.
+export async function placeBet(db: D1Database, eventId: number, discordId: string, pick: string, amount: number, pool: string[], own: string | null, now: number, scope = WINNER): Promise<Bet> {
   if (!Number.isInteger(amount) || amount < MIN_BET || amount > MAX_BET) throw new RuleError('bad_input', `A stake is at least ${MIN_BET} coins.`);
   if (!pool.includes(pick)) throw new RuleError('missing', 'That team or player is not in the bracket.');
   if (own !== null && pick !== own) throw new RuleError('bad_input', 'Playing in this one? Then you can only back your own side.');
-  const market = await getMarket(db, eventId);
-  const state = marketState(market);
-  if (state === 'none') throw new RuleError('no_market', 'Betting has not opened for this event.');
-  if (state !== 'open') throw new RuleError('closed', 'Betting is closed for this event.');
+  const main = await getMarket(db, eventId, WINNER);
+  if (!main) throw new RuleError('no_market', 'Betting has not opened for this event.');
+  if (scope === WINNER) {
+    if (marketState(main) !== 'open') throw new RuleError('closed', 'Betting on the winner is closed for this event.');
+  } else {
+    if (main.settled_at !== null) throw new RuleError('closed', 'The tournament is over.');
+    await openMarket(db, eventId, now, scope);
+    if (marketState(await getMarket(db, eventId, scope)) !== 'open') throw new RuleError('closed', 'That match is decided.');
+  }
   await ensureWallet(db, discordId, now);
-  const earlier = await myBet(db, eventId, discordId);
+  const earlier = await myBet(db, eventId, discordId, scope);
   const have = (await balance(db, discordId)) + (earlier?.amount ?? 0);
   if (amount > have) throw new RuleError('poor', `You have ${have} coins.`);
   const statements = [];
@@ -217,16 +245,16 @@ export async function placeBet(db: D1Database, eventId: number, discordId: strin
     statements.push(db.prepare('DELETE FROM coin_bets WHERE id = ?1').bind(earlier.id));
   }
   statements.push(db.prepare("INSERT INTO coin_ledger (discord_id, amount, kind, ref, note, created_at) VALUES (?1, ?2, 'bet', ?3, NULL, ?4)").bind(discordId, -amount, `event:${eventId}`, now));
-  statements.push(db.prepare('INSERT INTO coin_bets (event_id, discord_id, pick, amount, placed_at) VALUES (?1, ?2, ?3, ?4, ?5)').bind(eventId, discordId, pick, amount, now));
+  statements.push(db.prepare('INSERT INTO coin_bets (event_id, scope, discord_id, pick, amount, placed_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)').bind(eventId, scope, discordId, pick, amount, now));
   await db.batch(statements);
-  return (await myBet(db, eventId, discordId))!;
+  return (await myBet(db, eventId, discordId, scope))!;
 }
 
 // Taking a bet back while betting is open.
-export async function cancelBet(db: D1Database, eventId: number, discordId: string, now: number): Promise<Bet | null> {
-  const bet = await myBet(db, eventId, discordId);
+export async function cancelBet(db: D1Database, eventId: number, discordId: string, now: number, scope = WINNER): Promise<Bet | null> {
+  const bet = await myBet(db, eventId, discordId, scope);
   if (!bet) return null;
-  if (marketState(await getMarket(db, eventId)) !== 'open') throw new RuleError('closed', 'Betting is closed for this event.');
+  if (marketState(await getMarket(db, eventId, scope)) !== 'open') throw new RuleError('closed', 'Betting is closed for this one.');
   await db.batch([
     db.prepare("INSERT INTO coin_ledger (discord_id, amount, kind, ref, note, created_at) VALUES (?1, ?2, 'refund', ?3, 'Bet taken back', ?4)").bind(discordId, bet.amount, `event:${eventId}`, now),
     db.prepare('DELETE FROM coin_bets WHERE id = ?1').bind(bet.id),
@@ -236,20 +264,28 @@ export async function cancelBet(db: D1Database, eventId: number, discordId: stri
 
 // A redraw can drop a participant; the stakes on anyone no longer in
 // the bracket go back.
-export async function refundStaleBets(db: D1Database, eventId: number, pool: string[], now: number): Promise<Bet[]> {
-  if (marketState(await getMarket(db, eventId)) !== 'open') return [];
-  const stale = (await listBets(db, eventId)).filter((b) => !pool.includes(b.pick));
+export async function refundStaleBets(db: D1Database, eventId: number, pool: string[], now: number, bracketId: number | null = null): Promise<Bet[]> {
+  const stale: Bet[] = [];
+  if (marketState(await getMarket(db, eventId)) === 'open') stale.push(...(await listBets(db, eventId)).filter((b) => !pool.includes(b.pick)));
+  // A redraw changes every match, so every unsettled stake on one of this bracket's matches goes back.
+  if (bracketId !== null) {
+    for (const m of await listMarkets(db, eventId)) {
+      if (m.settled_at !== null || parseMatchScope(m.scope)?.bracketId !== bracketId) continue;
+      stale.push(...(await listBets(db, eventId, m.scope)));
+      await db.prepare('DELETE FROM coin_markets WHERE event_id = ?1 AND scope = ?2').bind(eventId, m.scope).run();
+    }
+  }
   for (const bet of stale) {
     await db.batch([
-      db.prepare("INSERT INTO coin_ledger (discord_id, amount, kind, ref, note, created_at) VALUES (?1, ?2, 'refund', ?3, 'Out of the bracket', ?4)").bind(bet.discord_id, bet.amount, `event:${eventId}`, now),
+      db.prepare("INSERT INTO coin_ledger (discord_id, amount, kind, ref, note, created_at) VALUES (?1, ?2, 'refund', ?3, 'The bracket was redrawn', ?4)").bind(bet.discord_id, bet.amount, `event:${eventId}`, now),
       db.prepare('DELETE FROM coin_bets WHERE id = ?1').bind(bet.id),
     ]);
   }
   return stale;
 }
 
-export async function odds(db: D1Database, eventId: number): Promise<Odds> {
-  const bets = await listBets(db, eventId);
+export async function odds(db: D1Database, eventId: number, scope = WINNER): Promise<Odds> {
+  const bets = await listBets(db, eventId, scope);
   const pool = bets.reduce((n, b) => n + b.amount, 0);
   const by = new Map<string, { staked: number; backers: number }>();
   for (const b of bets) {
@@ -267,10 +303,10 @@ export async function odds(db: D1Database, eventId: number): Promise<Odds> {
 // proportion to their stakes, whole coins each, the odd coin or two lost
 // to rounding. Nobody right means everybody's stake comes back. Settling
 // twice changes nothing.
-export async function settleMarket(db: D1Database, eventId: number, winner: string, now: number): Promise<{ payouts: Bet[]; refunded: boolean } | null> {
-  const market = await getMarket(db, eventId);
+export async function settleMarket(db: D1Database, eventId: number, winner: string, now: number, scope = WINNER): Promise<{ payouts: Bet[]; refunded: boolean } | null> {
+  const market = await getMarket(db, eventId, scope);
   if (!market || market.settled_at !== null) return null;
-  const bets = await listBets(db, eventId);
+  const bets = await listBets(db, eventId, scope);
   const pool = bets.reduce((n, b) => n + b.amount, 0);
   const winners = bets.filter((b) => b.pick === winner);
   const onWinner = winners.reduce((n, b) => n + b.amount, 0);
@@ -293,24 +329,24 @@ export async function settleMarket(db: D1Database, eventId: number, winner: stri
       }
     }
   }
-  statements.push(db.prepare('UPDATE coin_markets SET settled_at = ?2, closed_at = COALESCE(closed_at, ?2), winner = ?3 WHERE event_id = ?1').bind(eventId, now, winner));
+  statements.push(db.prepare('UPDATE coin_markets SET settled_at = ?2, closed_at = COALESCE(closed_at, ?2), winner = ?3 WHERE event_id = ?1 AND scope = ?4').bind(eventId, now, winner, scope));
   await db.batch(statements);
   return { payouts, refunded: bets.length > 0 && onWinner === 0 };
 }
 
 // The final was reverted: what was paid out comes back, the bets stand
 // again, the market is closed but not settled.
-export async function unsettleMarket(db: D1Database, eventId: number, now: number): Promise<boolean> {
-  const market = await getMarket(db, eventId);
+export async function unsettleMarket(db: D1Database, eventId: number, now: number, scope = WINNER): Promise<boolean> {
+  const market = await getMarket(db, eventId, scope);
   if (!market || market.settled_at === null) return false;
   const statements = [];
-  for (const b of await listBets(db, eventId)) {
+  for (const b of await listBets(db, eventId, scope)) {
     if (b.payout > 0) {
       statements.push(db.prepare("INSERT INTO coin_ledger (discord_id, amount, kind, ref, note, created_at) VALUES (?1, ?2, 'unsettle', ?3, 'The final was reverted', ?4)").bind(b.discord_id, -b.payout, `event:${eventId}`, now));
     }
     statements.push(db.prepare('UPDATE coin_bets SET result = NULL, payout = 0 WHERE id = ?1').bind(b.id));
   }
-  statements.push(db.prepare('UPDATE coin_markets SET settled_at = NULL, winner = NULL WHERE event_id = ?1').bind(eventId));
+  statements.push(db.prepare('UPDATE coin_markets SET settled_at = NULL, winner = NULL, closed_at = ?3 WHERE event_id = ?1 AND scope = ?2').bind(eventId, scope, scope === WINNER ? market.closed_at : null));
   await db.batch(statements);
   return true;
 }
@@ -328,6 +364,22 @@ export async function ownKey(db: D1Database, eventId: number, discordId: string)
   const mine = (await listSignups(db, eventId)).find((s) => s.discord_id === discordId);
   if (!mine || mine.status !== 'yes') return null;
   return mine.event_team_id !== null ? `t:${mine.event_team_id}` : `u:${discordId}`;
+}
+
+// The undecided match a participant is waiting in, if any, as a scope.
+export function nextMatchOf(matches: BracketMatch[], bracketId: number, pick: string): { scope: string; match: BracketMatch } | null {
+  const match = matches.find((m) => m.winner === null && m.side_a !== null && m.side_b !== null && (m.side_a === pick || m.side_b === pick));
+  return match ? { scope: matchScope(bracketId, match.round, match.slot), match } : null;
+}
+
+// The event a Discord channel belongs to: its talk channel, or any of the
+// channels made for it, so a command there needs no event id.
+export async function eventForChannel(db: D1Database, channelId: string): Promise<EventRow | null> {
+  const row = await db
+    .prepare('SELECT id FROM events WHERE discord_channel_id = ?1 UNION SELECT event_id AS id FROM event_discord_channels WHERE channel_id = ?1 LIMIT 1')
+    .bind(channelId)
+    .first<{ id: number }>();
+  return row ? getEvent(db, row.id) : null;
 }
 
 // The lines the event's channel gets.

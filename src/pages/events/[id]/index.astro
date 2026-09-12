@@ -36,7 +36,7 @@ import { stripeConfigured } from '../../../lib/stripe';
 import { whenLabel, formatHelsinkiRange, unixToHelsinkiInputs, formatHelsinki } from '../../../lib/time';
 import { kindWorth, listTickKinds, listTickableMembers, listTicks } from '../../../lib/ticks';
 import { seasonStartYear } from '../../../lib/activity';
-import { getMarket, marketState, odds, myBet, ownKey, bracketKeys, balance, ensureWallet, MIN_BET, COIN } from '../../../lib/coins';
+import { getMarket, marketState, odds, myBets, ownKey, bracketKeys, balance, ensureWallet, listMarkets, parseMatchScope, WINNER, MIN_BET, COIN } from '../../../lib/coins';
 import { mainBracket, getBracket } from '../../../lib/db';
 import { isCurrentMember } from '../../../lib/minecraft';
 import { participantNames } from '../../../lib/event-channel';
@@ -68,10 +68,14 @@ const liveBrackets = brackets.filter((b) => b.live_at !== null);
 const market = event ? await getMarket(env.DB, event.id) : null;
 const betting = marketState(market);
 const mainDraw = event && betting !== 'none' ? await mainBracket(env.DB, event.id) : null;
-const betKeys = mainDraw ? bracketKeys(await getBracket(env.DB, mainDraw.id)) : [];
+const mainMatches = mainDraw ? await getBracket(env.DB, mainDraw.id) : [];
+const betKeys = bracketKeys(mainMatches);
+const pools = event && betting !== 'none' ? await Promise.all((await listMarkets(env.DB, event.id)).map(async (m) => ({ market: m, odds: await odds(env.DB, event.id, m.scope) }))) : [];
+const matchLabel = (scope: string) => { const m = parseMatchScope(scope); const match = m ? mainMatches.find((x) => x.round === m.round && x.slot === m.slot) : null; return match ? `${names.get(match.side_a ?? '') ?? '?'} vs ${names.get(match.side_b ?? '') ?? '?'}` : 'a match'; };
 const names = event && betting !== 'none' ? await participantNames(env.DB, event.id) : new Map<string, string>();
 const pool = event && betting !== 'none' ? await odds(env.DB, event.id) : null;
-const bet = event && session && betting !== 'none' ? await myBet(env.DB, event.id, session.discordId) : null;
+const bets = event && session && betting !== 'none' ? await myBets(env.DB, event.id, session.discordId) : [];
+const bet = bets.find((b) => b.scope === WINNER) ?? null;
 const ownSide = event && session && betting === 'open' ? await ownKey(env.DB, event.id, session.discordId) : null;
 const canBet = event && session && betting === 'open' ? await isCurrentMember(env.DB, session.discordId) : false;
 if (canBet && session) await ensureWallet(env.DB, session.discordId, nowSeconds);
@@ -220,6 +224,7 @@ const FLASH: Record<string, string> = {
   bet_input: 'A stake is a whole number of coins, at least the minimum, and a player backs their own side only.',
   poor: 'Not enough coins for that stake.',
   no_market: 'Betting has not opened for this event.',
+  no_match: 'They have no match waiting right now.',
   not_member: 'Coins are for members.',
   bad_input: "That didn't save. Check the values: reserved seats can't exceed the capacity, a team name is 1 to 40 characters, a team size is a whole number.",
   team_reserves: "The reserves didn't change: a team already has more of them than that. Move those players into the line-up, or off the team, first.",
@@ -656,36 +661,44 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 ? `Coins on who wins the bracket. Every stake goes into one pool; when the final is decided, the pool is shared by those who picked the champion, in proportion to their stakes. Stakes lock at the first result. Playing? You can back your own side only.`
                 : betting === 'closed'
                   ? 'Stakes are locked until the final is decided.'
-                  : `Paid out on ${market?.winner ? (names.get(market.winner) ?? 'the champion') : 'the champion'}.`}
+                  : `Paid out on ${market?.winner ? (names.get(market.winner) ?? 'the champion') : 'the champion'}.`}{betting === 'open' ? ' A stake on a single match opens its own pool and pays out on that result.' : ''}
             </p>
-            {pool.bets > 0 ? (
-              <ul class="odds">
-                {pool.picks.map((p) => (
-                  <li><strong>{names.get(p.pick) ?? 'Unknown'}</strong> · {p.staked} {COIN} from {p.backers} · pays {p.multiplier === null ? '—' : `${p.multiplier >= 10 ? Math.round(p.multiplier) : p.multiplier.toFixed(1)}×`}</li>
-                ))}
-              </ul>
-            ) : (
-              <p class="app-empty">No stakes yet{betting === 'open' ? '; be the first' : ''}.</p>
-            )}
-            {bet && (
-              <p class="member-meta">Your stake: <strong>{bet.amount} {COIN}</strong> on {names.get(bet.pick) ?? 'Unknown'}{bet.result ? ` · ${bet.result}${bet.payout ? `, ${bet.payout} ${COIN} back` : ''}` : ''}.</p>
-            )}
+            {pools.filter((p) => p.odds.bets > 0 || p.market.scope === WINNER).map((p) => (
+              <div class="pool">
+                <h3>{p.market.scope === WINNER ? 'Tournament winner' : matchLabel(p.market.scope)} <span class="member-meta">· {marketState(p.market)} · {p.odds.pool} {COIN} from {p.odds.bets}</span></h3>
+                {p.odds.bets > 0 ? (
+                  <ul class="odds">
+                    {p.odds.picks.map((x) => (
+                      <li><strong>{names.get(x.pick) ?? 'Unknown'}</strong> · {x.staked} {COIN} from {x.backers} · pays {x.multiplier === null ? '—' : `${x.multiplier >= 10 ? Math.round(x.multiplier) : x.multiplier.toFixed(1)}×`}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p class="app-empty">No stakes yet{betting === 'open' ? '; be the first' : ''}.</p>
+                )}
+              </div>
+            ))}
+            {bets.map((b) => (
+              <p class="member-meta">Your stake: <strong>{b.amount} {COIN}</strong> on {names.get(b.pick) ?? 'Unknown'} ({b.scope === WINNER ? 'tournament winner' : matchLabel(b.scope)}){b.result ? ` · ${b.result}${b.payout ? `, ${b.payout} ${COIN} back` : ''}` : ''}.
+                {canBet && !b.result && (
+                  <form method="post" action={`/events/${event.id}/bet`} class="inline-form">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="action" value="cancel" />
+                    <input type="hidden" name="scope" value={b.scope} />
+                    <button class="btn btn-ghost btn-sm" type="submit">Take it back</button>
+                  </form>
+                )}
+              </p>
+            ))}
             {canBet && (
               <form method="post" action={`/events/${event.id}/bet`} class="signup-bar bet-form">
                 <input type="hidden" name="csrf" value={csrf} />
                 <label>On <select name="pick" required>
                   {betKeys.filter((k) => ownSide === null || k === ownSide).map((k) => <option value={k} selected={bet?.pick === k}>{names.get(k) ?? 'Unknown'}</option>)}
                 </select></label>
+                <label>To <select name="on"><option value="winner">win the tournament</option><option value="match">win their next match</option></select></label>
                 <label>Coins <input type="number" name="coins" min={MIN_BET} max={purse + (bet?.amount ?? 0)} step="1" value={bet?.amount ?? Math.min(50, purse)} required /></label>
-                <button class="btn btn-primary" type="submit">{bet ? 'Change my stake' : 'Place my stake'}</button>
+                <button class="btn btn-primary" type="submit">Place my stake</button>
                 <span class="member-meta">You have {purse} {COIN}.</span>
-              </form>
-            )}
-            {canBet && bet && (
-              <form method="post" action={`/events/${event.id}/bet`} class="inline-form">
-                <input type="hidden" name="csrf" value={csrf} />
-                <input type="hidden" name="action" value="cancel" />
-                <button class="btn btn-ghost btn-sm" type="submit">Take my stake back</button>
               </form>
             )}
             {!session && betting === 'open' && <p class="member-meta">Sign in with Discord to bet; coins are for members.</p>}

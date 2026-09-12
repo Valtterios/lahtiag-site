@@ -124,3 +124,42 @@ describe('activity income', () => {
     expect(await bal(env.DB, A)).toBe(100 * COINS_PER_XP);
   });
 });
+
+describe('match pools', () => {
+  it('opens a pool per match on the first stake, pays on that result, and a redraw returns the stakes', async () => {
+    const { openMarket: open, placeBet: bet, odds: pool, settleMarket: settle, unsettleMarket: unsettle, balance: bal, refundStaleBets: refund, matchScope, nextMatchOf, START_COINS: S, MONTHLY_ALLOWANCE: M } = await import('../src/lib/coins');
+    for (const t of ['coin_bets', 'coin_markets', 'coin_ledger', 'events', 'register', 'members']) await env.DB.prepare(`DELETE FROM ${t}`).run();
+    await member(A, 'Aino'); await member(B, 'Pekka');
+    const eventId = await createEvent(env.DB, { title: 'Cup', description: null, starts_at: NOW + 86400, capacity: null, created_by: A }, NOW);
+    const matches = [
+      { bracket_id: 7, event_id: eventId, round: 1, slot: 0, side_a: 't:1', side_b: 't:2', winner: null },
+      { bracket_id: 7, event_id: eventId, round: 1, slot: 1, side_a: 't:3', side_b: 't:4', winner: null },
+      { bracket_id: 7, event_id: eventId, round: 2, slot: 0, side_a: null, side_b: null, winner: null },
+    ];
+    const keys = ['t:1', 't:2', 't:3', 't:4'];
+    const next = nextMatchOf(matches, 7, 't:2');
+    expect(next?.scope).toBe(matchScope(7, 1, 0));
+    expect(nextMatchOf(matches, 7, 't:9')).toBeNull();
+    // No pool on a match before the bracket is live, none on a decided match.
+    await expect(bet(env.DB, eventId, A, 't:2', 100, keys, null, NOW, next!.scope)).rejects.toMatchObject({ code: 'no_market' });
+    await open(env.DB, eventId, NOW);
+    await bet(env.DB, eventId, A, 't:2', 100, keys, null, NOW, next!.scope);
+    await bet(env.DB, eventId, B, 't:1', 300, keys, null, NOW, next!.scope);
+    await bet(env.DB, eventId, B, 't:3', 50, keys, null, NOW); // and one on the tournament
+    expect((await pool(env.DB, eventId, next!.scope)).pool).toBe(400);
+    expect((await pool(env.DB, eventId)).pool).toBe(50);
+    // Team 2 wins the match: Aino takes the 400.
+    const settled = await settle(env.DB, eventId, 't:2', NOW + 10, next!.scope);
+    expect(settled?.payouts.map((p) => [p.discord_id, p.payout])).toEqual([[A, 400]]);
+    expect(await bal(env.DB, A)).toBe(S + M - 100 + 400);
+    await expect(bet(env.DB, eventId, A, 't:2', 10, keys, null, NOW + 11, next!.scope)).rejects.toMatchObject({ code: 'closed' });
+    // The result is reverted: the 400 comes back, both stakes stand.
+    expect(await unsettle(env.DB, eventId, NOW + 20, next!.scope)).toBe(true);
+    expect(await bal(env.DB, A)).toBe(S + M - 100);
+    // A redraw of the bracket returns every match stake; the tournament stake stays.
+    const back = await refund(env.DB, eventId, keys, NOW + 30, 7);
+    expect(back.map((b) => b.discord_id).sort()).toEqual([A, B]);
+    expect(await bal(env.DB, A)).toBe(S + M);
+    expect(await bal(env.DB, B)).toBe(S + M - 50);
+  });
+});

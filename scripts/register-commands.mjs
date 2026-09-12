@@ -137,14 +137,15 @@ const commands = [
   { name: 'wallet', description: 'Your coins: balance and the last movements (only you see it)' },
   {
     name: 'bet',
-    description: 'Stake coins on who wins an event\'s bracket (only you see the answer)',
+    description: 'Stake coins on a bracket: the tournament winner, or one match (only you see the answer)',
     options: [
-      { type: INTEGER, name: 'event', description: 'Event id', required: true },
-      { type: STRING, name: 'pick', description: 'The team or player, or "none" to take your stake back', required: true },
-      { type: INTEGER, name: 'coins', description: 'How many coins', required: true, min_value: 0 },
+      { type: STRING, name: 'pick', description: 'The team or player, or "me"', required: true },
+      { type: INTEGER, name: 'coins', description: 'How many coins; 0 takes your stake back', required: true, min_value: 0 },
+      { type: STRING, name: 'on', description: 'The tournament winner (default), or their next match', required: false, choices: [{ name: 'the tournament winner', value: 'winner' }, { name: 'their next match', value: 'match' }] },
+      { type: INTEGER, name: 'event', description: 'Event id (not needed in the event\'s own channel)', required: false },
     ],
   },
-  { name: 'odds', description: 'The betting pool on an event: who has what on whom', options: [{ type: INTEGER, name: 'event', description: 'Event id', required: true }] },
+  { name: 'odds', description: 'The betting pools on an event: who has what on whom', options: [{ type: INTEGER, name: 'event', description: 'Event id (not needed in the event\'s own channel)', required: false }] },
   {
     name: 'coins',
     description: 'Board: give or take coins',

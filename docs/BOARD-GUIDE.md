@@ -666,9 +666,13 @@ pass XP, paid by the bot as the XP comes in. Champions get 250.
   theirs. If nobody picked the champion, every stake goes back.
 - **Players back themselves only.** Someone in the bracket can stake on
   their own side and nobody else's, so there is never a reason to lose.
-- **Members bet** with `/bet <event> <team or player> <coins>` in Discord
-  or on the event page, `/odds <event>` shows the pool, `/wallet` the
-  balance. `/bet <event> none` takes a stake back while betting is open.
+- **Members bet** with `/bet <team or player> <coins>` in the event's
+  channel (elsewhere, add the event id) or on the event page; `me` works
+  as the pick. That backs them to win the tournament; `on: their next
+  match` backs them for one match instead, which opens a pool of its own
+  that pays out when that result is recorded. `/odds` shows the pools,
+  `/wallet` the balance. The same command with 0 coins takes a stake
+  back while its pool is open.
 - **The board** gives or takes coins with `/coins give @member <coins>
   <reason>`; a negative number takes. The reason shows in their wallet.
 

@@ -6362,3 +6362,11 @@ details.admin-panel[open] > summary {
   color: var(--muted);
 }
 
+.pool + .pool {
+  margin-top: 0.8rem;
+}
+
+.pool h3 {
+  font-size: 1rem;
+  margin: 0 0 0.2rem;
+}
