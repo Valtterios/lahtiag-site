@@ -78,7 +78,8 @@ const figures =
         { label: 'Wins', value: String(stats.wins) },
         { label: 'XP', value: String(lifetime.xp) },
         { label: 'Messages', value: String(lifetime.messages) },
-        { label: 'Minecraft', value: lifetime.minecraft_minutes > 0 ? voiceLabel(lifetime.minecraft_minutes) : '—' },
+        // Whole hours once there are any: '2 h 7 min' wraps in the card's narrow tile.
+        { label: 'Minecraft', value: lifetime.minecraft_minutes >= 60 ? `${Math.round(lifetime.minecraft_minutes / 60)} h` : lifetime.minecraft_minutes > 0 ? `${lifetime.minecraft_minutes} min` : '—' },
       ]
     : [];
 

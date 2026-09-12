@@ -1145,6 +1145,7 @@ a:hover {
   font-weight: 700;
   font-size: 4.4cqi;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .id-card-figure-label {
