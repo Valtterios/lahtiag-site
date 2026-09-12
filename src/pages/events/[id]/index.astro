@@ -834,7 +834,8 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             const bench = members.filter((m) => m.reserve === 1);
             const slotsLeft = event.team_size! + event.team_reserves - members.length;
             const inThisTeam = mine?.event_team_id === team.id;
-            const captain = session !== null && !session.isAdmin && team.created_by === session.discordId && open;
+            // The founder's controls, board member or not; the board's own roster tools sit beside them.
+            const captain = session !== null && team.created_by === session.discordId && open;
             return (
               <div class="team-card">
                 <h3>
