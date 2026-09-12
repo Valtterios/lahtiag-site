@@ -6,10 +6,17 @@
 // Uses the client-credentials grant with the applications.commands.update
 // scope, so no bot token exists anywhere — matching the spec's secret list.
 
+//
+// Or, with the bot's own token (the one the listener and the bridge run
+// with), which may register commands as well:
+//
+//   DISCORD_BOT_TOKEN=... node scripts/register-commands.mjs
+
 const clientId = process.env.DISCORD_CLIENT_ID;
 const clientSecret = process.env.DISCORD_CLIENT_SECRET;
-if (!clientId || !clientSecret) {
-  console.error('Set DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET in the environment.');
+const botToken = process.env.DISCORD_BOT_TOKEN;
+if (!botToken && (!clientId || !clientSecret)) {
+  console.error('Set DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET, or DISCORD_BOT_TOKEN, in the environment.');
   process.exit(1);
 }
 
@@ -223,6 +230,17 @@ const commands = [
   },
 ];
 
+let authorization;
+let applicationId = clientId;
+if (botToken) {
+  authorization = `Bot ${botToken}`;
+  const me = await fetch('https://discord.com/api/v10/oauth2/applications/@me', { headers: { authorization } });
+  if (!me.ok) {
+    console.error('The bot token was refused:', me.status, await me.text());
+    process.exit(1);
+  }
+  applicationId = (await me.json()).id;
+} else {
 const tokenResponse = await fetch('https://discord.com/api/v10/oauth2/token', {
   method: 'POST',
   headers: {
@@ -239,10 +257,12 @@ if (!tokenResponse.ok) {
   process.exit(1);
 }
 const { access_token: accessToken } = await tokenResponse.json();
+authorization = `Bearer ${accessToken}`;
+}
 
-const putResponse = await fetch(`https://discord.com/api/v10/applications/${clientId}/commands`, {
+const putResponse = await fetch(`https://discord.com/api/v10/applications/${applicationId}/commands`, {
   method: 'PUT',
-  headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+  headers: { authorization, 'content-type': 'application/json' },
   body: JSON.stringify(commands),
 });
 if (!putResponse.ok) {
