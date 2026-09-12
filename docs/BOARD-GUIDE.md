@@ -286,11 +286,12 @@ name, number or class — those stay in the register.*
 *Questions under Board tools: text, choice or checkbox, optional or required.*
 
 - **Team captains.** Whoever founds a team can add people who signed up
-  without a team, take members out, and move one between the starting
-  line-up and the bench, while signups are open. A captain can also make
-  the team **invite-only**: it shows an "Invite only" badge, nobody joins
-  it on their own, and the captain adds people. The board's Participants
-  does the rest.
+  without a team (the **+** on each name under "Looking for a team"),
+  take members out, and move one between the starting line-up and the
+  bench, while signups are open. A captain can also make the team
+  **invite-only**: it shows an "invite only" tag, nobody joins it on
+  their own, and the captain adds people with the same +. The board's
+  Participants does the rest.
 
 - **Reserves.** A tournament team can carry more players than it fields:
   set *Reserves per team* beside the team size, and five-a-side with one

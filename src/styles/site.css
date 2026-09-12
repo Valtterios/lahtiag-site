@@ -6460,23 +6460,56 @@ details.admin-panel[open] > summary {
   width: 6.5rem;
 }
 
-.team-links {
+.team-head {
   display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.4rem 1rem;
   flex-wrap: wrap;
-  gap: 0.4rem 1.25rem;
-  margin-top: 0.6rem;
 }
 
-.team-badge {
-  display: inline-block;
-  margin-left: 0.5rem;
-  padding: 0.1rem 0.45rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.team-head h3 {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.lock-mark {
   color: var(--muted);
-  vertical-align: middle;
+}
+
+.team-actions-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.2rem;
+  margin-top: 0.8rem;
+}
+
+.roster-hint {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.chip-add {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+/* A button that reads as a link: Leave team, the captain's invite-only switch. */
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--blue);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.btn-link:hover {
+  color: var(--blue-dark);
 }

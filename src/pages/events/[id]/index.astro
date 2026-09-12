@@ -170,6 +170,9 @@ const signupsClosed = event?.signups_closed_at != null;
 // Signups can wait for an opening moment; until then only the heart works.
 const opensLater = event ? !signupsOpen(event, nowSeconds) : false;
 const open = event ? event.cancelled_at === null && !signupsClosed && !opensLater : false;
+// The team the viewer founded, while signups are open: the "+" on the free agents adds to it.
+const myTeam = session && open ? eventTeams.find((t) => t.created_by === session.discordId) ?? null : null;
+const myTeamRoom = myTeam && event ? event.team_size! + event.team_reserves - signups.filter((s) => s.event_team_id === myTeam.id).length : 0;
 const interested = event && session ? await isInterested(env.DB, event.id, session.discordId) : false;
 // The waitlist: solo, capped, no tickets.
 const hasWaitlist = event ? !isTeamEvent && event.capacity !== null && !ticketed : false;
@@ -838,11 +841,10 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             const captain = session !== null && team.created_by === session.discordId && open;
             return (
               <div class="team-card">
-                <h3>
-                  {team.name}
-                  <span class="event-meta"> {lineUp.length} / {event.team_size}{event.team_reserves > 0 ? `, ${bench.length} / ${event.team_reserves} on the bench` : ''}</span>
-                  {team.locked === 1 && <span class="team-badge" title="The captain adds people; nobody joins on their own">invite only</span>}
-                </h3>
+                <div class="team-head">
+                  <h3>{team.name}{team.locked === 1 && <span class="member-mark lock-mark" title="The captain adds people; nobody joins on their own">invite only</span>}</h3>
+                  <p class="event-meta">{lineUp.length} / {event.team_size}{event.team_reserves > 0 ? ` · bench ${bench.length} / ${event.team_reserves}` : ''}</p>
+                </div>
                 <ul class="roster">
                   {members.length === 0 && <li class="queue-meta">Empty</li>}
                   {session?.isAdmin
@@ -906,35 +908,17 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                           </li>
                         ))}
                 </ul>
-                {captain && slotsLeft > 0 && freeAgents.length > 0 && (
-                  <form method="post" action={`/events/${event.id}/team-captain`} class="participant-row">
-                    <input type="hidden" name="csrf" value={csrf} />
-                    <input type="hidden" name="action" value="add" />
-                    <input type="hidden" name="event_team_id" value={team.id} />
-                    <label>
-                      Add to the team
-                      <select name="discord_id">
-                        {freeAgents.map((s) => <option value={s.discord_id}>{s.username}</option>)}
-                      </select>
-                    </label>
-                    <button class="btn btn-ghost btn-sm" type="submit">Add</button>
-                  </form>
-                )}
-                {session && open && !inThisTeam && slotsLeft > 0 && team.locked === 1 && team.created_by !== session.discordId && (
-                  <p class="queue-meta">Invite only: the captain adds people.</p>
-                )}
-                {session && open && !inThisTeam && slotsLeft > 0 && (!ticketed || hasTicket) && (team.locked !== 1 || team.created_by === session.discordId) && (
-                  <form method="post" action={`/events/${event.id}/team`} class="inline-form">
-                    <input type="hidden" name="csrf" value={csrf} />
-                    <input type="hidden" name="action" value="join" />
-                    <input type="hidden" name="event_team_id" value={team.id} />
-                    <button class="btn btn-ghost" type="submit">
-                      {lineUp.length >= event.team_size! ? 'Join as a reserve' : 'Join this team'}
-                    </button>
-                  </form>
-                )}
-                {open && (inThisTeam || (session !== null && team.created_by === session.discordId)) && (
-                  <div class="team-links">
+                {session && open && (
+                  <div class="team-actions-row">
+                    {!inThisTeam && slotsLeft > 0 && (!ticketed || hasTicket) && (team.locked !== 1 || captain) && (
+                      <form method="post" action={`/events/${event.id}/team`} class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="join" />
+                        <input type="hidden" name="event_team_id" value={team.id} />
+                        <button class="btn btn-ghost btn-sm" type="submit">{lineUp.length >= event.team_size! ? 'Join as a reserve' : 'Join this team'}</button>
+                      </form>
+                    )}
+                    {!inThisTeam && slotsLeft > 0 && team.locked === 1 && !captain && <span class="event-meta">The captain adds people.</span>}
                     {inThisTeam && (
                       <form method="post" action={`/events/${event.id}/team`} class="inline-form">
                         <input type="hidden" name="csrf" value={csrf} />
@@ -942,12 +926,12 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                         <button class="btn-link" type="submit">Leave team</button>
                       </form>
                     )}
-                    {session !== null && team.created_by === session.discordId && (
+                    {captain && (
                       <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form">
                         <input type="hidden" name="csrf" value={csrf} />
                         <input type="hidden" name="event_team_id" value={team.id} />
                         <input type="hidden" name="action" value={team.locked === 1 ? 'unlock' : 'lock'} />
-                        <button class="btn-link" type="submit">{team.locked === 1 ? 'Open to anyone' : 'Make invite-only'}</button>
+                        <button class="btn-link" type="submit">{team.locked === 1 ? 'Open the team to anyone' : 'Make invite-only'}</button>
                       </form>
                     )}
                   </div>
@@ -958,13 +942,22 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
 
           {freeAgents.length > 0 && (
             <>
-              <h3 class="roster-label">Looking for a team</h3>
+              <h3 class="roster-label">Looking for a team{myTeam && myTeamRoom > 0 && <span class="roster-hint"> · + adds them to {myTeam.name}</span>}</h3>
               <ul class="roster">
                 {freeAgents.map((s) => (
                   <li class="person">
                     <img class="person-face" src={avatarUrl(s.discord_id, s.avatar_hash)} width="28" height="28" alt="" loading="lazy" />
                     <span class="person-name">{s.username}</span>
                     {session?.isAdmin && s.is_member !== 1 && <span class="member-mark member-mark-guest" title="Not in the member register">guest</span>}
+                    {myTeam && myTeamRoom > 0 && (
+                      <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value="add" />
+                        <input type="hidden" name="event_team_id" value={myTeam.id} />
+                        <input type="hidden" name="discord_id" value={s.discord_id} />
+                        <button class="chip-remove chip-add" type="submit" title={`Add to ${myTeam.name}`}>+</button>
+                      </form>
+                    )}
                     {session?.isAdmin && (
                       <form method="post" action={`/events/${event.id}/remove-signup`} class="inline-form">
                         <input type="hidden" name="csrf" value={csrf} />
