@@ -906,7 +906,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                         ))}
                 </ul>
                 {session !== null && team.created_by === session.discordId && open && (
-                  <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form">
+                  <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form team-lock">
                     <input type="hidden" name="csrf" value={csrf} />
                     <input type="hidden" name="event_team_id" value={team.id} />
                     <input type="hidden" name="action" value={team.locked === 1 ? 'unlock' : 'lock'} />

@@ -17,14 +17,21 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   if (!(await checkCsrf(request, form))) return redirect(`${back}?err=csrf`, 303);
   const teamId = Number(form.get('event_team_id'));
   const target = String(form.get('discord_id') ?? '').trim();
-  if (!Number.isInteger(teamId) || !target) return redirect(`${back}?err=bad_input`, 303);
   const now = Math.floor(Date.now() / 1000);
   const action = String(form.get('action') ?? '');
-  try {
-    if (action === 'lock' || action === 'unlock') {
+  // Invite-only on or off names no person, only the team.
+  if (action === 'lock' || action === 'unlock') {
+    if (!Number.isInteger(teamId)) return redirect(`${back}?err=bad_input`, 303);
+    try {
       await captainLockTeam(env.DB, id, teamId, session.discordId, action === 'lock', now);
-      return redirect(`${back}?ok=${action === 'lock' ? 'team_locked' : 'team_unlocked'}#teams`, 303);
+    } catch (error) {
+      if (error instanceof RuleError) return redirect(`${back}?err=${error.code}#teams`, 303);
+      throw error;
     }
+    return redirect(`${back}?ok=${action === 'lock' ? 'team_locked' : 'team_unlocked'}#teams`, 303);
+  }
+  if (!Number.isInteger(teamId) || !target) return redirect(`${back}?err=bad_input`, 303);
+  try {
     if (action === 'kick') await captainRemoveFromTeam(env.DB, id, teamId, session.discordId, target, now);
     else if (action === 'place') await captainSetTeamPlace(env.DB, id, teamId, session.discordId, target, form.get('reserve') === '1', now);
     else await captainAddToTeam(env.DB, id, teamId, session.discordId, target, now);

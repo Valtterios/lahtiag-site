@@ -6459,3 +6459,7 @@ details.admin-panel[open] > summary {
 .side-form input[type='number'] {
   width: 6.5rem;
 }
+
+.team-lock {
+  margin: 0.75rem 0 0.5rem;
+}
