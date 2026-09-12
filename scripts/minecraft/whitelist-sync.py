@@ -153,7 +153,12 @@ def mojang_uuid(name):
 
 def write_file(path, entries, adds, removes, uuids):
     gone = {n.lower() for n in removes}
-    kept = [e for e in entries if e['name'].lower() not in gone]
+    # The site knows each name's real account id (from Mojang, when the
+    # name was saved); an entry written by hand or by an offline-mode tool
+    # carries a made-up one that an online server does not match. The
+    # site's id wins, so the file works without a name-matching mod.
+    by_name = {n.lower(): u for n, u in uuids.items() if u}
+    kept = [{**e, 'uuid': by_name.get(e['name'].lower(), e['uuid'])} for e in entries if e['name'].lower() not in gone]
     unknown = []
     for name in adds:
         uuid, exact = (uuids.get(name), name) if uuids.get(name) else mojang_uuid(name)
@@ -191,7 +196,10 @@ def main():
     removes = []
     if conf['REMOVE'].lower() in ('yes', 'true', '1'):
         removes = [current[k] for k in sorted(current) if k not in wanted_all]
-    if not adds and not removes:
+    # Entries whose account id is not the one the site knows (see write_file).
+    by_name = {n.lower(): u for n, u in uuids.items() if u}
+    stale = [e['name'] for e in entries if by_name.get(e['name'].lower()) and e['uuid'] != by_name[e['name'].lower()]]
+    if not adds and not removes and not stale:
         print(f'in sync: {len(current)} names')
         return
 
@@ -222,6 +230,10 @@ def main():
         sys.exit('the server may be up and AMP_USER/AMP_PASS are not set: nothing changed')
 
     if amp:
+        if not adds and not removes:
+            amp.logout()
+            print(f'in sync: {len(current)} names ({len(stale)} account ids to rewrite once the server is off)')
+            return
         try:
             for name in adds:
                 amp.console(f'whitelist add {name}')
@@ -249,7 +261,7 @@ def main():
     except (OSError, urllib.error.URLError) as e:
         sys.exit(f'writing whitelist.json failed: {e}')
     added = [n for n in adds if n not in unknown]
-    print(f"file (server off): +{len(added)} {' '.join(added)}  -{len(removes)} {' '.join(removes)}".rstrip())
+    print(f"file (server off): +{len(added)} {' '.join(added)}  -{len(removes)} {' '.join(removes)}".rstrip() + (f'  ~{len(stale)} account ids rewritten' if stale else ''))
     if unknown:
         print(f'unknown at Mojang, skipped: {unknown}')
 

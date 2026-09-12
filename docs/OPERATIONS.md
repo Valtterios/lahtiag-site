@@ -1013,6 +1013,15 @@ the person narrows it with the optional server choice on `/whitelist`;
 the list of servers is `SERVERS` in `src/lib/minecraft.ts`, and adding a
 server there plus a config file on the machine is all a new server needs.
 
+**Account ids.** Every entry in `whitelist.json` carries the account's
+UUID, and an online-mode server matches players by it. The old list was
+imported with made-up ids (the offline-mode kind, `3` in the third group)
+and on 12 September 2026 those were replaced with the real ones from
+Mojang; the sync now rewrites any entry whose id differs from the site's
+when it writes the file (a stopped server), and says how many wait when
+the server is up. That is what made the EasyWhitelist mod unnecessary on
+the SMP: it matched names instead of ids to paper over the wrong ones.
+
 The server side is `scripts/minecraft/whitelist-sync.py`, run every five
 minutes per server by `lahtiag-whitelist@<server>.timer` on the machine
 that runs AMP, each with its own `/etc/lahtiag-whitelist-<server>.conf`
