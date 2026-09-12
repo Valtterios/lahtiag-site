@@ -89,6 +89,15 @@ erased. The season's points can be posted as a leaderboard in Discord
 with your Discord name on it; hiding yourself from the leaderboard on
 your membership page keeps you off that list too.
 
+**Coins.** Members have a wallet of play money on the site, with no cash
+value and no way to buy any. We keep each movement (a monthly allowance,
+coins from battle pass XP, a stake on an event's bracket and what it paid,
+the board giving or taking coins) and each bet: the event, whom you
+backed, how much and the result. Stakes and winnings are visible in the
+event's Discord channel and on the event page; balances are yours to see
+and, unless you have opted out of leaderboards, can appear on a ranking.
+Coins are removed with the rest of your data when your entry is erased.
+
 Event announcements are also posted to the association's Discord server;
 what happens to data inside Discord is governed by
 [Discord's privacy policy](https://discord.com/privacy).

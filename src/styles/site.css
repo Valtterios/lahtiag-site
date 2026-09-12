@@ -6333,3 +6333,32 @@ details.admin-panel[open] > summary {
   flex-wrap: wrap;
   gap: 0.4rem;
 }
+
+/* Coins: the pool on an event page and the wallet on the membership page. */
+.odds {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.odds li {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  background: #fafbfd;
+}
+
+.bet-form select,
+.bet-form input[type='number'] {
+  margin-left: 0.3rem;
+}
+
+.wallet-rows {
+  list-style: none;
+  margin: 0.3rem 0;
+  padding: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+

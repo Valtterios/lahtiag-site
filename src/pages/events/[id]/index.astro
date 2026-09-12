@@ -36,6 +36,10 @@ import { stripeConfigured } from '../../../lib/stripe';
 import { whenLabel, formatHelsinkiRange, unixToHelsinkiInputs, formatHelsinki } from '../../../lib/time';
 import { kindWorth, listTickKinds, listTickableMembers, listTicks } from '../../../lib/ticks';
 import { seasonStartYear } from '../../../lib/activity';
+import { getMarket, marketState, odds, myBet, ownKey, bracketKeys, balance, ensureWallet, MIN_BET, COIN } from '../../../lib/coins';
+import { mainBracket, getBracket } from '../../../lib/db';
+import { isCurrentMember } from '../../../lib/minecraft';
+import { participantNames } from '../../../lib/event-channel';
 
 const nowSeconds = Math.floor(Date.now() / 1000);
 
@@ -60,6 +64,18 @@ const eventTeams = event?.team_size != null ? await listEventTeams(env.DB, event
 const brackets = event ? await listBrackets(env.DB, event.id) : [];
 const hasBracket = brackets.length > 0;
 const liveBrackets = brackets.filter((b) => b.live_at !== null);
+// Coins (src/lib/coins.ts): the betting pool on the main bracket.
+const market = event ? await getMarket(env.DB, event.id) : null;
+const betting = marketState(market);
+const mainDraw = event && betting !== 'none' ? await mainBracket(env.DB, event.id) : null;
+const betKeys = mainDraw ? bracketKeys(await getBracket(env.DB, mainDraw.id)) : [];
+const names = event && betting !== 'none' ? await participantNames(env.DB, event.id) : new Map<string, string>();
+const pool = event && betting !== 'none' ? await odds(env.DB, event.id) : null;
+const bet = event && session && betting !== 'none' ? await myBet(env.DB, event.id, session.discordId) : null;
+const ownSide = event && session && betting === 'open' ? await ownKey(env.DB, event.id, session.discordId) : null;
+const canBet = event && session && betting === 'open' ? await isCurrentMember(env.DB, session.discordId) : false;
+if (canBet && session) await ensureWallet(env.DB, session.discordId, nowSeconds);
+const purse = canBet && session ? await balance(env.DB, session.discordId) : 0;
 const cover = event ? await coverInfo(env.DB, event.id) : null;
 const coverAt = cover?.updated_at ?? null;
 // Blank lines split the description into paragraphs; single line breaks stay.
@@ -199,6 +215,12 @@ const FLASH: Record<string, string> = {
   bad_time: "That date and time didn't parse.",
   signin: 'Sign in with Discord first.',
   csrf: 'The form was stale. Try again.',
+  bet_on: 'Your stake is in the pool.',
+  bet_back: 'Your stake is back in your wallet.',
+  bet_input: 'A stake is a whole number of coins, at least the minimum, and a player backs their own side only.',
+  poor: 'Not enough coins for that stake.',
+  no_market: 'Betting has not opened for this event.',
+  not_member: 'Coins are for members.',
   bad_input: "That didn't save. Check the values: reserved seats can't exceed the capacity, a team name is 1 to 40 characters, a team size is a whole number.",
   team_reserves: "The reserves didn't change: a team already has more of them than that. Move those players into the line-up, or off the team, first.",
   team_size: "The team size didn't change: a team already has more members than that, or teams exist and the event can't go individual. Move people first.",
@@ -624,6 +646,49 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                 {event.link_url && <a class="btn btn-ghost" href={event.link_url} rel="noopener">Stream / info link</a>}
               </p>
             )}
+          </section>
+        )}
+        {betting !== 'none' && pool && (
+          <section class="event-card betting" id="betting">
+            <h2 class="section-label">{COIN} Betting {betting === 'open' ? 'is open' : betting === 'closed' ? 'is closed' : 'is settled'}</h2>
+            <p class="member-meta">
+              {betting === 'open'
+                ? `Coins on who wins the bracket. Every stake goes into one pool; when the final is decided, the pool is shared by those who picked the champion, in proportion to their stakes. Stakes lock at the first result. Playing? You can back your own side only.`
+                : betting === 'closed'
+                  ? 'Stakes are locked until the final is decided.'
+                  : `Paid out on ${market?.winner ? (names.get(market.winner) ?? 'the champion') : 'the champion'}.`}
+            </p>
+            {pool.bets > 0 ? (
+              <ul class="odds">
+                {pool.picks.map((p) => (
+                  <li><strong>{names.get(p.pick) ?? 'Unknown'}</strong> · {p.staked} {COIN} from {p.backers} · pays {p.multiplier === null ? '—' : `${p.multiplier >= 10 ? Math.round(p.multiplier) : p.multiplier.toFixed(1)}×`}</li>
+                ))}
+              </ul>
+            ) : (
+              <p class="app-empty">No stakes yet{betting === 'open' ? '; be the first' : ''}.</p>
+            )}
+            {bet && (
+              <p class="member-meta">Your stake: <strong>{bet.amount} {COIN}</strong> on {names.get(bet.pick) ?? 'Unknown'}{bet.result ? ` · ${bet.result}${bet.payout ? `, ${bet.payout} ${COIN} back` : ''}` : ''}.</p>
+            )}
+            {canBet && (
+              <form method="post" action={`/events/${event.id}/bet`} class="signup-bar bet-form">
+                <input type="hidden" name="csrf" value={csrf} />
+                <label>On <select name="pick" required>
+                  {betKeys.filter((k) => ownSide === null || k === ownSide).map((k) => <option value={k} selected={bet?.pick === k}>{names.get(k) ?? 'Unknown'}</option>)}
+                </select></label>
+                <label>Coins <input type="number" name="coins" min={MIN_BET} max={purse + (bet?.amount ?? 0)} step="1" value={bet?.amount ?? Math.min(50, purse)} required /></label>
+                <button class="btn btn-primary" type="submit">{bet ? 'Change my stake' : 'Place my stake'}</button>
+                <span class="member-meta">You have {purse} {COIN}.</span>
+              </form>
+            )}
+            {canBet && bet && (
+              <form method="post" action={`/events/${event.id}/bet`} class="inline-form">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="action" value="cancel" />
+                <button class="btn btn-ghost btn-sm" type="submit">Take my stake back</button>
+              </form>
+            )}
+            {!session && betting === 'open' && <p class="member-meta">Sign in with Discord to bet; coins are for members.</p>}
           </section>
         )}
         {photos.length > 0 && (

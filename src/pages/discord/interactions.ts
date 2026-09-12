@@ -76,6 +76,8 @@ import { passCardPng, homePage, pageCount, clampPage } from '../../lib/pass-card
 import { xpGuideLines } from '../../lib/xp-guide';
 import { scheduleCollapse } from '../../lib/collapse';
 import { progressBoard, progressBoardLines } from '../../lib/gtnh';
+import { ensureWallet, balance, ledger, ledgerLine, grantCoins, placeBet, cancelBet, odds, oddsLines, ownKey, bracketKeys, getMarket, marketState, myBet, coins, COIN, MIN_BET } from '../../lib/coins';
+import { mainBracket } from '../../lib/db';
 import { listClaimableKinds, createClaim, decideClaim, claimLine, claimDecisionDm, CLAIM_NOTE_MAX } from '../../lib/claims';
 import { getTickKind, kindWorth, listTickKinds } from '../../lib/ticks';
 import { xpStandings, leaderboardEmbed } from '../../lib/xp';
@@ -264,6 +266,12 @@ export const POST: APIRoute = async ({ request, locals, url }) => {
   if (interaction.type === 2 && interaction.data?.name === 'leaderboard') {
     locals.cfContext.waitUntil(fleeting(handleLeaderboard(env, interaction, url.origin)));
     return json({ type: 5 });
+  }
+
+  // Coins: the wallet, a stake, the pool. Private, and they clear themselves.
+  if (interaction.type === 2 && interaction.data?.name && ['wallet', 'bet', 'odds'].includes(interaction.data.name)) {
+    locals.cfContext.waitUntil(fleeting(handleCoins(env, interaction, url.origin)));
+    return json({ type: 5, data: { flags: 64 } });
   }
 
   // /gtnh: where everyone is in the modpack, posted for everyone like
@@ -464,6 +472,57 @@ async function handleLeaderboard(env: WorkerEnv, interaction: Interaction, origi
     NO_MENTIONS,
   );
   return 'keep';
+}
+
+// /wallet, /bet and /odds (src/lib/coins.ts). A bet names the team or
+// player the way /bracket win does; the pool is the main bracket's.
+async function handleCoins(env: WorkerEnv, interaction: Interaction, origin: string): Promise<Outcome> {
+  const reply = (content: string) => editInteractionReply(interaction.application_id, interaction.token, content, [], [], NO_MENTIONS, SUPPRESS_EMBEDS);
+  const userId = interaction.member?.user?.id;
+  if (!userId) return;
+  const now = Math.floor(Date.now() / 1000);
+  await rememberInvoker(env, interaction, now);
+  const name = interaction.data?.name;
+  const opts = optionMap(interaction.data?.options);
+  try {
+    if (name === 'wallet') {
+      const opened = await ensureWallet(env.DB, userId, now);
+      const have = await balance(env.DB, userId);
+      const rows = await ledger(env.DB, userId, 8);
+      const head = opened.started ? `${COIN} **Your wallet is open**: ${coins(have)} to start with.` : `${COIN} **Your wallet**: ${coins(have)}${opened.allowance ? ' · this month\'s allowance just came in' : ''}.`;
+      return void (await reply([head, ...rows.map((r) => `· ${ledgerLine(r)}`), '-# Coins come from battle pass XP, a monthly allowance and winning bets. `/bet <event> <team or player> <coins>` while a bracket is live.'].join('\n')));
+    }
+    const eventId = Number(opts.get('event'));
+    const event = await getEvent(env.DB, eventId);
+    if (!event) return void (await reply(`No event #${eventId}.`));
+    const main = await mainBracket(env.DB, eventId);
+    const matches = main ? await getBracket(env.DB, main.id) : [];
+    const keys = bracketKeys(matches);
+    const names = await participantNames(env.DB, eventId);
+    const nameOf = (k: string) => cleanText(names.get(k) ?? 'Unknown');
+    if (name === 'odds') {
+      const state = marketState(await getMarket(env.DB, eventId));
+      if (state === 'none') return void (await reply(`No betting on **${cleanText(event.title)}** yet; it opens when the bracket goes live.`));
+      const o = await odds(env.DB, eventId);
+      const mine = await myBet(env.DB, eventId, userId);
+      return void (await reply([`${COIN} **${cleanText(event.title)}** · betting ${state} · pool ${coins(o.pool)} from ${o.bets}`, ...oddsLines(o, nameOf).map((l) => `· ${l}`), mine ? `Your stake: ${coins(mine.amount)} on ${nameOf(mine.pick)}${mine.result ? ` · ${mine.result}${mine.payout ? `, ${coins(mine.payout)}` : ''}` : ''}` : state === 'open' ? `You have no stake in this one. \`/bet ${eventId} <team or player> <coins>\`` : ''].filter(Boolean).join('\n')));
+    }
+    // /bet
+    const who = String(opts.get('pick') ?? '').trim().toLowerCase();
+    const amount = Number(opts.get('coins'));
+    if (who === 'none' || amount === 0) {
+      const gone = await cancelBet(env.DB, eventId, userId, now);
+      return void (await reply(gone ? `Stake of ${coins(gone.amount)} taken back. You have ${coins(await balance(env.DB, userId))}.` : 'You had no stake in this one.'));
+    }
+    const pick = keys.find((k) => nameOf(k).toLowerCase() === who) ?? keys.find((k) => nameOf(k).toLowerCase().startsWith(who));
+    if (!pick) return void (await reply(keys.length === 0 ? 'The bracket is not out yet.' : `No team or player called "${cleanText(String(opts.get('pick') ?? ''))}" in the bracket. In it: ${keys.map(nameOf).join(', ')}.`));
+    const bet = await placeBet(env.DB, eventId, userId, pick, amount, keys, await ownKey(env.DB, eventId, userId), now);
+    const o = await odds(env.DB, eventId);
+    const line = o.picks.find((p) => p.pick === pick);
+    await reply(`${COIN} ${coins(bet.amount)} on **${nameOf(pick)}** for **${cleanText(event.title)}**. The pool is ${coins(o.pool)}; ${nameOf(pick)} pays ${line ? `${(line.multiplier ?? 1).toFixed(1)}×` : '—'} right now. You have ${coins(await balance(env.DB, userId))} left. \`/bet ${eventId} none\` takes it back while betting is open.`);
+  } catch (error) {
+    await reply(error instanceof RuleError ? (error.code === 'not_member' ? 'Coins are for members: `/join` to link or apply.' : error.message) : 'Something went wrong.');
+  }
 }
 
 // /gtnh: the players' tiers from the quest book, the furthest first
@@ -1712,6 +1771,13 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
       await postResult(env.DB, env, found.bracket.id, origin, found.round, found.slot);
       const where = brackets.length > 1 ? ` of ${found.bracket.name}` : '';
       await reply(`Recorded: **${opts.get('name')}** wins round ${found.round}${where}. ${origin}/events/${id}/bracket`);
+    } else if (name === 'coins give') {
+      const memberId = String(opts.get('member') ?? '');
+      const amount = Number(opts.get('coins'));
+      const note = String(opts.get('reason') ?? '');
+      const have = await grantCoins(env.DB, memberId, amount, invoker.id, note, now);
+      if (env.DISCORD_BOT_TOKEN) await dmMember(env.DISCORD_BOT_TOKEN, memberId, `${COIN} The board ${amount > 0 ? 'gave you' : 'took'} **${Math.abs(amount)} coins**${note ? ` · ${note}` : ''}. You have ${coins(have)}.`);
+      await reply(`${amount > 0 ? 'Gave' : 'Took'} ${Math.abs(amount)} coins ${amount > 0 ? 'to' : 'from'} <@${memberId}>; they have ${coins(have)} now.`);
     } else if (name === 'announce') {
       const text = String(opts.get('text') ?? '');
       const title = text.split('\n')[0].replace(/[#*_`>]/g, '').trim().slice(0, 120) || 'Announcement';

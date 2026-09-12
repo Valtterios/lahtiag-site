@@ -22,6 +22,7 @@ import { applyRoles, loadRoleConfig } from '../lib/roles';
 import { formatHelsinkiDate, formatHelsinkiRange } from '../lib/time';
 import { listMinecraftNames, serversLabel, narrowed, SERVERS, FRIENDS_PER_MEMBER } from '../lib/minecraft';
 import { progressByUuid, progressLine } from '../lib/gtnh';
+import { ensureWallet, balance, ledger, ledgerLine, COIN } from '../lib/coins';
 import { voiceLabel } from '../lib/activity';
 import { seasonSummary, minecraftLine, lifetimeTotals } from '../lib/season';
 import { tickList } from '../lib/ticks';
@@ -54,6 +55,8 @@ const levelState = (l: { id: number; xp: number }): 'pass-done' | 'pass-next' | 
 const onLeaderboard = session ? await isLeaderboardOptIn(env.DB, session.discordId) : false;
 const mcNames = session ? await listMinecraftNames(env.DB, session.discordId) : [];
 // Where each of the names is in the GT:NH modpack (src/lib/gtnh.ts), by UUID.
+// Coins (src/lib/coins.ts): a member's wallet, opened on first sight.
+const wallet = session && entry?.status === 'member' ? await (async () => { await ensureWallet(env.DB, session.discordId, Math.floor(Date.now() / 1000)); return { coins: await balance(env.DB, session.discordId), rows: await ledger(env.DB, session.discordId, 6) }; })() : null;
 const gtnh = await progressByUuid(env.DB, mcNames.map((n) => n.uuid).filter((u): u is string => Boolean(u)));
 // The ways to earn XP: the board's tick kinds, for the pass section.
 const ways = session ? (await listTickKinds(env.DB)).filter((k) => k.xp > 0) : [];
@@ -329,6 +332,18 @@ const MESSAGES: Record<FieldError, string> = {
                   )}
                 </dd>
               </div>
+              {wallet && (
+                <div class="wallet" id="wallet">
+                  <dt>Coins</dt>
+                  <dd>
+                    <strong>{wallet.coins} {COIN}</strong>
+                    <ul class="wallet-rows">
+                      {wallet.rows.map((r) => <li>{ledgerLine(r)}</li>)}
+                    </ul>
+                    <span class="member-meta">Play money for betting on tournament brackets: every XP pays coins, an allowance comes each month, champions get a purse. <code>/wallet</code>, <code>/bet</code> and <code>/odds</code> in Discord; a live bracket's event page has the pool.</span>
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt>Discord</dt>
                 <dd>{season.messages > 0 || season.voice_minutes > 0 ? <><strong>{season.messages}</strong> messages · <strong>{voiceLabel(season.voice_minutes)}</strong> in voice</> : 'Nothing counted yet'}</dd>

@@ -134,6 +134,33 @@ const commands = [
   { name: 'xp', description: 'How to earn battle pass XP, and what you have collected so far' },
   { name: 'leaderboard', description: "This season's XP leaderboard (everyone sees it)" },
   { name: 'gtnh', description: 'Where everyone is in the GT:NH modpack: tiers from the quest book (everyone sees it)' },
+  { name: 'wallet', description: 'Your coins: balance and the last movements (only you see it)' },
+  {
+    name: 'bet',
+    description: 'Stake coins on who wins an event\'s bracket (only you see the answer)',
+    options: [
+      { type: INTEGER, name: 'event', description: 'Event id', required: true },
+      { type: STRING, name: 'pick', description: 'The team or player, or "none" to take your stake back', required: true },
+      { type: INTEGER, name: 'coins', description: 'How many coins', required: true, min_value: 0 },
+    ],
+  },
+  { name: 'odds', description: 'The betting pool on an event: who has what on whom', options: [{ type: INTEGER, name: 'event', description: 'Event id', required: true }] },
+  {
+    name: 'coins',
+    description: 'Board: give or take coins',
+    options: [
+      {
+        type: SUB_COMMAND,
+        name: 'give',
+        description: 'Give coins (a negative number takes them)',
+        options: [
+          { type: USER, name: 'member', description: 'Who', required: true },
+          { type: INTEGER, name: 'coins', description: 'How many (negative takes)', required: true },
+          { type: STRING, name: 'reason', description: 'Why, shown in their wallet', required: false },
+        ],
+      },
+    ],
+  },
   {
     name: 'whitelist',
     description: 'The LahtiAG Minecraft servers\' whitelist',

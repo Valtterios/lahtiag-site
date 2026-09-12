@@ -647,6 +647,31 @@ post, **Post to Discord** under the post sends it again.
   Minecraft), unless the member has hidden themselves from the
   leaderboard, which keeps the season off the card as well.
 
+## Coins and betting
+
+Members have a wallet of **coins**: play money, nothing to buy them with
+and nothing to spend them on except betting on who wins a tournament
+bracket. Everyone starts with 1,000, gets 500 more on the first day of
+each month they touch their wallet, and earns 2 coins for every battle
+pass XP, paid by the bot as the XP comes in. Champions get 250.
+
+- **Betting opens by itself** when an event's main bracket goes live: the
+  bot posts "Betting is open" in the event's channel. Stakes lock at the
+  first recorded result, and when the final is recorded the pool is paid
+  out and the payouts posted. Reverting the final takes the winnings
+  back; reverting every result reopens the betting. A redraw returns the
+  stakes on anyone no longer in the bracket. Nothing for the board to do.
+- **How the pool works.** Every stake goes into one pool. Those who picked
+  the champion share the pool in proportion to their stakes; the rest lose
+  theirs. If nobody picked the champion, every stake goes back.
+- **Players back themselves only.** Someone in the bracket can stake on
+  their own side and nobody else's, so there is never a reason to lose.
+- **Members bet** with `/bet <event> <team or player> <coins>` in Discord
+  or on the event page, `/odds <event>` shows the pool, `/wallet` the
+  balance. `/bet <event> none` takes a stake back while betting is open.
+- **The board** gives or takes coins with `/coins give @member <coins>
+  <reason>`; a negative number takes. The reason shows in their wallet.
+
 ## Minecraft server
 
 - **Members whitelist themselves.** On the membership page ("Minecraft

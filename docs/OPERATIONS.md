@@ -1449,6 +1449,7 @@ no subdirectories.
 | Helsinki time handling | `src/lib/time.ts` — storage is UTC unix seconds, always |
 | Brand assets | `public/brand/`; the Canva kit is the source of truth (blue #4169e1, yellow #ffde59, ink #1e1e1e, Chakra Petch ≈ the wordmark) |
 | Minecraft play time | `scripts/minecraft/playtime-sync.py` + `lahtiag-playtime@.service/.timer` on auraserver; API `src/pages/api/minecraft/playtime.ts`; `src/lib/playtime.ts` |
+| Coins and betting | `src/lib/coins.ts` (wallet, pool, settlement), hooks in `src/lib/event-channel.ts` (open on go-live, close on first result, settle on the final, undo on revert), `payActivityCoins` in the cron, `/wallet` `/bet` `/odds` `/coins give` in `src/pages/discord/interactions.ts`, `src/pages/events/[id]/bet.ts` + the event page section, the wallet on `src/pages/membership.astro`; tables `coin_ledger`, `coin_markets`, `coin_bets` |
 | The Minecraft chat bridge and GT:NH progress | `scripts/minecraft/bridge/` (bridge.mjs, compose.yaml, env.example, setcreds); on auraserver as container `lahtiag-bridge` in `/opt/lahtiag-bridge`; API `src/pages/api/minecraft/progress.ts`; tiers `src/lib/gtnh.ts`; `/gtnh` in `src/pages/discord/interactions.ts` |
 | The Discord activity listener | `scripts/discord-listener/` (listener.mjs, compose.yaml, setcreds); on auraserver as container `lahtiag-listener` in `/opt/lahtiag-listener`; API `src/pages/api/discord/activity.ts`, counting `src/lib/activity.ts` |
 

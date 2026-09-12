@@ -17,6 +17,8 @@ export class RuleError extends Error {
       | 'full'
       | 'started'
       | 'bad_input'
+      | 'poor' // coins: not enough for the stake
+      | 'no_market' // coins: nothing to bet on for this event
       | 'bad_name' // a Minecraft name: 3 to 16 letters, digits or underscores
       | 'name_taken'
       | 'not_member'

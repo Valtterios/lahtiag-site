@@ -37,6 +37,7 @@ import { pruneActivityBatches } from './activity';
 import { prunePlaytimeBatches } from './playtime';
 import { announceReached } from './pass';
 import { announceAutoTicks } from './auto-ticks';
+import { payActivityCoins } from './coins';
 import { collapseDue } from './collapse';
 
 export const REMINDER_WINDOW = 24 * 3600; // the reminder goes out within the last day before the start
@@ -153,12 +154,13 @@ export interface HourlySummary {
   archived: number;
   levels: number; // members told they reached a battle pass level
   auto: number; // members told of XP the bot paid from play time, chat or events
+  coins: number; // members whose season XP paid them coins this run
   collapsed: number; // card pictures folded to a line
 }
 
 export async function runHourly(db: D1Database, env: Env, origin: string, now: number): Promise<HourlySummary> {
   const upcoming = await listUpcomingEvents(db, now, false);
-  const summary: HourlySummary = { digest: 0, milestones: 0, news: 0, reminders: 0, sales: 0, openings: 0, closings: 0, promotions: 0, interest: 0, archived: 0, levels: 0, auto: 0, collapsed: 0 };
+  const summary: HourlySummary = { digest: 0, milestones: 0, news: 0, reminders: 0, sales: 0, openings: 0, closings: 0, promotions: 0, interest: 0, archived: 0, levels: 0, auto: 0, coins: 0, collapsed: 0 };
 
   // Cards posted a minute or more ago fold to a line first, since that
   // is the one thing here a person is watching for.
@@ -256,6 +258,7 @@ export async function runHourly(db: D1Database, env: Env, origin: string, now: n
   // recorded, announced (a hidden member gets a DM instead), roles given.
   summary.auto = await announceAutoTicks(db, env, origin, now);
   summary.levels = await announceReached(db, env, origin, now);
+  summary.coins = await payActivityCoins(db, now);
 
   // Once an hour (the first run of the hour): the counts on every upcoming
   // announcement, in case a change slipped past the event-driven refresh.

@@ -6,7 +6,7 @@
 // say the same thing; posting is best effort and never blocks a response.
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { getEvent, getBracket, getBracketRow, listBrackets, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, memberStats, getSettings, setSetting, getEventPhoto, recordMilestone, WIN_MILESTONES, type BracketMatch, type BracketRow, type EventRow } from './db';
+import { getEvent, getBracket, getBracketRow, listBrackets, mainBracket, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, memberStats, getSettings, setSetting, getEventPhoto, recordMilestone, WIN_MILESTONES, type BracketMatch, type BracketRow, type EventRow } from './db';
 import { profileCardPng } from './profile-card';
 import { cleanText } from './raster';
 import { syncEventRole } from './event-discord';
@@ -26,6 +26,7 @@ import {
   type MessageFile,
 } from './discord';
 import { bracketPng } from './bracket-image';
+import { openMarket, closeMarket, reopenMarket, settleMarket, unsettleMarket, refundStaleBets, bracketKeys, odds, payPurse, bettingOpenLine, settledLine, getMarket, marketState } from './coins';
 import { formatHelsinki, formatHelsinkiRange } from './time';
 
 // Participant keys ('u:<discord id>' / 't:<team id>') to display names.
@@ -491,6 +492,13 @@ export async function postBracketOut(db: D1Database, env: { DISCORD_BOT_TOKEN?: 
   const picture = (await pictureBelongsInTalk(db, event)) ? await bracketPicture(event, matches, names, now, here.label) : undefined;
   await postEventLine(db, env, event.id, bracketLine(matches, names, `${origin}${here.path}`, regenerated, here.label), true, picture);
   await refreshLiveBracket(db, env, bracketId, origin, now);
+  // Coins: the main bracket going live opens the betting; a redraw gives
+  // back the stakes on anyone no longer in it.
+  if ((await mainBracket(db, event.id))?.id === bracketId) {
+    const opened = await openMarket(db, event.id, now);
+    await refundStaleBets(db, event.id, bracketKeys(matches), now);
+    if (opened) await postEventLine(db, env, event.id, bettingOpenLine(event.id, `${origin}/events/${event.id}#betting`));
+  }
 }
 
 export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, bracketId: number, origin: string, round: number, slot: number): Promise<void> {
@@ -508,6 +516,24 @@ export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: stri
   await postEventLine(db, env, event.id, resultLine(story, `${origin}${here.path}`, here.label), decided, picture);
   await refreshLiveBracket(db, env, bracketId, origin, now);
   if (decided) await postChampionCards(db, env, event.id, matches, now);
+  // Coins: the first result locks the stakes; the final pays the pool
+  // out and gives the champions their purse.
+  if ((await mainBracket(db, event.id))?.id === bracketId) {
+    await closeMarket(db, event.id, now);
+    if (decided) {
+      const final = matches.find((m) => m.round === story.totalRounds && m.slot === 0);
+      if (final?.winner) {
+        const pool = await odds(db, event.id);
+        const settled = await settleMarket(db, event.id, final.winner, now);
+        await payPurse(db, event.id, await championsOf(db, event.id, matches), now);
+        if (settled) {
+          const signups = await listSignups(db, event.id);
+          const line = settledLine(pool, settled, nameOf(names, final.winner), (id) => safe(signups.find((s) => s.discord_id === id)?.username ?? 'Someone'));
+          if (line) await postEventLine(db, env, event.id, line);
+        }
+      }
+    }
+  }
 }
 
 export async function postRevert(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, bracketId: number, origin: string, round: number, slot: number): Promise<void> {
@@ -536,6 +562,13 @@ export async function postRevert(db: D1Database, env: { DISCORD_BOT_TOKEN?: stri
     }
   }
   await refreshLiveBracket(db, env, bracketId, origin, Math.floor(Date.now() / 1000));
+  // Coins: a reverted final takes the winnings back; with no result left
+  // in the main bracket the betting reopens.
+  if ((await mainBracket(db, event.id))?.id === bracketId) {
+    const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
+    if (round === total) await unsettleMarket(db, event.id, Math.floor(Date.now() / 1000));
+    if (!matches.some((m) => m.winner !== null && m.side_a !== null && m.side_b !== null) && marketState(await getMarket(db, event.id)) === 'closed') await reopenMarket(db, event.id);
+  }
 }
 
 export async function postSignups(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, closed: boolean): Promise<void> {
