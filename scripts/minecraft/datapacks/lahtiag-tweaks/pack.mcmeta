@@ -1,6 +1,6 @@
 {
   "pack": {
-    "description": "LahtiAG: no pillager outposts (none placed, none spawning)",
+    "description": "LahtiAG: outposts spawn no pillagers",
     "min_format": 121,
     "max_format": 121
   }
