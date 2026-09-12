@@ -3039,6 +3039,15 @@ export async function captainLockTeam(db: D1Database, eventId: number, teamId: n
   await db.prepare('UPDATE event_teams SET locked = ?3 WHERE id = ?1 AND event_id = ?2').bind(teamId, eventId, locked ? 1 : 0).run();
 }
 
+// The captaincy handed to a team-mate, by the captain while signups are
+// open or by the board any time (src/pages/events/[id]/admin-team.ts).
+export async function handOverTeam(db: D1Database, eventId: number, teamId: number, byCaptainId: string | null, targetId: string, now: number): Promise<void> {
+  if (byCaptainId !== null) await captainTeam(db, eventId, teamId, byCaptainId, now);
+  const inTeam = await db.prepare('SELECT 1 AS x FROM signups WHERE event_id = ?1 AND discord_id = ?2 AND event_team_id = ?3').bind(eventId, targetId, teamId).first();
+  if (!inTeam) throw new RuleError('missing', 'That person is not in this team.');
+  await db.prepare('UPDATE event_teams SET created_by = ?3 WHERE id = ?1 AND event_id = ?2').bind(teamId, eventId, targetId).run();
+}
+
 export async function captainAddToTeam(db: D1Database, eventId: number, teamId: number, captainId: string, targetId: string, now: number): Promise<void> {
   const event = await captainTeam(db, eventId, teamId, captainId, now);
   const target = await db.prepare('SELECT event_team_id FROM signups WHERE event_id = ?1 AND discord_id = ?2').bind(eventId, targetId).first<{ event_team_id: number | null }>();

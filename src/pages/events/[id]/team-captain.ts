@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession } from '../../../lib/guard';
-import { captainAddToTeam, captainRemoveFromTeam, captainSetTeamPlace, captainLockTeam, RuleError } from '../../../lib/db';
+import { captainAddToTeam, captainRemoveFromTeam, captainSetTeamPlace, captainLockTeam, handOverTeam, RuleError } from '../../../lib/db';
 import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
 import { later, notifyTeamPlacement } from '../../../lib/event-channel';
 
@@ -32,6 +32,10 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   }
   if (!Number.isInteger(teamId) || !target) return redirect(`${back}?err=bad_input`, 303);
   try {
+    if (action === 'captain') {
+      await handOverTeam(env.DB, id, teamId, session.discordId, target, now);
+      return redirect(`${back}?ok=team_captain#teams`, 303);
+    }
     if (action === 'kick') await captainRemoveFromTeam(env.DB, id, teamId, session.discordId, target, now);
     else if (action === 'place') await captainSetTeamPlace(env.DB, id, teamId, session.discordId, target, form.get('reserve') === '1', now);
     else await captainAddToTeam(env.DB, id, teamId, session.discordId, target, now);

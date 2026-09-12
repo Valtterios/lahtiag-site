@@ -6513,3 +6513,7 @@ details.admin-panel[open] > summary {
 .btn-link:hover {
   color: var(--blue-dark);
 }
+
+.chip-captain:hover {
+  color: var(--blue);
+}

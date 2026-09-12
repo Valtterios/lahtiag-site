@@ -290,8 +290,9 @@ name, number or class — those stay in the register.*
   take members out, and move one between the starting line-up and the
   bench, while signups are open. A captain can also make the team
   **invite-only**: it shows an "invite only" tag, nobody joins it on
-  their own, and the captain adds people with the same +. The board's
-  Participants does the rest.
+  their own, and the captain adds people with the same +. The ★ on a
+  team-mate hands them the captaincy; the board has the same ★ on every
+  team. The board's Participants does the rest.
 
 - **Reserves.** A tournament team can carry more players than it fields:
   set *Reserves per team* beside the team size, and five-a-side with one

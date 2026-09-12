@@ -389,3 +389,20 @@ describe('invite-only teams', () => {
     expect((await listEventTeams(db(), eventId))[0].locked).toBe(0);
   });
 });
+
+describe('handing over a team', () => {
+  it('goes to a team-mate only, from the captain or the board', async () => {
+    const { handOverTeam } = await import('../src/lib/db');
+    await wipe();
+    const eventId = await teamEvent(2, null);
+    await member('cap'); await member('kai'); await member('out');
+    const teamId = await createEventTeam(db(), eventId, 'Shell', 'cap', NOW);
+    await joinEventTeam(db(), eventId, teamId, 'kai', NOW);
+    await expect(handOverTeam(db(), eventId, teamId, 'kai', 'kai', NOW)).rejects.toMatchObject({ code: 'not_captain' });
+    await expect(handOverTeam(db(), eventId, teamId, 'cap', 'out', NOW)).rejects.toMatchObject({ code: 'missing' });
+    await handOverTeam(db(), eventId, teamId, 'cap', 'kai', NOW);
+    expect((await listEventTeams(db(), eventId))[0].created_by).toBe('kai');
+    await handOverTeam(db(), eventId, teamId, null, 'cap', NOW); // the board, without being captain
+    expect((await listEventTeams(db(), eventId))[0].created_by).toBe('cap');
+  });
+});

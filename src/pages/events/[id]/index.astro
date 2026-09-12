@@ -287,6 +287,7 @@ const OK: Record<string, string> = {
   published: 'Published and posted on Discord.',
   team_saved: 'Team created. Put people in it with the team pickers below.',
   team_added: 'Added to your team.',
+  team_captain: 'The captaincy was handed over.',
   team_locked: 'Your team is invite-only now: you add people, nobody joins on their own.',
   team_unlocked: 'Your team is open: anyone signed up can join it.',
   team_kicked: 'Taken out of the team; they are still signed up.',
@@ -855,6 +856,15 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                           {m.discord_id === team.created_by && <span class="member-mark captain-mark" title="Founded the team">captain</span>}
                           {m.reserve === 1 && <span class="member-mark reserve-mark" title="On the bench, not in the starting line-up">reserve</span>}
                           {m.is_member !== 1 && <span class="member-mark member-mark-guest" title="Not in the member register">guest</span>}
+                          {m.discord_id !== team.created_by && (
+                            <form method="post" action={`/events/${event.id}/admin-team`} class="inline-form">
+                              <input type="hidden" name="csrf" value={csrf} />
+                              <input type="hidden" name="action" value="captain" />
+                              <input type="hidden" name="event_team_id" value={team.id} />
+                              <input type="hidden" name="discord_id" value={m.discord_id} />
+                              <button class="chip-remove chip-captain" type="submit" title="Make captain">★</button>
+                            </form>
+                          )}
                           {event.team_reserves > 0 && (
                             <form method="post" action={`/events/${event.id}/admin-team`} class="inline-form">
                               <input type="hidden" name="csrf" value={csrf} />
@@ -878,6 +888,15 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                             <span class="person-name">{m.username}</span>
                             {m.discord_id === team.created_by && <span class="member-mark captain-mark" title="Founded the team">captain</span>}
                             {m.reserve === 1 && <span class="member-mark reserve-mark" title="On the bench, not in the starting line-up">reserve</span>}
+                            {m.discord_id !== session!.discordId && (
+                              <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form">
+                                <input type="hidden" name="csrf" value={csrf} />
+                                <input type="hidden" name="action" value="captain" />
+                                <input type="hidden" name="event_team_id" value={team.id} />
+                                <input type="hidden" name="discord_id" value={m.discord_id} />
+                                <button class="chip-remove chip-captain" type="submit" title="Make captain">★</button>
+                              </form>
+                            )}
                             {event.team_reserves > 0 && (
                               <form method="post" action={`/events/${event.id}/team-captain`} class="inline-form">
                                 <input type="hidden" name="csrf" value={csrf} />

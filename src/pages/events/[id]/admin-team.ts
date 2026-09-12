@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { adminCreateTeam, autoTeamLoosePlayers, renameEventTeam, setTeamPlace, listSignups, RuleError } from '../../../lib/db';
+import { adminCreateTeam, autoTeamLoosePlayers, renameEventTeam, setTeamPlace, handOverTeam, listSignups, RuleError } from '../../../lib/db';
 import { syncTeamVoiceChannelsInBackground, renameTeamVoiceChannel } from '../../../lib/event-discord';
 import { later, refreshEventBrackets, notifyTeamPlacement } from '../../../lib/event-channel';
 import { refreshAnnouncementInBackground } from '../../../lib/announce';
@@ -32,6 +32,12 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
     if (form.get('action') === 'place') {
       await setTeamPlace(env.DB, id, String(form.get('discord_id') ?? ''), form.get('reserve') === '1');
       return redirect(`${back}?ok=placed#teams`, 303);
+    }
+    if (form.get('action') === 'captain') {
+      const teamId = Number(form.get('event_team_id'));
+      if (!Number.isInteger(teamId)) return redirect(`${back}?err=bad_input#teams`, 303);
+      await handOverTeam(env.DB, id, teamId, null, String(form.get('discord_id') ?? ''), Math.floor(Date.now() / 1000));
+      return redirect(`${back}?ok=team_captain#teams`, 303);
     }
     if (form.get('action') === 'auto') {
       const loose = (await listSignups(env.DB, id)).filter((s) => s.status === 'yes' && s.event_team_id === null).map((s) => s.discord_id);
