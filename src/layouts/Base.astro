@@ -1,4 +1,5 @@
 ---
+import { DISCORD_INVITE } from '../lib/config';
 import { getCollection } from 'astro:content';
 import { navLinks, isCurrentNavLink, APP_PAGES } from '../lib/nav';
 import { readBasket, basketCount } from '../lib/basket';
@@ -120,7 +121,7 @@ const pathname = Astro.url.pathname;
         <div>
           <h2>Find us</h2>
           <ul>
-            <li><a href="https://discord.com/invite/u2pcgDhQ7G" rel="noopener">Discord</a></li>
+            <li><a href={DISCORD_INVITE} rel="noopener">Discord</a></li>
             <li><a href="https://www.instagram.com/lahti_ag" rel="noopener">Instagram</a></li>
             <li><a href="mailto:board@lahtiag.fi">board@lahtiag.fi</a></li>
           </ul>
