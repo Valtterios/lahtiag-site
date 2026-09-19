@@ -21,6 +21,7 @@ const BOX_W = 400; // most team names fit whole; longer ones are cut with '..'
 const TEXT_H = Canvas.lineHeight('s');
 const BOX_H = TEXT_H + 14;
 const NAME_W = BOX_W - PAD * 2 - 24; // room for the tick
+const SCORE_W = 22; // a games column at the right edge, when a match has one
 const BOX_GAP = 4;
 const MATCH_H = BOX_H * 2 + BOX_GAP;
 const PITCH = MATCH_H + 24;
@@ -110,9 +111,15 @@ export async function bracketPng(input: BracketPictureInput): Promise<Uint8Array
         }
         const won = m.winner !== null && m.winner === key;
         const lost = m.winner !== null && m.winner !== key;
+        const games = key === m.side_a ? m.score_a : m.score_b;
         canvas.rect(x, y, BOX_W, BOX_H, won ? YELLOW : lost ? TINT : BLUE);
-        canvas.text(x + PAD, y + 7, nameOf(key), won || lost ? INK : WHITE, 's');
+        // A scored match gives up a little of the name's room to its games.
+        canvas.text(x + PAD, y + 7, fit(names.get(key) ?? 'Unknown', games === null ? NAME_W : NAME_W - SCORE_W), won || lost ? INK : WHITE, 's');
         if (won) canvas.glyph(x + BOX_W - PAD - 16, y + Math.floor(BOX_H / 2) - 6, TICK, INK, 2);
+        if (games !== null) {
+          const text = String(games);
+          canvas.text(x + BOX_W - PAD - 24 - Canvas.textWidth(text), y + 7, text, won || lost ? INK : WHITE, 's');
+        }
       }
       // Connector to the next round: out of this match, over, into the next.
       if (round < rounds) {

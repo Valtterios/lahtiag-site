@@ -100,6 +100,7 @@ const commands = [
         options: [
           { type: INTEGER, name: 'event', description: 'Event id', required: true },
           { type: STRING, name: 'name', description: 'Winning team or player name', required: true },
+          { type: STRING, name: 'score', description: 'Games, winner first, on a best-of bracket (2-1)', required: false },
         ],
       },
     ],

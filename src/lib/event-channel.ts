@@ -28,6 +28,7 @@ import {
 import { bracketPng } from './bracket-image';
 import { openMarket, closeMarket, reopenMarket, settleMarket, unsettleMarket, refundStaleBets, bracketKeys, odds, payPurse, bettingOpenLine, settledLine, getMarket, marketState, matchScope, COIN } from './coins';
 import { formatHelsinki, formatHelsinkiRange } from './time';
+import { scoreText } from './scores';
 
 // Participant keys ('u:<discord id>' / 't:<team id>') to display names.
 export async function participantNames(db: D1Database, eventId: number): Promise<Map<string, string>> {
@@ -136,6 +137,7 @@ export interface ResultStory {
   totalRounds: number;
   winner: string;
   loser: string;
+  score: string | null; // "2–1" when the match was played to more than one game
   next: { a: string; b: string } | null; // the winner's next match, when both sides are known
   nextRoles: string[]; // the team roles that match calls to the table
 }
@@ -159,11 +161,13 @@ export function describeResult(
   // match it sets up calls its two teams to the table.
   const ready = upcoming && upcoming.side_a !== null && upcoming.side_b !== null ? upcoming : null;
   const next = ready ? { a: callOf(names, mentions, ready.side_a), b: callOf(names, mentions, ready.side_b) } : null;
+  const winnerIsA = match.winner === match.side_a;
   return {
     round,
     totalRounds,
     winner: nameOf(names, match.winner),
     loser: nameOf(names, loserKey),
+    score: scoreText(winnerIsA ? match.score_a : match.score_b, winnerIsA ? match.score_b : match.score_a),
     next,
     nextRoles: ready ? rolesIn(mentions, [ready.side_a, ready.side_b]) : [],
   };
@@ -173,12 +177,13 @@ export function describeResult(
 // more than one; a single-bracket event says nothing and reads as it did.
 export function resultLine(story: ResultStory, url: string, bracket: string | null = null): string {
   const which = bracket === null ? '' : `${safe(bracket)} · `;
+  const by = story.score === null ? '' : ` ${story.score}`;
   if (story.round === story.totalRounds) {
-    return `🥇 Champion${bracket === null ? '' : ` of ${safe(bracket)}`}: **${story.winner}**! They beat ${story.loser} in the final.\n${url}`;
+    return `🥇 Champion${bracket === null ? '' : ` of ${safe(bracket)}`}: **${story.winner}**! They beat ${story.loser}${by} in the final.\n${url}`;
   }
   const label = roundLabel(story.round, story.totalRounds);
   const next = story.next ? ` Next up: ${story.next.a} vs ${story.next.b}.` : '';
-  return `🏆 ${which}${label}: ${story.winner} beat ${story.loser}.${next}`;
+  return `🏆 ${which}${label}: ${story.winner} beat ${story.loser}${by}.${next}`;
 }
 
 export function revertLine(round: number, totalRounds: number, a: string, b: string, bracket: string | null = null): string {
@@ -216,12 +221,20 @@ const MESSAGE_MAX = 1900; // Discord allows 2000; leave room for the link
 // rounds are dropped first when it would not fit in one message.
 export function liveBracketText(matches: BracketMatch[], names: Map<string, string>, url: string, now: number, label: string | null = null): string {
   const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
-  const side = (key: string | null, winner: string | null) => (key === null ? '—' : `${nameOf(names, key)}${winner !== null && winner === key ? ' ✅' : ''}`);
+  // "Alpha ✅ 2" — the games sit with the side that won them, so a line
+  // reads the way the bracket page does. A match with no score recorded
+  // (a best-of-one, or anything older) says nothing extra.
+  const side = (key: string | null, winner: string | null, games: number | null) =>
+    key === null ? '—' : `${nameOf(names, key)}${winner !== null && winner === key ? ' ✅' : ''}${games === null ? '' : ` ${games}`}`;
   const rounds: string[] = [];
   for (let round = 1; round <= total; round++) {
     const lines = matches
       .filter((m) => m.round === round)
-      .map((m) => (m.side_a !== null && m.side_b === null && m.winner === m.side_a ? `${nameOf(names, m.side_a)} advances (bye)` : `${side(m.side_a, m.winner)} vs ${side(m.side_b, m.winner)}`));
+      .map((m) =>
+        m.side_a !== null && m.side_b === null && m.winner === m.side_a
+          ? `${nameOf(names, m.side_a)} advances (bye)`
+          : `${side(m.side_a, m.winner, m.score_a)} vs ${side(m.side_b, m.winner, m.score_b)}`,
+      );
     const label = roundLabel(round, total);
     rounds.push(`**${label === 'Final' || label.startsWith('Round') ? label : `${label}s`}**\n${lines.join('\n')}`);
   }

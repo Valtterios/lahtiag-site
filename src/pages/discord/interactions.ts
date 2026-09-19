@@ -40,6 +40,7 @@ import {
   type RegisterRow,
 } from '../../lib/db';
 import { formatHelsinki, formatHelsinkiDate, helsinkiToUnix } from '../../lib/time';
+import { bestOfFor, scorelines, parseScore } from '../../lib/scores';
 import { syncScheduledEvent, setUpEventDiscord } from '../../lib/event-discord';
 import { participantNames, postSignups, postBracketOut, postResult, postRevert, postEventLine, cancelLine, screenLine, dropLiveBracket } from '../../lib/event-channel';
 import { cardFace, memberCardPng } from '../../lib/member-card';
@@ -1514,17 +1515,24 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
         const which = brackets.length > 1;
         const options = (
           await Promise.all(
-            brackets.map(async (bracket) =>
-              (await getBracket(env.DB, bracket.id))
+            brackets.map(async (bracket) => {
+              const all = await getBracket(env.DB, bracket.id);
+              const totalRounds = all.reduce((max, m) => Math.max(max, m.round), 0);
+              return all
                 .filter((m) => m.winner === null && m.side_a !== null && m.side_b !== null)
-                .flatMap((m) =>
-                  [m.side_a!, m.side_b!].map((key, i) => ({
-                    label: `${nameOf(key)} wins`.slice(0, 100),
-                    description: `${which ? `${bracket.name} · ` : ''}R${m.round}: vs ${nameOf(i === 0 ? m.side_b! : m.side_a!)}`.slice(0, 100),
-                    value: `${bracket.id}:${m.round}:${m.slot}:${key}`,
-                  })),
-                ),
-            ),
+                .flatMap((m) => {
+                  const bestOf = bestOfFor(bracket, m.round, totalRounds);
+                  // A best-of-one is still one option a side: "Alpha wins".
+                  const ways: ([number, number] | null)[] = bestOf > 1 ? scorelines(bestOf) : [null];
+                  return [m.side_a!, m.side_b!].flatMap((key, i) =>
+                    ways.map((score) => ({
+                      label: `${nameOf(key)} wins${score ? ` ${score[0]}–${score[1]}` : ''}`.slice(0, 100),
+                      description: `${which ? `${bracket.name} · ` : ''}R${m.round}: vs ${nameOf(i === 0 ? m.side_b! : m.side_a!)}`.slice(0, 100),
+                      value: `${bracket.id}:${m.round}:${m.slot}:${score ? `${score[0]}-${score[1]}` : '-'}:${key}`,
+                    })),
+                  );
+                });
+            }),
           )
         )
           .flat()
@@ -1584,13 +1592,14 @@ async function handleComponent(env: WorkerEnv, interaction: Interaction, origin:
       );
     } else if (customId.startsWith('t:win:')) {
       const eventId = Number(customId.slice('t:win:'.length));
-      const [bracketId, round, slot, ...keyParts] = String(interaction.data!.values?.[0]).split(':');
+      const [bracketId, round, slot, scoreRaw, ...keyParts] = String(interaction.data!.values?.[0]).split(':');
       const key = keyParts.join(':');
-      await setBracketWinner(env.DB, Number(bracketId), Number(round), Number(slot), key);
+      const score = parseScore(scoreRaw);
+      await setBracketWinner(env.DB, Number(bracketId), Number(round), Number(slot), key, score);
       await postResult(env.DB, env, Number(bracketId), origin, Number(round), Number(slot));
       const names = await participantNames(env.DB, eventId);
       await edit(
-        `Recorded: **${names.get(key) ?? key}** wins round ${round}. ${origin}/events/${eventId}/bracket`,
+        `Recorded: **${names.get(key) ?? key}** wins round ${round}${score ? ` ${score[0]}–${score[1]}` : ''}. ${origin}/events/${eventId}/bracket`,
       );
     } else {
       await edit('Unknown control.');
@@ -1862,10 +1871,23 @@ async function handleCommand(env: WorkerEnv, interaction: Interaction, origin: s
         await reply(`No undecided match for "${opts.get('name')}" right now.`);
         return;
       }
-      await setBracketWinner(env.DB, found.bracket.id, found.round, found.slot, key);
+      const score = parseScore(opts.get('score') ?? null);
+      try {
+        await setBracketWinner(env.DB, found.bracket.id, found.round, found.slot, key, score);
+      } catch (error) {
+        // A score the format cannot explain: say so rather than recording
+        // a winner the board did not mean to confirm.
+        if (error instanceof RuleError && error.code === 'bad_score') {
+          await reply(`${error.message} Leave the score out, or give one that fits. ${origin}/events/${id}/bracket`);
+          return;
+        }
+        throw error;
+      }
       await postResult(env.DB, env, found.bracket.id, origin, found.round, found.slot);
       const where = brackets.length > 1 ? ` of ${found.bracket.name}` : '';
-      await reply(`Recorded: **${opts.get('name')}** wins round ${found.round}${where}. ${origin}/events/${id}/bracket`);
+      await reply(
+        `Recorded: **${opts.get('name')}** wins round ${found.round}${where}${score ? ` ${score[0]}–${score[1]}` : ''}. ${origin}/events/${id}/bracket`,
+      );
     } else if (name === 'coins give') {
       const memberId = String(opts.get('member') ?? '');
       const amount = Number(opts.get('coins'));

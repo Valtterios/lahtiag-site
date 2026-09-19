@@ -31,7 +31,7 @@ const names = new Map([
   ['t:5', 'Echo'],
   ['u:9', '@everyone **bold** [link](x)'],
 ]);
-const m = (round: number, slot: number, a: string | null, b: string | null, winner: string | null = null): BracketMatch => ({ bracket_id: 1, event_id: 1, round, slot, side_a: a, side_b: b, winner });
+const m = (round: number, slot: number, a: string | null, b: string | null, winner: string | null = null): BracketMatch => ({ bracket_id: 1, event_id: 1, round, slot, side_a: a, side_b: b, winner, score_a: null, score_b: null });
 
 describe('lines', () => {
   it('names safely and labels rounds from the end', () => {
@@ -100,7 +100,7 @@ describe('lines', () => {
   it('tells a result with the next opponent, and crowns the champion at the final', () => {
     const matches = [m(1, 0, 't:1', 't:2', 't:1'), m(1, 1, 't:3', 't:4', 't:3'), m(2, 0, 't:1', 't:3')];
     const semi = describeResult(matches, 1, 0, names)!;
-    expect(semi).toEqual({ round: 1, totalRounds: 2, winner: 'Alpha', loser: 'Bravo', next: { a: 'Alpha', b: 'Charlie' }, nextRoles: [] });
+    expect(semi).toEqual({ round: 1, totalRounds: 2, winner: 'Alpha', loser: 'Bravo', next: { a: 'Alpha', b: 'Charlie' }, nextRoles: [], score: null });
     expect(resultLine(semi, 'u')).toBe('🏆 Semifinal: Alpha beat Bravo. Next up: Alpha vs Charlie.');
     expect(describeResult(matches, 2, 0, names)).toBeNull(); // undecided
     const done = [...matches.slice(0, 2), m(2, 0, 't:1', 't:3', 't:3')];

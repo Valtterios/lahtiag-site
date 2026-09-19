@@ -5,6 +5,7 @@ import { currentSession, ensureCsrf } from '../../../lib/guard';
 import { getEvent, getBracket, listBrackets, listSignups, listEventTeams } from '../../../lib/db';
 import { avatarUrl } from '../../../lib/discord';
 import { formatHelsinki } from '../../../lib/time';
+import { bestOfFor, scorelines, BEST_OF_CHOICES } from '../../../lib/scores';
 
 const id = Number(Astro.params.id);
 const event = Number.isInteger(id) ? await getEvent(env.DB, id) : null;
@@ -73,10 +74,13 @@ function roundLabel(round: number): string {
 }
 const final = matches.find((m) => m.round === totalRounds);
 const champion = final?.winner ? nameOf(final.winner) : null;
+// How long a match in this round is: the final may run longer than the rest.
+const bestOfIn = (round: number): number => (bracket ? bestOfFor(bracket, round, totalRounds) : 1);
 
 const FLASH: Record<string, string> = {
   bad_input: "That didn't go through: a substitute must be on the roster and not in the bracket yet, and a bracket name is 1 to 40 characters.",
   missing: 'No such match, participant or bracket.',
+  bad_score: 'That score does not fit how long these matches are played. Set the format below first.',
   bad_seeding: 'That seeding could not be saved: every participant exactly once, and the same number of byes.',
   bracket_live: 'The bracket is live; regenerate to start over with a new draft.',
   dup_name: 'This event already has a bracket by that name.',
@@ -92,6 +96,7 @@ const OK: Record<string, string> = {
   live: "The bracket is live for everyone and posted to the event's Discord channel.",
   replaced: 'Substitute in place.',
   renamed: 'Bracket renamed.',
+  format: 'Match length saved.',
   bracket_deleted: 'Bracket deleted.',
 };
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
@@ -179,6 +184,8 @@ const title = event ? (many && bracket ? `${event.title}: ${bracket.name}` : `${
                       const decided = match.winner !== null;
                       const clickable =
                         session?.isAdmin && key !== null && match.side_a !== null && match.side_b !== null;
+                      const bestOf = bestOfIn(match.round);
+                      const games = sideName === 'side_a' ? match.score_a : match.score_b;
                       return (
                         <div class={`bracket-side${won ? ' won' : ''}${decided && !won ? ' lost' : ''}`}>
                           {side ? (
@@ -189,7 +196,27 @@ const title = event ? (many && bracket ? `${event.title}: ${bracket.name}` : `${
                                 ))}
                               </span>
                               <span class="bracket-name">{side.name}</span>
-                              {clickable && (
+                              {games !== null && <span class="bracket-games">{games}</span>}
+                              {clickable && bestOf > 1 &&
+                                scorelines(bestOf).map(([w, l]) => (
+                                  <form method="post" action={`/events/${event.id}/bracket-action`} class="inline-form">
+                                    <input type="hidden" name="csrf" value={csrf} />
+                                    <input type="hidden" name="bracket_id" value={bracket!.id} />
+                                    <input type="hidden" name="action" value="winner" />
+                                    <input type="hidden" name="round" value={match.round} />
+                                    <input type="hidden" name="slot" value={match.slot} />
+                                    <input type="hidden" name="winner" value={key} />
+                                    <input type="hidden" name="score" value={`${w}-${l}`} />
+                                    <button
+                                      class={`bracket-win-btn${won && games === w ? ' is-recorded' : ''}`}
+                                      type="submit"
+                                      title={won && games === w ? `Recorded: ${side.name} wins ${w}–${l}` : `${side.name} wins ${w}–${l}`}
+                                    >
+                                      {w}–{l}
+                                    </button>
+                                  </form>
+                                ))}
+                              {clickable && (bestOf === 1 || won) && (
                                 <form method="post" action={`/events/${event.id}/bracket-action`} class="inline-form">
                                   <input type="hidden" name="csrf" value={csrf} />
                                   <input type="hidden" name="bracket_id" value={bracket!.id} />
@@ -236,6 +263,11 @@ const title = event ? (many && bracket ? `${event.title}: ${bracket.name}` : `${
                 {many && <span class="status-badge status-member">{bracket.name}</span>}
                 <span class={`status-badge${draftBracket ? ' status-muted' : ' status-member'}`}>{draftBracket ? 'Bracket: draft' : 'Bracket: live'}</span>
                 <span class="status-badge">{matches.length} matches</span>
+                {bracket.best_of > 1 && (
+                  <span class="status-badge">
+                    Best of {bracket.best_of}{bracket.final_best_of !== null ? `, final best of ${bracket.final_best_of}` : ''}
+                  </span>
+                )}
               </p>
               {draftBracket ? (
                 <>
@@ -273,11 +305,41 @@ const title = event ? (many && bracket ? `${event.title}: ${bracket.name}` : `${
                 </>
               ) : (
                 <p class="event-meta">
-                  Click W on a side to record the winner, or ↺ on the recorded winner
-                  to revert the result. Changing or reverting an earlier result
-                  clears everything that followed from it.
+                  {bracket.best_of > 1
+                    ? 'Click the scoreline a side won by; it records the winner and the games together. ↺ on the recorded winner reverts the result.'
+                    : 'Click W on a side to record the winner, or ↺ on the recorded winner to revert the result.'}
+                  {' '}Changing or reverting an earlier result clears everything that followed from it.
                 </p>
               )}
+              <h3>Match length</h3>
+              <p class="event-meta">
+                Best-of-one records a winner alone; anything longer records the games too, and the
+                bracket shows them. Changing the format drops the scores it can no longer explain — a 3–1 is
+                neither a best-of-three nor a best-of-seven result. The winners stand.
+              </p>
+              <form method="post" action={`/events/${event.id}/bracket-action`} class="participant-row">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="bracket_id" value={bracket.id} />
+                <input type="hidden" name="action" value="format" />
+                <label>
+                  Matches
+                  <select name="best_of">
+                    {BEST_OF_CHOICES.map((n) => (
+                      <option value={n} selected={bracket.best_of === n}>{n === 1 ? 'Best of 1' : `Best of ${n}`}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Final
+                  <select name="final_best_of">
+                    <option value="" selected={bracket.final_best_of === null}>same as the rest</option>
+                    {BEST_OF_CHOICES.map((n) => (
+                      <option value={n} selected={bracket.final_best_of === n}>{n === 1 ? 'Best of 1' : `Best of ${n}`}</option>
+                    ))}
+                  </select>
+                </label>
+                <button class="btn btn-ghost" type="submit">Save</button>
+              </form>
               <h3>Substitute</h3>
               {benchKeys.length === 0 ? (
                 <p class="event-meta">

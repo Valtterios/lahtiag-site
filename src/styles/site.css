@@ -3230,6 +3230,26 @@ a:hover {
   font-style: italic;
 }
 
+/* Games won, on the side that won them: the number the bracket is read
+   for once matches run longer than a single game. */
+.bracket-games {
+  flex-shrink: 0;
+  min-width: 1.1rem;
+  text-align: right;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.bracket-side.lost .bracket-games {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* A scoreline button carries "2–1", so it cannot be a square the way the
+   lone W is. */
 .bracket-win-btn {
   flex-shrink: 0;
   width: 1.7rem;
@@ -3246,6 +3266,19 @@ a:hover {
 .bracket-win-btn:hover {
   background: var(--blue);
   color: #fff;
+}
+
+/* The scoreline this match actually ended on. */
+.bracket-win-btn.is-recorded {
+  background: var(--blue);
+  color: #fff;
+}
+
+.bracket-win-btn:has(+ .inline-form),
+.inline-form .bracket-win-btn {
+  width: auto;
+  min-width: 1.7rem;
+  padding: 0 0.3rem;
 }
 
 .team-actions {

@@ -11,6 +11,7 @@ import {
   getBracketRow,
   mainBracket,
   setBracketWinner,
+  setBracketFormat,
   clearBracketWinner,
   RuleError,
   getBracket,
@@ -19,6 +20,7 @@ import {
   setBracketSeeding,
   replaceBracketParticipant,
 } from '../../../lib/db';
+import { parseScore } from '../../../lib/scores';
 import { syncTeamDiscordInBackground } from '../../../lib/event-discord';
 import {
   later,
@@ -140,8 +142,14 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
       // Down to one bracket, the names come off the pinned messages again.
       later(locals.cfContext, refreshEventBrackets(env.DB, env, id, url.origin, now));
       return redirect(`${plain}?ok=bracket_deleted`, 303);
+    } else if (action === 'format') {
+      const finalRaw = String(form.get('final_best_of') ?? '');
+      await setBracketFormat(env.DB, chosen.id, Number(form.get('best_of')), finalRaw === '' ? null : Number(finalRaw));
+      // The pinned bracket carries the scores, so it is redrawn.
+      later(locals.cfContext, refreshLiveBracket(env.DB, env, chosen.id, url.origin, now));
+      return redirect(await backTo(id, chosen.id, 'ok', 'format'), 303);
     } else if (action === 'winner') {
-      await setBracketWinner(env.DB, chosen.id, round, slot, String(form.get('winner') ?? ''));
+      await setBracketWinner(env.DB, chosen.id, round, slot, String(form.get('winner') ?? ''), parseScore(form.get('score')));
       later(locals.cfContext, postResult(env.DB, env, chosen.id, url.origin, round, slot));
     } else if (action === 'undo') {
       await clearBracketWinner(env.DB, chosen.id, round, slot);

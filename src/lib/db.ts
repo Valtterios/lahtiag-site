@@ -8,6 +8,7 @@ import { deriveMemberType, searchKey } from './register';
 import { newTicketCode } from './qr';
 import { imageSize } from './images';
 import { QUESTION_LIMITS, questionOptions, type EventQuestionRow, type QuestionKind } from './questions';
+import { bestOfFor, isBestOf, isLegalScore, sidesOf } from './scores';
 
 export class RuleError extends Error {
   constructor(
@@ -52,6 +53,7 @@ export class RuleError extends Error {
   | 'not_full'
   | 'no_waitlist'
   | 'bad_seeding'
+  | 'bad_score'
   | 'bracket_live'
       | 'answers'
       | 'reached', // a pass level someone already holds
@@ -1129,6 +1131,8 @@ export interface BracketRow {
   live_at: number | null; // null = a draft only the board sees
   discord_message_id: string | null; // its own pinned live bracket
   created_at: number;
+  best_of: number; // 1 unless the board says otherwise
+  final_best_of: number | null; // null = the final is played like the rest
 }
 
 export interface BracketMatch {
@@ -1139,6 +1143,8 @@ export interface BracketMatch {
   side_a: string | null;
   side_b: string | null;
   winner: string | null;
+  score_a: number | null; // games won; null = no score recorded
+  score_b: number | null;
 }
 
 // What an event's first bracket is called when the board doesn't say.
@@ -1273,8 +1279,12 @@ async function removeFromDownstream(
   if (!match || match[side as 'side_a' | 'side_b'] !== key) return;
   await db
     .prepare(
-      `UPDATE bracket_matches SET ${side} = NULL, winner = CASE WHEN winner = ?4 THEN NULL ELSE winner END
-       WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3`,
+      `UPDATE bracket_matches
+          SET ${side} = NULL,
+              winner  = CASE WHEN winner = ?4 THEN NULL ELSE winner END,
+              score_a = CASE WHEN winner = ?4 THEN NULL ELSE score_a END,
+              score_b = CASE WHEN winner = ?4 THEN NULL ELSE score_b END
+        WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3`,
     )
     .bind(bracketId, nextRound, nextSlot, key)
     .run();
@@ -1301,8 +1311,12 @@ async function advance(
   if (occupant === key) return;
   await db
     .prepare(
-      `UPDATE bracket_matches SET ${side} = ?4, winner = CASE WHEN winner = ?5 THEN NULL ELSE winner END
-       WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3`,
+      `UPDATE bracket_matches
+          SET ${side} = ?4,
+              winner  = CASE WHEN winner = ?5 THEN NULL ELSE winner END,
+              score_a = CASE WHEN winner = ?5 THEN NULL ELSE score_a END,
+              score_b = CASE WHEN winner = ?5 THEN NULL ELSE score_b END
+        WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3`,
     )
     .bind(bracketId, nextRound, nextSlot, key, occupant ?? '')
     .run();
@@ -1488,12 +1502,17 @@ export async function replaceBracketParticipant(db: D1Database, bracketId: numbe
   ]);
 }
 
+// `score` is the match from the winner's side — [2, 1] for a 2–1 — and
+// is checked against what this round is played to, so a best-of-three
+// can never be recorded 3–0. Null records the winner alone, as every
+// result was before best-of brackets existed.
 export async function setBracketWinner(
   db: D1Database,
   bracketId: number,
   round: number,
   slot: number,
   winnerKey: string,
+  score: [number, number] | null = null,
 ): Promise<void> {
   const match = await getMatch(db, bracketId, round, slot);
   if (!match) throw new RuleError('missing', 'No such match.');
@@ -1503,19 +1522,73 @@ export async function setBracketWinner(
   if (winnerKey !== match.side_a && winnerKey !== match.side_b) {
     throw new RuleError('bad_input', 'The winner must be one of the two sides.');
   }
-  if (match.winner === winnerKey) return;
+  const bracket = await getBracketRow(db, bracketId);
+  if (!bracket) throw new RuleError('missing', 'No such bracket.');
   const totals = await db
     .prepare('SELECT MAX(round) AS n FROM bracket_matches WHERE bracket_id = ?1')
     .bind(bracketId)
     .first<{ n: number }>();
   const totalRounds = totals!.n;
+  if (score) {
+    const bestOf = bestOfFor(bracket, round, totalRounds);
+    if (!isLegalScore(bestOf, score[0], score[1])) {
+      throw new RuleError('bad_score', `That is not a best-of-${bestOf} score.`);
+    }
+  }
+  const sides = sidesOf(winnerKey === match.side_a, score);
+  // The same winner with a corrected score: the scoreline changes and
+  // nothing downstream is disturbed.
+  if (match.winner === winnerKey) {
+    if (sides.score_a === match.score_a && sides.score_b === match.score_b) return;
+    await db
+      .prepare('UPDATE bracket_matches SET score_a = ?4, score_b = ?5 WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3')
+      .bind(bracketId, round, slot, sides.score_a, sides.score_b)
+      .run();
+    return;
+  }
   await db
     .prepare(
-      'UPDATE bracket_matches SET winner = ?4 WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3',
+      'UPDATE bracket_matches SET winner = ?4, score_a = ?5, score_b = ?6 WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3',
     )
-    .bind(bracketId, round, slot, winnerKey)
+    .bind(bracketId, round, slot, winnerKey, sides.score_a, sides.score_b)
     .run();
   await advance(db, bracketId, round, slot, winnerKey, totalRounds);
+}
+
+// How long this bracket's matches are. The final may be longer than the
+// rest; null puts it back in line with them.
+export async function setBracketFormat(
+  db: D1Database,
+  bracketId: number,
+  bestOf: number,
+  finalBestOf: number | null,
+): Promise<void> {
+  const bracket = await getBracketRow(db, bracketId);
+  if (!bracket) throw new RuleError('missing', 'No such bracket.');
+  if (!isBestOf(bestOf) || (finalBestOf !== null && !isBestOf(finalBestOf))) {
+    throw new RuleError('bad_input', 'A match is best of 1, 3, 5, 7 or 9.');
+  }
+  await db
+    .prepare('UPDATE brackets SET best_of = ?2, final_best_of = ?3 WHERE id = ?1')
+    .bind(bracketId, bestOf, finalBestOf === bestOf ? null : finalBestOf)
+    .run();
+  // Scores that the new length cannot explain are dropped; the winners
+  // stand, since the board recorded those on purpose.
+  const totals = await db
+    .prepare('SELECT MAX(round) AS n FROM bracket_matches WHERE bracket_id = ?1')
+    .bind(bracketId)
+    .first<{ n: number }>();
+  for (const match of await getBracket(db, bracketId)) {
+    if (match.score_a === null || match.score_b === null) continue;
+    const bestOfHere = bestOfFor({ best_of: bestOf, final_best_of: finalBestOf }, match.round, totals?.n ?? match.round);
+    const won = Math.max(match.score_a, match.score_b);
+    const lost = Math.min(match.score_a, match.score_b);
+    if (isLegalScore(bestOfHere, won, lost)) continue;
+    await db
+      .prepare('UPDATE bracket_matches SET score_a = NULL, score_b = NULL WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3')
+      .bind(bracketId, match.round, match.slot)
+      .run();
+  }
 }
 
 // Reverts a recorded result: the match becomes undecided again and the
@@ -1541,7 +1614,7 @@ export async function clearBracketWinner(
   const key = match.winner;
   await db
     .prepare(
-      'UPDATE bracket_matches SET winner = NULL WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3',
+      'UPDATE bracket_matches SET winner = NULL, score_a = NULL, score_b = NULL WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3',
     )
     .bind(bracketId, round, slot)
     .run();
