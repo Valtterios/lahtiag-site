@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import { DISCORD_INVITE } from '../lib/config';
-import { resolveServers, connectUrl, spectateUrl, consoleCommand } from '../lib/gameservers';
+import { resolveServers, connectUrl, consoleCommand, gotvCommand } from '../lib/gameservers';
 
 // lahtiag.fi/cs — the address to post when teams need to get onto the
 // Counter-Strike servers. It exists because a steam:// link cannot be
@@ -41,24 +41,36 @@ const servers = await resolveServers();
 
       <p class="cs-actions">
         <a class="btn btn-cta" href={connectUrl(server)}>Join {server.label}</a>
-        <a class="btn btn-ghost" href={spectateUrl(server)}>Watch on GOTV</a>
+      </p>
+
+      <p class="cs-or">…or paste this into the Counter-Strike console:</p>
+      <p class="cs-copy">
+        <code data-cs-command>{consoleCommand(server)}</code>
+        <button class="btn btn-ghost btn-sm" type="button" data-cs-copy>Copy</button>
       </p>
 
       <details class="cs-fallback">
-        <summary>The button did nothing?</summary>
+        <summary>Spectate on GOTV</summary>
         <p>
-          Your browser has to be allowed to hand <code>steam://</code> links to Steam, and
-          some of them only ask once. Steam also has to already be running. Failing that,
-          open the Counter-Strike console with <kbd>~</kbd> and paste this — it always works.
-          (No console? Settings → Game → Enable Developer Console.)
+          GOTV has to be joined from the console — Steam refuses <code>steam://</code> links
+          to it, because a GOTV relay is not a registered game server. No password needed.
         </p>
         <p class="cs-copy">
-          <code data-cs-command>{consoleCommand(server)}</code>
+          <code data-cs-command>{gotvCommand(server)}</code>
           <button class="btn btn-ghost btn-sm" type="button" data-cs-copy>Copy</button>
+        </p>
+        <p>
+          GOTV runs about a minute and a half behind the live game, so expect to wait
+          before anything appears.
         </p>
       </details>
     </section>
   ))}
+
+  <p class="cs-note">
+    No console? Turn it on in Counter-Strike under Settings → Game → Enable Developer
+    Console, then open it with <kbd>~</kbd>.
+  </p>
 
   <p class="cs-foot">
     Stuck, or need a server opened for a scrim? Ask in

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CS2_SERVERS, steamConnect, steamSpectate, consoleConnect } from '../src/lib/config';
-import { resolveHost, resolveServers, connectUrl, spectateUrl, consoleCommand } from '../src/lib/gameservers';
+import { resolveHost, resolveServers, connectUrl, consoleCommand, gotvCommand } from '../src/lib/gameservers';
 
 // lahtiag.fi/cs: the page teams are pointed at to get onto the Counter-Strike
 // servers. The links are the whole product, so they are what is checked.
@@ -72,11 +72,17 @@ describe('resolveServers', () => {
     }
   });
 
-  it('leaves the password off the GOTV link', async () => {
+  // A steam:// link to a GOTV port fails before it reaches the server:
+  // Steam looks the address up in its own records to decide which game it
+  // is, and a relay is not a registered game server, so it answers "app id
+  // specified by server is invalid". GOTV is a console connect, full stop.
+  it('joins GOTV from the console, never through a steam:// link', async () => {
     const servers = await resolveServers(CS2_SERVERS, async () => dnsReply('85.23.69.201'));
     for (const server of servers) {
-      expect(spectateUrl(server)).toBe(`steam://connect/85.23.69.201:${server.gotvPort}`);
-      expect(spectateUrl(server)).not.toContain(server.password);
+      const command = gotvCommand(server);
+      expect(command).toBe(`connect ${server.host}:${server.gotvPort}`);
+      expect(command).not.toContain('steam://');
+      expect(command).not.toContain(server.password);
     }
   });
 });
@@ -86,6 +92,7 @@ describe('the plain hostname link forms', () => {
     const [first] = CS2_SERVERS;
     expect(steamConnect(first)).toBe(`steam://connect/${first.host}:${first.port}/${first.password}`);
     expect(steamSpectate(first)).not.toContain(first.password);
+    // The page does not use steamSpectate; it exists for the GOTV address only.
   });
 
   it('sets the password before connecting, or the connect is refused', () => {

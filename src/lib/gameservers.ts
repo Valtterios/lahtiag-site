@@ -55,7 +55,15 @@ export async function resolveServers(
 
 // The link forms, built against whatever address we ended up with.
 export const connectUrl = (s: ResolvedServer) => `steam://connect/${s.address}:${s.port}/${s.password}`;
-export const spectateUrl = (s: ResolvedServer) => `steam://connect/${s.address}:${s.gotvPort}`;
-// The console command keeps the hostname: it is typed by a person, it is
-// the thing worth remembering, and the client resolves it fine.
+
+// The console commands keep the hostname: they are typed by a person, the
+// hostname is the thing worth remembering, and the client resolves it fine.
 export const consoleCommand = (s: ResolvedServer) => `password ${s.password}; connect ${s.host}:${s.port}`;
+
+// GOTV is console-only, deliberately. steam://connect makes the Steam
+// client look the address up in Steam's own records to work out which game
+// it is, and a GOTV relay is not a registered game server — only the game
+// port carries the login token. Steam therefore refuses with "app id
+// specified by server is invalid" without ever contacting the server. The
+// console `connect` dials the address directly and works.
+export const gotvCommand = (s: ResolvedServer) => `connect ${s.host}:${s.gotvPort}`;

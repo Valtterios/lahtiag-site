@@ -6579,6 +6579,18 @@ details.admin-panel[open] > summary {
   }
 }
 
+.cs-or {
+  margin: 0.9rem 0 0.4rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.cs-note {
+  color: var(--muted);
+  font-size: 0.92rem;
+  margin: 1.4rem 0 0;
+}
+
 .cs-fallback {
   margin: 1rem 0 0;
   font-size: 0.92rem;
