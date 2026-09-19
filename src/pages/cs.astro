@@ -1,0 +1,89 @@
+---
+import Base from '../layouts/Base.astro';
+import { DISCORD_INVITE } from '../lib/config';
+import { resolveServers, connectUrl, spectateUrl, consoleCommand } from '../lib/gameservers';
+
+// lahtiag.fi/cs — the address to post when teams need to get onto the
+// Counter-Strike servers. It exists because a steam:// link cannot be
+// posted directly: Discord only turns http(s) into something clickable and
+// leaves steam:// as plain text. So the link that travels is this page,
+// and the buttons on it are the steam:// ones.
+//
+// The buttons carry the resolved IP rather than the hostname, because the
+// Steam client's connect handler is reliable with one and flaky with the
+// other (src/lib/gameservers.ts). Nothing here touches the database: this
+// is the page that has to work on the evening of a tournament.
+const servers = await resolveServers();
+---
+
+<Base
+  title="Counter-Strike servers"
+  description="Join the LahtiAG Counter-Strike 2 tournament servers — one click, or the console command."
+>
+  <header class="page-head">
+    <h1>Counter-Strike 2</h1>
+  </header>
+
+  <p class="cs-intro">
+    Two tournament servers, both running MatchZy. Matches are MR12 with a knife round, and
+    every match is recorded — demo and GOTV. Hit <strong>Join</strong> and Counter-Strike
+    takes it from there.
+  </p>
+
+  {servers.map((server) => (
+    <section class="panel-card cs-server">
+      <div class="card-head">
+        <div>
+          <h2>{server.label}</h2>
+          <p><code>{server.host}:{server.port}</code></p>
+        </div>
+      </div>
+
+      <p class="cs-actions">
+        <a class="btn btn-cta" href={connectUrl(server)}>Join {server.label}</a>
+        <a class="btn btn-ghost" href={spectateUrl(server)}>Watch on GOTV</a>
+      </p>
+
+      <details class="cs-fallback">
+        <summary>The button did nothing?</summary>
+        <p>
+          Your browser has to be allowed to hand <code>steam://</code> links to Steam, and
+          some of them only ask once. Steam also has to already be running. Failing that,
+          open the Counter-Strike console with <kbd>~</kbd> and paste this — it always works.
+          (No console? Settings → Game → Enable Developer Console.)
+        </p>
+        <p class="cs-copy">
+          <code data-cs-command>{consoleCommand(server)}</code>
+          <button class="btn btn-ghost btn-sm" type="button" data-cs-copy>Copy</button>
+        </p>
+      </details>
+    </section>
+  ))}
+
+  <p class="cs-foot">
+    Stuck, or need a server opened for a scrim? Ask in
+    <a href={DISCORD_INVITE}>the Discord</a>.
+  </p>
+</Base>
+
+<script>
+  // Copy the console command. The button is only useful with JavaScript, so
+  // it stays a plain <button> that does nothing until this runs — the
+  // command is readable and selectable either way.
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-cs-copy]')) {
+    button.addEventListener('click', async () => {
+      const command = button.parentElement?.querySelector('[data-cs-command]')?.textContent ?? '';
+      try {
+        await navigator.clipboard.writeText(command);
+        const was = button.textContent;
+        button.textContent = 'Copied';
+        setTimeout(() => {
+          button.textContent = was;
+        }, 1500);
+      } catch {
+        // Clipboard blocked (insecure context, or the user said no). The
+        // command is right there to select by hand.
+      }
+    });
+  }
+</script>

@@ -78,6 +78,7 @@ run_worker_first = [
   "/board",
   "/board/*",
   "/history",
+  "/cs",
   "/sitemap.xml",
 ]
 
@@ -169,6 +170,7 @@ run_worker_first = [
   "/board",
   "/board/*",
   "/history",
+  "/cs",
   "/sitemap.xml",
 ]
 
