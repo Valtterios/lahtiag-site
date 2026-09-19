@@ -13,6 +13,7 @@ import {
   setBracketWinner,
   setBracketFormat,
   setBracketBronze,
+  setBracketGames,
   clearBracketWinner,
   RuleError,
   getBracket,
@@ -69,7 +70,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   if (asked !== null && !Number.isInteger(asked)) return redirect(`${plain}?err=missing`, 303);
   const round = Number(form.get('round'));
   const slot = Number(form.get('slot'));
-  if ((action === 'winner' || action === 'undo') && (!Number.isInteger(round) || !Number.isInteger(slot))) {
+  if ((action === 'winner' || action === 'undo' || action === 'games') && (!Number.isInteger(round) || !Number.isInteger(slot))) {
     return redirect(await backTo(id, asked, 'err', 'missing'), 303);
   }
   const now = Math.floor(Date.now() / 1000);
@@ -154,6 +155,11 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
       await setBracketBronze(env.DB, chosen.id, on);
       later(locals.cfContext, refreshLiveBracket(env.DB, env, chosen.id, url.origin, now));
       return redirect(await backTo(id, chosen.id, 'ok', on ? 'bronze_on' : 'bronze_off'), 303);
+    } else if (action === 'games') {
+      await setBracketGames(env.DB, chosen.id, round, slot, Number(form.get('games_a')), Number(form.get('games_b')));
+      // The pinned bracket is how everyone else follows the match.
+      later(locals.cfContext, refreshLiveBracket(env.DB, env, chosen.id, url.origin, now));
+      later(locals.cfContext, postResult(env.DB, env, chosen.id, url.origin, round, slot));
     } else if (action === 'winner') {
       await setBracketWinner(env.DB, chosen.id, round, slot, String(form.get('winner') ?? ''), parseScore(form.get('score')));
       later(locals.cfContext, postResult(env.DB, env, chosen.id, url.origin, round, slot));

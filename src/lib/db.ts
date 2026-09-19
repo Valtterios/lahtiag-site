@@ -8,7 +8,7 @@ import { deriveMemberType, searchKey } from './register';
 import { newTicketCode } from './qr';
 import { imageSize } from './images';
 import { QUESTION_LIMITS, questionOptions, type EventQuestionRow, type QuestionKind } from './questions';
-import { bestOfFor, isBestOf, isLegalScore, sidesOf } from './scores';
+import { bestOfFor, decidedBy, isBestOf, isLegalScore, isRecordableScore, sidesOf } from './scores';
 import { BRONZE_SLOT, podiumOf, semifinalLosers } from './podium';
 
 export class RuleError extends Error {
@@ -1608,6 +1608,59 @@ export async function setBracketWinner(
     .run();
   await advance(db, bracketId, round, slot, winnerKey, totalRounds);
   // A decided semifinal also seats the loser in the bronze match.
+  if (round === totalRounds - 1) await refreshBronze(db, bracket, totalRounds);
+}
+
+// The games as they stand, which is how a match is followed while it is
+// being played: 1–0 of a best-of-three says who is ahead and decides
+// nothing. Reaching the games the format needs ends it, so the same
+// button that records the second game records the win — the board never
+// has to say who won separately.
+//
+// Correcting a decided match downwards (2–0 back to 1–0, say) takes the
+// winner back out of the rounds it had advanced to, the way reverting a
+// result does: the match is being played again, not finished.
+export async function setBracketGames(
+  db: D1Database,
+  bracketId: number,
+  round: number,
+  slot: number,
+  gamesA: number,
+  gamesB: number,
+): Promise<void> {
+  const match = await getMatch(db, bracketId, round, slot);
+  if (!match) throw new RuleError('missing', 'No such match.');
+  if (match.side_a === null || match.side_b === null) {
+    throw new RuleError('bad_input', 'Both sides of the match must be known first.');
+  }
+  const bracket = await getBracketRow(db, bracketId);
+  if (!bracket) throw new RuleError('missing', 'No such bracket.');
+  const totals = await db
+    .prepare('SELECT MAX(round) AS n FROM bracket_matches WHERE bracket_id = ?1')
+    .bind(bracketId)
+    .first<{ n: number }>();
+  const totalRounds = totals!.n;
+  const bestOf = bestOfFor(bracket, round, totalRounds);
+  if (bestOf < 2) throw new RuleError('bad_input', 'A best-of-one has no games to count.');
+  if (!isRecordableScore(bestOf, gamesA, gamesB)) {
+    throw new RuleError('bad_score', `A best-of-${bestOf} cannot stand at ${gamesA}–${gamesB}.`);
+  }
+  const decides = decidedBy(bestOf, gamesA, gamesB);
+  // A side reached the games it needs: that is the win, recorded with the
+  // scoreline it was won by — the winner's games are the higher number.
+  if (decides !== null) {
+    const winner = decides === 'a' ? match.side_a : match.side_b;
+    await setBracketWinner(db, bracketId, round, slot, winner, [Math.max(gamesA, gamesB), Math.min(gamesA, gamesB)]);
+    return;
+  }
+  // Still being played: no winner stands, here or in any round after.
+  if (match.winner !== null) {
+    await removeFromDownstream(db, bracketId, round, slot, match.winner, totalRounds);
+  }
+  await db
+    .prepare('UPDATE bracket_matches SET winner = NULL, score_a = ?4, score_b = ?5 WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3')
+    .bind(bracketId, round, slot, gamesA, gamesB)
+    .run();
   if (round === totalRounds - 1) await refreshBronze(db, bracket, totalRounds);
 }
 

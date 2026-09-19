@@ -9,10 +9,11 @@ import {
   getBracketRow,
   setBracketWinner,
   setBracketFormat,
+  setBracketGames,
   clearBracketWinner,
   RuleError,
 } from '../src/lib/db';
-import { bestOfFor, winsNeeded, scorelines, isLegalScore, scoreText, parseScore, sidesOf, isBestOf } from '../src/lib/scores';
+import { bestOfFor, winsNeeded, scorelines, isLegalScore, scoreText, parseScore, sidesOf, isBestOf, isLiveScore, isRecordableScore, decidedBy } from '../src/lib/scores';
 
 // Best-of matches: the rules themselves, then recording a scoreline
 // against real D1.
@@ -204,5 +205,72 @@ describe('recording a scoreline', () => {
     const bracket = await drawFour();
     await expect(setBracketFormat(db(), bracket, 2, null)).rejects.toThrow(RuleError);
     await expect(setBracketFormat(db(), bracket, 3, 4)).rejects.toThrow(RuleError);
+  });
+});
+
+describe('following a match as it is played', () => {
+  it('knows a score still in play from one that ends it', () => {
+    // A best-of-three is won at two games.
+    expect(isLiveScore(3, 1, 0)).toBe(true);
+    expect(isLiveScore(3, 1, 1)).toBe(true);
+    expect(isLiveScore(3, 2, 0)).toBe(false); // that is a win, not a state
+    expect(isLiveScore(3, 0, 0)).toBe(false); // nothing played is nothing to show
+    expect(decidedBy(3, 2, 1)).toBe('a');
+    expect(decidedBy(3, 1, 2)).toBe('b');
+    expect(decidedBy(3, 1, 1)).toBeNull();
+    // Impossible states are neither.
+    expect(isRecordableScore(3, 2, 2)).toBe(false);
+    expect(isRecordableScore(3, 3, 0)).toBe(false);
+    expect(isRecordableScore(3, 1, -1)).toBe(false);
+    expect(isRecordableScore(5, 2, 2)).toBe(true);
+  });
+
+  it('records the games as they come, and the win with the last of them', async () => {
+    const bracket = await drawFour();
+    await setBracketFormat(db(), bracket, 3, null);
+    const match = await firstMatch(bracket);
+
+    // 1–0: the bracket shows who is ahead, and nobody has won.
+    await setBracketGames(db(), bracket, 1, 0, 1, 0);
+    let now = await firstMatch(bracket);
+    expect([now.score_a, now.score_b]).toEqual([1, 0]);
+    expect(now.winner).toBeNull();
+
+    // 1–1, still anyone's.
+    await setBracketGames(db(), bracket, 1, 0, 1, 1);
+    now = await firstMatch(bracket);
+    expect(now.winner).toBeNull();
+
+    // The second game ends it: the win is recorded without a separate step.
+    await setBracketGames(db(), bracket, 1, 0, 2, 1);
+    now = await firstMatch(bracket);
+    expect(now.winner).toBe(match.side_a);
+    expect([now.score_a, now.score_b]).toEqual([2, 1]);
+    // And the winner stands in the next round.
+    expect((await getBracket(db(), bracket)).find((m) => m.round === 2)?.side_a).toBe(match.side_a);
+  });
+
+  it('takes a decided match back out of the later rounds when the score is corrected down', async () => {
+    const bracket = await drawFour();
+    await setBracketFormat(db(), bracket, 3, null);
+    const match = await firstMatch(bracket);
+    await setBracketGames(db(), bracket, 1, 0, 2, 0);
+    expect((await getBracket(db(), bracket)).find((m) => m.round === 2)?.side_a).toBe(match.side_a);
+
+    // It was 1–0, not 2–0: the match is being played again.
+    await setBracketGames(db(), bracket, 1, 0, 1, 0);
+    const after = await firstMatch(bracket);
+    expect(after.winner).toBeNull();
+    expect([after.score_a, after.score_b]).toEqual([1, 0]);
+    expect((await getBracket(db(), bracket)).find((m) => m.round === 2)?.side_a).toBeNull();
+  });
+
+  it('refuses a score the format cannot stand at, and a best-of-one has no games', async () => {
+    const bracket = await drawFour();
+    await setBracketFormat(db(), bracket, 3, null);
+    await expect(setBracketGames(db(), bracket, 1, 0, 2, 2)).rejects.toThrow(RuleError);
+    await expect(setBracketGames(db(), bracket, 1, 0, 3, 0)).rejects.toThrow(RuleError);
+    await setBracketFormat(db(), bracket, 1, null);
+    await expect(setBracketGames(db(), bracket, 1, 0, 1, 0)).rejects.toThrow(RuleError);
   });
 });

@@ -228,7 +228,19 @@ const title = event ? (many && bracket ? `${event.title}: ${bracket.name}` : `${
                                 ))}
                               </span>
                               <span class="bracket-name">{side.name}</span>
-                              {games !== null && <span class="bracket-games">{games}</span>}
+                              {games !== null && <span class={`bracket-games${!decided ? ' bracket-games-live' : ''}`}>{games}</span>}
+                              {clickable && bestOf > 1 && !decided && (
+                                <form method="post" action={`/events/${event.id}/bracket-action`} class="inline-form">
+                                  <input type="hidden" name="csrf" value={csrf} />
+                                  <input type="hidden" name="bracket_id" value={bracket!.id} />
+                                  <input type="hidden" name="action" value="games" />
+                                  <input type="hidden" name="round" value={match.round} />
+                                  <input type="hidden" name="slot" value={match.slot} />
+                                  <input type="hidden" name="games_a" value={(match.score_a ?? 0) + (sideName === 'side_a' ? 1 : 0)} />
+                                  <input type="hidden" name="games_b" value={(match.score_b ?? 0) + (sideName === 'side_b' ? 1 : 0)} />
+                                  <button class="bracket-win-btn bracket-game-btn" type="submit" title={`${side.name} won a game`}>+1</button>
+                                </form>
+                              )}
                               {clickable && bestOf > 1 &&
                                 scorelines(bestOf).map(([w, l]) => (
                                   <form method="post" action={`/events/${event.id}/bracket-action`} class="inline-form">
@@ -338,7 +350,7 @@ const title = event ? (many && bracket ? `${event.title}: ${bracket.name}` : `${
               ) : (
                 <p class="event-meta">
                   {bracket.best_of > 1
-                    ? 'Click the scoreline a side won by; it records the winner and the games together. ↺ on the recorded winner reverts the result.'
+                    ? 'Click +1 on a side as it wins a game and the bracket follows the match live — 1–0, 2–1 — recording the win by itself when a side reaches the games it needs. The scoreline buttons record a finished match in one click instead; ↺ reverts a result.'
                     : 'Click W on a side to record the winner, or ↺ on the recorded winner to revert the result.'}
                   {' '}Changing or reverting an earlier result clears everything that followed from it.
                 </p>

@@ -39,6 +39,31 @@ export function isLegalScore(bestOf: number, winnerGames: number, loserGames: nu
   return scorelines(bestOf).some(([w, l]) => w === winnerGames && l === loserGames);
 }
 
+// A score a match can actually stand at, whether it is over or still
+// being played: nobody past the games needed, only one side reaching
+// them, and no more games than the format has.
+export function isRecordableScore(bestOf: number, a: number, b: number): boolean {
+  const need = winsNeeded(bestOf);
+  if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0) return false;
+  if (a > need || b > need) return false;
+  if (a === need && b === need) return false;
+  return a + b <= bestOf;
+}
+
+// Which side the score decides, or null while it is still being played.
+// 'a' and 'b' are the match's two sides in their stored order.
+export function decidedBy(bestOf: number, a: number, b: number): 'a' | 'b' | null {
+  if (!isRecordableScore(bestOf, a, b)) return null;
+  const need = winsNeeded(bestOf);
+  return a === need ? 'a' : b === need ? 'b' : null;
+}
+
+// A score with nothing decided yet — 1–0 of a best-of-three, the state a
+// match is in while it is being played.
+export function isLiveScore(bestOf: number, a: number, b: number): boolean {
+  return isRecordableScore(bestOf, a, b) && decidedBy(bestOf, a, b) === null && a + b > 0;
+}
+
 // "2–1", with an en dash, or null when the match has no score to show —
 // a best-of-one, or a result recorded without one.
 export function scoreText(a: number | null | undefined, b: number | null | undefined): string | null {

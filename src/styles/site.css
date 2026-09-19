@@ -3268,6 +3268,16 @@ a:hover {
   color: #fff;
 }
 
+/* Games in a match still being played: the number is the point of the
+   row, so it reads as live rather than as a final record. */
+.bracket-games-live {
+  color: var(--blue);
+}
+
+.bracket-game-btn {
+  border-style: dashed;
+}
+
 /* The scoreline this match actually ended on. */
 .bracket-win-btn.is-recorded {
   background: var(--blue);
