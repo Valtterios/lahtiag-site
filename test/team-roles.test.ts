@@ -12,6 +12,7 @@ import {
   stripTeamRoles,
   listEventChannels,
 } from '../src/lib/event-discord';
+import { postEventLine } from '../src/lib/event-channel';
 import { DISCORD_GUILD_ID as GUILD } from '../src/lib/config';
 
 // A mentionable Discord role per tournament team, so a team can be
@@ -225,6 +226,31 @@ describe('renameTeamDiscord', () => {
       'PATCH /channels/CH1 Kapital Reborn',
       `PATCH /guilds/${GUILD}/roles/ROLE1 Kapital Reborn`,
     ]);
+  });
+});
+
+describe('the pings a team role is for', () => {
+  it('lets Discord notify the roles a line calls, alongside the event role', async () => {
+    const id = await seedBigEvent();
+    discordStub();
+    // A match call: the two teams are notified, the event is not woken.
+    expect(await postEventLine(db(), cfg, id, 'Next up: <@&ROLE1> vs <@&ROLE3>.', false, undefined, ['ROLE1', 'ROLE3'])).toBe(true);
+    const call = calls.find((c) => c.method === 'POST' && c.path.startsWith('/channels/'));
+    expect(call?.body?.allowed_mentions).toEqual({ parse: [], roles: ['ROLE1', 'ROLE3'] });
+    expect(String(call?.body?.content)).not.toContain('<@&EVENT>');
+
+    // The draw wakes the whole event and calls its teams in one message.
+    calls = [];
+    await postEventLine(db(), cfg, id, 'The bracket is out.', true, undefined, ['ROLE1']);
+    const drawn = calls.find((c) => c.method === 'POST' && c.path.startsWith('/channels/'));
+    expect(drawn?.body?.allowed_mentions).toEqual({ parse: [], roles: ['EVENT', 'ROLE1'] });
+    expect(String(drawn?.body?.content)).toContain('<@&EVENT>');
+
+    // Nothing to call: the line mentions nobody at all.
+    calls = [];
+    await postEventLine(db(), cfg, id, 'Alpha beat Bravo.');
+    const plain = calls.find((c) => c.method === 'POST' && c.path.startsWith('/channels/'));
+    expect(plain?.body?.allowed_mentions).toEqual({ parse: [] });
   });
 });
 

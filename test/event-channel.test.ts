@@ -9,6 +9,7 @@ import {
   bracketLine,
   describeResult,
   resultLine,
+  rolesIn,
   revertLine,
   screenLine,
   cancelLine,
@@ -55,10 +56,51 @@ describe('lines', () => {
     expect(bracketLine(matches, names, 'u', true)).toContain('The bracket was redrawn');
   });
 
+  it('calls the next match by its teams\' roles, and leaves the result itself plain', () => {
+    const matches = [m(1, 0, 't:1', 't:2', 't:1'), m(1, 1, 't:3', 't:4', 't:3'), m(2, 0, 't:1', 't:3')];
+    const mentions = new Map([
+      ['t:1', 'ROLE1'],
+      ['t:3', 'ROLE3'],
+    ]);
+    const semi = describeResult(matches, 1, 0, names, mentions)!;
+    // Who won is narration: plain names, no ping for the loser.
+    expect(semi.winner).toBe('Alpha');
+    expect(semi.loser).toBe('Bravo');
+    expect(resultLine(semi, 'u')).toBe('🏆 Semifinal: Alpha beat Bravo. Next up: <@&ROLE1> vs <@&ROLE3>.');
+    expect(semi.nextRoles).toEqual(['ROLE1', 'ROLE3']);
+
+    // The final decides nothing further: nobody is called anywhere.
+    const done = [...matches.slice(0, 2), m(2, 0, 't:1', 't:3', 't:3')];
+    const final = describeResult(done, 2, 0, names, mentions)!;
+    expect(final.next).toBeNull();
+    expect(final.nextRoles).toEqual([]);
+
+    // A team without a role — a small event, or one from before them —
+    // keeps its plain name, and the line still reads.
+    const half = describeResult(matches, 1, 0, names, new Map([['t:1', 'ROLE1']]))!;
+    expect(resultLine(half, 'u')).toBe('🏆 Semifinal: Alpha beat Bravo. Next up: <@&ROLE1> vs Charlie.');
+    expect(half.nextRoles).toEqual(['ROLE1']);
+  });
+
+  it('calls every team in the first round when the draw comes out', () => {
+    const matches = [m(1, 0, 't:1', 't:2'), m(1, 1, 't:3', null), m(2, 0, null, null)];
+    const mentions = new Map([
+      ['t:1', 'ROLE1'],
+      ['t:2', 'ROLE2'],
+      ['t:3', 'ROLE3'],
+    ]);
+    const text = bracketLine(matches, names, 'https://x', false, null, mentions);
+    expect(text).toContain('<@&ROLE1> vs <@&ROLE2>');
+    expect(text).toContain('<@&ROLE3> skips straight to');
+    expect(rolesIn(mentions, [matches[0].side_a, matches[0].side_b, matches[1].side_a, null])).toEqual(['ROLE1', 'ROLE2', 'ROLE3']);
+    // Without roles it is the line it always was.
+    expect(bracketLine(matches, names, 'https://x', false)).toContain('Alpha vs Bravo');
+  });
+
   it('tells a result with the next opponent, and crowns the champion at the final', () => {
     const matches = [m(1, 0, 't:1', 't:2', 't:1'), m(1, 1, 't:3', 't:4', 't:3'), m(2, 0, 't:1', 't:3')];
     const semi = describeResult(matches, 1, 0, names)!;
-    expect(semi).toEqual({ round: 1, totalRounds: 2, winner: 'Alpha', loser: 'Bravo', next: { a: 'Alpha', b: 'Charlie' } });
+    expect(semi).toEqual({ round: 1, totalRounds: 2, winner: 'Alpha', loser: 'Bravo', next: { a: 'Alpha', b: 'Charlie' }, nextRoles: [] });
     expect(resultLine(semi, 'u')).toBe('🏆 Semifinal: Alpha beat Bravo. Next up: Alpha vs Charlie.');
     expect(describeResult(matches, 2, 0, names)).toBeNull(); // undecided
     const done = [...matches.slice(0, 2), m(2, 0, 't:1', 't:3', 't:3')];

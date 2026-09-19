@@ -9,7 +9,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { getEvent, getBracket, getBracketRow, listBrackets, mainBracket, listSignups, listEventTeams, listUnannouncedPromotions, markPromotionsAnnounced, memberStats, getSettings, setSetting, getEventPhoto, recordMilestone, WIN_MILESTONES, type BracketMatch, type BracketRow, type EventRow } from './db';
 import { profileCardPng } from './profile-card';
 import { cleanText } from './raster';
-import { syncEventRole } from './event-discord';
+import { syncEventRole, listTeamRoles } from './event-discord';
 import { setGuildMemberRole, postWebhookWithFile, dmUser, postWebhook } from './discord';
 import { DISCORD_GUILD_ID } from './config';
 import {
@@ -44,6 +44,28 @@ function safe(name: string): string {
 
 export function nameOf(names: Map<string, string>, key: string | null): string {
   return key === null ? 'Unknown' : safe(names.get(key) ?? 'Unknown');
+}
+
+// Participant keys ('t:<team id>') to the team's Discord role, for the
+// lines that call a team to its match. Empty for an event without team
+// roles — a small one, or one that ran before they existed — and every
+// line then reads exactly as it did.
+export async function teamMentions(db: D1Database, eventId: number): Promise<Map<string, string>> {
+  return new Map((await listTeamRoles(db, eventId)).map((r) => [`t:${r.event_team_id}`, r.role_id]));
+}
+
+// A side as a summons: its role ping when it has one, its escaped name
+// when it doesn't. The mention is built from the role id in the database
+// — never from a name anyone typed, which `safe` strips of '@' anyway.
+export function callOf(names: Map<string, string>, mentions: Map<string, string>, key: string | null): string {
+  const role = key === null ? undefined : mentions.get(key);
+  return role ? `<@&${role}>` : nameOf(names, key);
+}
+
+// The roles a line pings, for allowed_mentions: without them Discord
+// renders the mention but notifies nobody.
+export function rolesIn(mentions: Map<string, string>, keys: (string | null)[]): string[] {
+  return [...new Set(keys.map((k) => (k === null ? undefined : mentions.get(k))).filter((r): r is string => Boolean(r)))];
 }
 
 export function roundLabel(round: number, totalRounds: number): string {
@@ -84,11 +106,21 @@ export async function bracketContext(db: D1Database, bracketId: number): Promise
   };
 }
 
-export function bracketLine(matches: BracketMatch[], names: Map<string, string>, url: string, regenerated: boolean, label: string | null = null): string {
+// The draw, with every team in the first round called by its role: the
+// one message where a ping does real work, since this is when people
+// learn whom they play.
+export function bracketLine(
+  matches: BracketMatch[],
+  names: Map<string, string>,
+  url: string,
+  regenerated: boolean,
+  label: string | null = null,
+  mentions: Map<string, string> = new Map(),
+): string {
   const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
   const first = matches.filter((m) => m.round === 1);
-  const pairs = first.filter((m) => m.side_a !== null && m.side_b !== null).map((m) => `${nameOf(names, m.side_a)} vs ${nameOf(names, m.side_b)}`);
-  const byes = first.filter((m) => m.side_a !== null && m.side_b === null).map((m) => nameOf(names, m.side_a));
+  const pairs = first.filter((m) => m.side_a !== null && m.side_b !== null).map((m) => `${callOf(names, mentions, m.side_a)} vs ${callOf(names, mentions, m.side_b)}`);
+  const byes = first.filter((m) => m.side_a !== null && m.side_b === null).map((m) => callOf(names, mentions, m.side_a));
   const entrants = first.reduce((n, m) => n + (m.side_a ? 1 : 0) + (m.side_b ? 1 : 0), 0);
   const which = label === null ? 'The bracket' : `**${safe(label)}**`;
   const head = `🎲 ${regenerated ? `${which} was redrawn` : `${which} is out`}: ${entrants} ${matches.some((m) => m.side_a?.startsWith('t:') || m.side_b?.startsWith('t:')) ? 'teams' : 'players'}, ${total} ${total === 1 ? 'round' : 'rounds'}.`;
@@ -105,19 +137,36 @@ export interface ResultStory {
   winner: string;
   loser: string;
   next: { a: string; b: string } | null; // the winner's next match, when both sides are known
+  nextRoles: string[]; // the team roles that match calls to the table
 }
 
 // What a recorded result means, read back from the bracket after the
 // update: who beat whom, and the winner's next opponent if known. Null
 // when the match doesn't exist or is undecided (nothing to say).
-export function describeResult(matches: BracketMatch[], round: number, slot: number, names: Map<string, string>): ResultStory | null {
+export function describeResult(
+  matches: BracketMatch[],
+  round: number,
+  slot: number,
+  names: Map<string, string>,
+  mentions: Map<string, string> = new Map(),
+): ResultStory | null {
   const match = matches.find((m) => m.round === round && m.slot === slot);
   if (!match?.winner || match.side_a === null || match.side_b === null) return null;
   const totalRounds = matches.reduce((max, m) => Math.max(max, m.round), 0);
   const loserKey = match.winner === match.side_a ? match.side_b : match.side_a;
   const upcoming = matches.find((m) => m.round === round + 1 && m.slot === Math.floor(slot / 2));
-  const next = upcoming && upcoming.side_a !== null && upcoming.side_b !== null ? { a: nameOf(names, upcoming.side_a), b: nameOf(names, upcoming.side_b) } : null;
-  return { round, totalRounds, winner: nameOf(names, match.winner), loser: nameOf(names, loserKey), next };
+  // The result itself is narration and names everyone plainly; only the
+  // match it sets up calls its two teams to the table.
+  const ready = upcoming && upcoming.side_a !== null && upcoming.side_b !== null ? upcoming : null;
+  const next = ready ? { a: callOf(names, mentions, ready.side_a), b: callOf(names, mentions, ready.side_b) } : null;
+  return {
+    round,
+    totalRounds,
+    winner: nameOf(names, match.winner),
+    loser: nameOf(names, loserKey),
+    next,
+    nextRoles: ready ? rolesIn(mentions, [ready.side_a, ready.side_b]) : [],
+  };
 }
 
 // `bracket` names which draw this happened in, on the events that run
@@ -461,6 +510,7 @@ export async function postEventLine(
   content: string,
   ping = false,
   file?: MessageFile,
+  roles: string[] = [], // team roles the content already mentions
 ): Promise<boolean> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return false;
@@ -468,7 +518,8 @@ export async function postEventLine(
   if (!event?.discord_channel_id) return false;
   const role = ping && event.discord_role_id ? event.discord_role_id : null;
   const text = role ? `<@&${role}> ${content}` : content;
-  const mentions = role ? { parse: [], roles: [role] } : NO_MENTIONS;
+  const allowed = [...(role ? [role] : []), ...roles];
+  const mentions = allowed.length > 0 ? { parse: [], roles: allowed } : NO_MENTIONS;
   if (file) return (await createChannelMessageWithFile(token, event.discord_channel_id, text, file, mentions, SUPPRESS_EMBEDS)).ok;
   return postChannelMessage(token, event.discord_channel_id, text, mentions, SUPPRESS_EMBEDS);
 }
@@ -488,9 +539,19 @@ export async function postBracketOut(db: D1Database, env: { DISCORD_BOT_TOKEN?: 
   if (matches.length === 0) return;
   const { event } = here;
   const names = await participantNames(db, event.id);
+  const mentions = await teamMentions(db, event.id);
   const now = Math.floor(Date.now() / 1000);
   const picture = (await pictureBelongsInTalk(db, event)) ? await bracketPicture(event, matches, names, now, here.label) : undefined;
-  await postEventLine(db, env, event.id, bracketLine(matches, names, `${origin}${here.path}`, regenerated, here.label), true, picture);
+  const first = matches.filter((m) => m.round === 1).flatMap((m) => [m.side_a, m.side_b]);
+  await postEventLine(
+    db,
+    env,
+    event.id,
+    bracketLine(matches, names, `${origin}${here.path}`, regenerated, here.label, mentions),
+    true,
+    picture,
+    rolesIn(mentions, first),
+  );
   await refreshLiveBracket(db, env, bracketId, origin, now);
   // Coins: the main bracket going live opens the betting; a redraw gives
   // back the stakes on anyone no longer in it.
@@ -508,13 +569,13 @@ export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: stri
   const { event } = here;
   const matches = await getBracket(db, bracketId);
   const names = await participantNames(db, event.id);
-  const story = describeResult(matches, round, slot, names);
+  const story = describeResult(matches, round, slot, names, await teamMentions(db, event.id));
   if (!story) return;
   const now = Math.floor(Date.now() / 1000);
   const decided = story.round === story.totalRounds;
   // The champion's line carries the finished picture, unless the pinned one is right there.
   const picture = decided && (await pictureBelongsInTalk(db, event)) ? await bracketPicture(event, matches, names, now, here.label) : undefined;
-  await postEventLine(db, env, event.id, resultLine(story, `${origin}${here.path}`, here.label), decided, picture);
+  await postEventLine(db, env, event.id, resultLine(story, `${origin}${here.path}`, here.label), decided, picture, story.nextRoles);
   await refreshLiveBracket(db, env, bracketId, origin, now);
   if (decided) await postChampionCards(db, env, event.id, matches, now);
   // Coins: a match with its own pool pays out on its result.
