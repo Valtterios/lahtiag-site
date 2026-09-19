@@ -42,6 +42,7 @@ html_handling = "drop-trailing-slash"
 run_worker_first = [
   "/",
   "/home",
+  "/dc",
   "/login",
   "/logout",
   "/auth/callback",
@@ -132,6 +133,7 @@ html_handling = "drop-trailing-slash"
 run_worker_first = [
   "/",
   "/home",
+  "/dc",
   "/login",
   "/logout",
   "/auth/callback",
