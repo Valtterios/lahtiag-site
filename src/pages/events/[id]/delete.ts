@@ -3,7 +3,7 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { deleteEvent, RuleError } from '../../../lib/db';
 import { deleteEventAnnouncement } from '../../../lib/announce';
-import { deleteDiscordObjects, listEventChannels } from '../../../lib/event-discord';
+import { deleteDiscordObjects, listEventChannels, listTeamRoles } from '../../../lib/event-discord';
 
 // Permanent removal, signups and bracket included — for events that should
 // never have existed. A real event that fell through is cancelled instead,
@@ -20,10 +20,12 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
 
   try {
     const channels = await listEventChannels(env.DB, id);
+    const teamRoles = await listTeamRoles(env.DB, id);
     const event = await deleteEvent(env.DB, id);
     await deleteEventAnnouncement(env.DB, env, event);
-    // Its Discord role, channels, category and scheduled event, if it had them, go too.
-    await deleteDiscordObjects(env, event, channels, true);
+    // Its Discord roles (the event's and its teams'), channels, category
+    // and scheduled event, if it had them, go too.
+    await deleteDiscordObjects(env, event, channels, true, teamRoles);
   } catch (error) {
     if (error instanceof RuleError) return redirect(`/events/${id}?err=${error.code}`, 303);
     throw error;

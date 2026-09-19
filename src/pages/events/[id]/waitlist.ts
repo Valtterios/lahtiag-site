@@ -4,7 +4,7 @@ import { checkCsrf, currentSession, requireAdmin } from '../../../lib/guard';
 import { refreshAnnouncementInBackground } from '../../../lib/announce';
 import { joinWaitlist, leaveWaitlist, admitFromWaitlist, upsertMember, RuleError } from '../../../lib/db';
 import { announcePromotionsInBackground } from '../../../lib/event-channel';
-import { syncEventRolesInBackground } from '../../../lib/event-discord';
+import { syncEventRolesInBackground, syncTeamDiscordInBackground } from '../../../lib/event-discord';
 
 // Join or leave the waitlist of a full event. The board can take anyone
 // off it with a discord_id.
@@ -31,6 +31,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
       if (!admin.ok) return redirect(`${back}?err=${admin.reason}`, 303);
       await admitFromWaitlist(env.DB, id, target, now);
       syncEventRolesInBackground(locals.cfContext, env.DB, env, [id], now);
+      syncTeamDiscordInBackground(locals.cfContext, env.DB, env, id, now);
       announcePromotionsInBackground(locals.cfContext, env.DB, env, now);
       refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
       return redirect(`${back}?ok=admitted`, 303);

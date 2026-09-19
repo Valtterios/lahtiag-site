@@ -197,6 +197,26 @@ export async function syncMemberEventRoles(
     .bind(discordId)
     .all<{ event_id: number }>();
   for (const row of results) await syncEventRole(db, env, row.event_id, now, EVENT_SYNC_LIMIT, setRole);
+  await stripTeamRoles(db, env, discordId);
+}
+
+// Every team role a member holds, taken back. Their signups are already
+// gone by the time this runs, so there is nothing to compare against —
+// the grants are the record of what to strip.
+export async function stripTeamRoles(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, discordId: string, setRole?: TeamSetRole): Promise<void> {
+  const { results } = await db
+    .prepare('SELECT g.event_team_id, r.role_id FROM event_team_role_grants g JOIN event_team_roles r ON r.event_team_id = g.event_team_id WHERE g.discord_id = ?1')
+    .bind(discordId)
+    .all<{ event_team_id: number; role_id: string }>();
+  const token = env.DISCORD_BOT_TOKEN;
+  if (!token && !setRole) return;
+  const apply: TeamSetRole = setRole ?? ((roleId, userId, on) => setGuildMemberRole(token!, DISCORD_GUILD_ID, userId, roleId, on));
+  for (const row of results) {
+    const result = await apply(row.role_id, discordId, false);
+    if (result === 'ok' || result === 'not_in_guild') {
+      await db.prepare('DELETE FROM event_team_role_grants WHERE event_team_id = ?1 AND discord_id = ?2').bind(row.event_team_id, discordId).run();
+    }
+  }
 }
 
 function boardRoleIds(env: DiscordEnv): string[] {
@@ -418,7 +438,7 @@ export async function setUpEventDiscord(
     .run();
   if (channelId) await postChannelMessage(token, channelId, welcomeMessage(event, roleId, url));
   await syncEventRole(db, env, eventId, now);
-  if (categoryId) await createTeamVoiceChannels(db, env, eventId, now);
+  if (categoryId) await syncTeamDiscord(db, env, eventId, now);
   return { ok: true, channelId };
 }
 
@@ -443,7 +463,7 @@ export async function upgradeEventDiscord(db: D1Database, env: DiscordEnv, event
   await db.prepare('UPDATE events SET discord_category_id = ?2 WHERE id = ?1').bind(eventId, category.value.id).run();
   const made = await createChannelSet(db, env, botId, event, event.discord_role_id, category.value.id, new Set(['discussion']), url, now);
   if (made.ok) {
-    await createTeamVoiceChannels(db, env, eventId, now);
+    await syncTeamDiscord(db, env, eventId, now);
     // Live brackets pinned in discussion move to the new bracket channel.
     await dropEventLiveBrackets(db, env, eventId);
     await refreshEventBrackets(db, env, eventId, origin, now);
@@ -463,24 +483,133 @@ export function planTeamChannels<T extends { id: number }, C extends { event_tea
 }
 
 export type TeamVoiceResult =
-  | { ok: true; created: number; removed: number; teams: number }
+  | { ok: true; created: number; removed: number; teams: number; roles: number }
   | { ok: false; reason: 'unconfigured' | 'needs_category' | 'no_teams' | 'forbidden' | 'error' };
 
-// A voice channel per team, named after it, in the event's own category.
-// Runs after every team change (and on request): new teams get theirs,
-// disbanded teams lose theirs. Names are not followed (teams don't
-// rename). Cheap for events without an own category: one lookup.
-export async function createTeamVoiceChannels(db: D1Database, env: DiscordEnv, eventId: number, now: number): Promise<TeamVoiceResult> {
+// --- a role per team -----------------------------------------------------------
+
+export interface EventTeamRoleRow {
+  event_id: number;
+  event_team_id: number;
+  role_id: string;
+  created_at: number;
+}
+
+export async function listTeamRoles(db: D1Database, eventId: number): Promise<EventTeamRoleRow[]> {
+  const { results } = await db
+    .prepare('SELECT * FROM event_team_roles WHERE event_id = ?1 ORDER BY created_at, event_team_id')
+    .bind(eventId)
+    .all<EventTeamRoleRow>();
+  return results;
+}
+
+export async function listTeamGrants(db: D1Database, teamId: number): Promise<string[]> {
+  const { results } = await db
+    .prepare('SELECT discord_id FROM event_team_role_grants WHERE event_team_id = ?1')
+    .bind(teamId)
+    .all<{ discord_id: string }>();
+  return results.map((r) => r.discord_id);
+}
+
+// One sync spends at most this many calls on team-role membership, for
+// the same reason EVENT_SYNC_LIMIT exists; the next sync picks up the rest.
+export const TEAM_ROLE_SYNC_LIMIT = 40;
+
+export type TeamSetRole = (roleId: string, userId: string, on: boolean) => Promise<RoleResult>;
+
+// Who holds a team's role: everyone signed up under it, the bench
+// included — a reserve is on the team and is pinged with it.
+export function teamMemberIds(signups: { discord_id: string; event_team_id: number | null }[], teamId: number): string[] {
+  return participantIds(signups.filter((s) => s.event_team_id === teamId));
+}
+
+// One team's role against its line-up. Returns the calls it spent, so the
+// caller can share one budget across every team.
+async function syncOneTeamRole(
+  db: D1Database,
+  teamId: number,
+  roleId: string,
+  wanted: string[],
+  now: number,
+  apply: TeamSetRole,
+  limit: number,
+): Promise<number> {
+  const changes = planEventRole(wanted, await listTeamGrants(db, teamId)).slice(0, limit);
+  for (const change of changes) {
+    const result = await apply(roleId, change.discordId, change.on);
+    if (change.on) {
+      if (result === 'ok') {
+        await db
+          .prepare('INSERT OR IGNORE INTO event_team_role_grants (event_team_id, discord_id, granted_at) VALUES (?1, ?2, ?3)')
+          .bind(teamId, change.discordId, now)
+          .run();
+      }
+    } else if (result === 'ok' || result === 'not_in_guild') {
+      await db.prepare('DELETE FROM event_team_role_grants WHERE event_team_id = ?1 AND discord_id = ?2').bind(teamId, change.discordId).run();
+    }
+  }
+  return changes.length;
+}
+
+// A team's voice channel is its own: the board and the bot see it, and
+// the team's role may see and speak in it. The event's role no longer
+// opens every team's channel.
+function teamChannelOverwrites(env: DiscordEnv, botId: string, roleId: string): ChannelOverwrite[] {
+  return [...privateOverwrites(env, botId), roleOverwrite(roleId, { voice: true })];
+}
+
+// Everything Discord keeps per team of a big event: a mentionable role
+// named after the team, a voice channel locked to it, and the role's
+// membership. Runs after every team change (and on request): new teams
+// get theirs, disbanded teams lose theirs, and whoever joined or left a
+// team gains or loses its role. Cheap for events without an own category:
+// one lookup. Small team events are deliberately left out — the server
+// has 250 roles to spend, and tournaments are what they are for.
+export async function syncTeamDiscord(
+  db: D1Database,
+  env: DiscordEnv,
+  eventId: number,
+  now: number,
+  setRole?: TeamSetRole,
+): Promise<TeamVoiceResult> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return { ok: false, reason: 'unconfigured' };
   const event = await getEvent(db, eventId);
   if (!event?.discord_role_id || !event.discord_category_id) return { ok: false, reason: 'needs_category' };
   const teams: EventTeamRow[] = await listEventTeams(db, eventId);
   const existing = (await listEventChannels(db, eventId)).filter((c) => c.kind === 'team');
-  if (teams.length === 0 && existing.length === 0) return { ok: false, reason: 'no_teams' };
+  const roles = await listTeamRoles(db, eventId);
+  if (teams.length === 0 && existing.length === 0 && roles.length === 0) return { ok: false, reason: 'no_teams' };
   const botId = await fetchBotUserId(token);
   if (!botId) return { ok: false, reason: 'error' };
   const reason = `lahtiag.fi event ${eventId}`;
+
+  // Roles first: a team's channel is locked to its own role, so the role
+  // has to exist before the channel that admits it.
+  const rolePlan = planTeamChannels(teams, roles);
+  for (const row of rolePlan.remove) {
+    if (!(await deleteGuildRole(token, DISCORD_GUILD_ID, row.role_id, reason))) continue;
+    await db.batch([
+      db.prepare('DELETE FROM event_team_roles WHERE event_id = ?1 AND event_team_id = ?2').bind(eventId, row.event_team_id),
+      db.prepare('DELETE FROM event_team_role_grants WHERE event_team_id = ?1').bind(row.event_team_id),
+    ]);
+  }
+  const roleFor = new Map(roles.map((r) => [r.event_team_id, r.role_id]));
+  let madeRoles = 0;
+  for (const team of rolePlan.create) {
+    const made = await createGuildRole(token, DISCORD_GUILD_ID, roleName(team.name), reason);
+    if (!made.ok) break; // refused or out of budget: the channels still get made, the next sync retries
+    await db
+      .prepare('INSERT OR REPLACE INTO event_team_roles (event_id, event_team_id, role_id, created_at) VALUES (?1, ?2, ?3, ?4)')
+      .bind(eventId, team.id, made.value.id, now)
+      .run();
+    roleFor.set(team.id, made.value.id);
+    madeRoles++;
+    // A team whose channel predates its role: hand the channel over.
+    const channel = existing.find((c) => c.event_team_id === team.id);
+    if (channel) await updateChannel(token, channel.channel_id, { permission_overwrites: teamChannelOverwrites(env, botId, made.value.id) });
+  }
+
   const plan = planTeamChannels(teams, existing);
   let removed = 0;
   for (const row of plan.remove) {
@@ -496,31 +625,47 @@ export async function createTeamVoiceChannels(db: D1Database, env: DiscordEnv, e
       {
         name: team.name.trim().slice(0, 100) || `team-${team.id}`,
         parentId: event.discord_category_id,
-        overwrites: [...privateOverwrites(env, botId), roleOverwrite(event.discord_role_id, { voice: true })],
+        overwrites: teamChannelOverwrites(env, botId, roleFor.get(team.id) ?? event.discord_role_id),
         voice: true,
       },
       reason,
     );
-    if (!made.ok) return created > 0 || removed > 0 ? { ok: true, created, removed, teams: teams.length } : { ok: false, reason: made.reason };
+    if (!made.ok) {
+      if (created > 0 || removed > 0 || madeRoles > 0) break;
+      return { ok: false, reason: made.reason };
+    }
     await recordEventChannel(db, eventId, made.value.id, 'team', team.id, now);
     created++;
   }
-  return { ok: true, created, removed, teams: teams.length };
+
+  // Then the rosters, sharing one budget across the teams.
+  const apply: TeamSetRole = setRole ?? ((roleId, userId, on) => setGuildMemberRole(token, DISCORD_GUILD_ID, userId, roleId, on));
+  const signups = await listSignups(db, eventId);
+  let budget = TEAM_ROLE_SYNC_LIMIT;
+  for (const team of teams) {
+    if (budget <= 0) break;
+    const roleId = roleFor.get(team.id);
+    if (!roleId) continue;
+    budget -= await syncOneTeamRole(db, team.id, roleId, teamMemberIds(signups, team.id), now, apply, budget);
+  }
+
+  return { ok: true, created, removed, teams: teams.length, roles: madeRoles };
 }
 
-// After teams changed: follow them without holding up the response.
-export function syncTeamVoiceChannelsInBackground(
+// After teams or their line-ups changed: follow them without holding up
+// the response.
+export function syncTeamDiscordInBackground(
   ctx: { waitUntil(promise: Promise<unknown>): void } | undefined,
   db: D1Database,
   env: DiscordEnv,
   eventId: number,
   now: number,
 ): void {
-  ctx?.waitUntil(createTeamVoiceChannels(db, env, eventId, now).catch(() => {}));
+  ctx?.waitUntil(syncTeamDiscord(db, env, eventId, now).catch(() => {}));
 }
 
-// A renamed team's voice channel follows, best effort.
-export async function renameTeamVoiceChannel(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, teamId: number, name: string): Promise<void> {
+// A renamed team's voice channel and role follow, best effort.
+export async function renameTeamDiscord(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number, teamId: number, name: string): Promise<void> {
   const token = env.DISCORD_BOT_TOKEN;
   if (!token) return;
   const row = await db
@@ -528,6 +673,11 @@ export async function renameTeamVoiceChannel(db: D1Database, env: { DISCORD_BOT_
     .bind(eventId, teamId)
     .first<{ channel_id: string }>();
   if (row) await updateChannel(token, row.channel_id, { name: name.trim().slice(0, 100) || `team-${teamId}` });
+  const role = await db
+    .prepare('SELECT role_id FROM event_team_roles WHERE event_id = ?1 AND event_team_id = ?2')
+    .bind(eventId, teamId)
+    .first<{ role_id: string }>();
+  if (role) await renameGuildRole(token, DISCORD_GUILD_ID, role.role_id, roleName(name));
 }
 
 // Delete in Discord everything the bot made for the event: the recorded
@@ -539,15 +689,19 @@ export async function deleteDiscordObjects(
   event: Pick<EventRow, 'id' | 'discord_role_id' | 'discord_channel_id' | 'discord_category_id'> & { discord_event_id?: string | null },
   channels: Pick<EventChannelRow, 'channel_id'>[],
   scheduledToo = false,
+  teamRoles: Pick<EventTeamRoleRow, 'role_id'>[] = [],
 ): Promise<boolean> {
   const token = env.DISCORD_BOT_TOKEN;
-  if (!token) return !event.discord_role_id && !event.discord_channel_id && !event.discord_category_id && channels.length === 0;
+  if (!token) {
+    return !event.discord_role_id && !event.discord_channel_id && !event.discord_category_id && channels.length === 0 && teamRoles.length === 0;
+  }
   const reason = `lahtiag.fi event ${event.id}`;
   let ok = true;
   const ids = new Set(channels.map((c) => c.channel_id));
   if (event.discord_channel_id) ids.add(event.discord_channel_id);
   for (const id of ids) if (!(await deleteChannel(token, id, reason))) ok = false;
   if (event.discord_category_id && !(await deleteChannel(token, event.discord_category_id, reason))) ok = false;
+  for (const role of teamRoles) if (!(await deleteGuildRole(token, DISCORD_GUILD_ID, role.role_id, reason))) ok = false;
   if (event.discord_role_id && !(await deleteGuildRole(token, DISCORD_GUILD_ID, event.discord_role_id, reason))) ok = false;
   if (scheduledToo && event.discord_event_id && !(await deleteScheduledEvent(token, DISCORD_GUILD_ID, event.discord_event_id, reason))) ok = false;
   return ok;
@@ -562,10 +716,12 @@ export type TeardownResult = 'ok' | 'partial' | 'nothing';
 export async function tearDownEventDiscord(db: D1Database, env: { DISCORD_BOT_TOKEN?: string }, eventId: number): Promise<TeardownResult> {
   const event = await getEvent(db, eventId);
   if (!event || (!event.discord_role_id && !event.discord_channel_id && !event.discord_category_id)) return 'nothing';
-  const clean = await deleteDiscordObjects(env, event, await listEventChannels(db, eventId));
+  const clean = await deleteDiscordObjects(env, event, await listEventChannels(db, eventId), false, await listTeamRoles(db, eventId));
   await db.batch([
     db.prepare('DELETE FROM event_role_grants WHERE event_id = ?1').bind(eventId),
     db.prepare('DELETE FROM event_discord_channels WHERE event_id = ?1').bind(eventId),
+    db.prepare('DELETE FROM event_team_role_grants WHERE event_team_id IN (SELECT event_team_id FROM event_team_roles WHERE event_id = ?1)').bind(eventId),
+    db.prepare('DELETE FROM event_team_roles WHERE event_id = ?1').bind(eventId),
     db.prepare('UPDATE events SET discord_role_id = NULL, discord_channel_id = NULL, discord_category_id = NULL WHERE id = ?1').bind(eventId),
   ]);
   return clean ? 'ok' : 'partial';
@@ -577,9 +733,17 @@ export async function archiveEventDiscord(db: D1Database, env: { DISCORD_BOT_TOK
   const event = await getEvent(db, eventId);
   if (!event?.discord_role_id) return 'nothing';
   const token = env.DISCORD_BOT_TOKEN;
-  const clean = token ? await deleteGuildRole(token, DISCORD_GUILD_ID, event.discord_role_id, `lahtiag.fi event ${eventId} archived`) : false;
+  const reason = `lahtiag.fi event ${eventId} archived`;
+  let clean = token ? await deleteGuildRole(token, DISCORD_GUILD_ID, event.discord_role_id, reason) : false;
+  // The team roles are the event's too: they go, and the channels they
+  // guarded fall back to the board's view alone.
+  for (const role of await listTeamRoles(db, eventId)) {
+    if (token && !(await deleteGuildRole(token, DISCORD_GUILD_ID, role.role_id, reason))) clean = false;
+  }
   await db.batch([
     db.prepare('DELETE FROM event_role_grants WHERE event_id = ?1').bind(eventId),
+    db.prepare('DELETE FROM event_team_role_grants WHERE event_team_id IN (SELECT event_team_id FROM event_team_roles WHERE event_id = ?1)').bind(eventId),
+    db.prepare('DELETE FROM event_team_roles WHERE event_id = ?1').bind(eventId),
     db.prepare('UPDATE events SET discord_role_id = NULL WHERE id = ?1').bind(eventId),
   ]);
   return clean ? 'ok' : 'partial';

@@ -19,7 +19,7 @@ import {
   setBracketSeeding,
   replaceBracketParticipant,
 } from '../../../lib/db';
-import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
+import { syncTeamDiscordInBackground } from '../../../lib/event-discord';
 import {
   later,
   postBracketOut,
@@ -99,7 +99,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
       // Drawing the whole roster groups loose players into teams; a big
       // event's voice channels follow, and the grouped hear about it.
       if (loose.length > 0) {
-        syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, now);
+        syncTeamDiscordInBackground(locals.cfContext, env.DB, env, id, now);
         const placed = (await listSignups(env.DB, id))
           .filter((s) => loose.includes(s.discord_id) && s.event_team_id !== null)
           .map((s) => ({ discordId: s.discord_id, teamId: s.event_team_id! }));

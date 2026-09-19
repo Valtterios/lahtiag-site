@@ -22,7 +22,7 @@ import {
   listEventChannels,
   recordEventChannel,
   archiveEventDiscord,
-  createTeamVoiceChannels,
+  syncTeamDiscord,
   type SetRole,
 } from '../src/lib/event-discord';
 import { listEndedEventsWithRole } from '../src/lib/db';
@@ -264,9 +264,9 @@ describe('a big event: its own category', () => {
   it('refuses team voice channels without an own category, and without teams', async () => {
     const id = await seedEvent();
     await db().prepare("UPDATE events SET discord_role_id = 'R', discord_channel_id = 'C' WHERE id = ?1").bind(id).run();
-    expect(await createTeamVoiceChannels(db(), { ...cfg, ADMIN_ROLE_ID: '0' }, id, NOW)).toEqual({ ok: false, reason: 'needs_category' });
+    expect(await syncTeamDiscord(db(), { ...cfg, ADMIN_ROLE_ID: '0' }, id, NOW)).toEqual({ ok: false, reason: 'needs_category' });
     await db().prepare("UPDATE events SET discord_category_id = 'K' WHERE id = ?1").bind(id).run();
-    expect(await createTeamVoiceChannels(db(), { ...cfg, ADMIN_ROLE_ID: '0' }, id, NOW)).toEqual({ ok: false, reason: 'no_teams' });
+    expect(await syncTeamDiscord(db(), { ...cfg, ADMIN_ROLE_ID: '0' }, id, NOW)).toEqual({ ok: false, reason: 'no_teams' });
   });
 
   it('archives by dropping the role and the grants but keeping the channels; delete forgets everything', async () => {

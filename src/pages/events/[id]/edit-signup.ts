@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { adminUpdateSignup, RuleError } from '../../../lib/db';
-import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
+import { syncTeamDiscordInBackground } from '../../../lib/event-discord';
 import { refreshAnnouncementInBackground } from '../../../lib/announce';
 import { announcePromotionsInBackground, later, notifyTeamPlacement, notifyCaptainJoin } from '../../../lib/event-channel';
 
@@ -33,7 +33,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
     throw error;
   }
   // Moving people between teams can empty one; the voice channels follow.
-  syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, Math.floor(Date.now() / 1000));
+  syncTeamDiscordInBackground(locals.cfContext, env.DB, env, id, Math.floor(Date.now() / 1000));
   // Put into a team by the board: they hear about it.
   if (teamId !== null) {
     later(locals.cfContext, notifyTeamPlacement(env.DB, env, id, [{ discordId: String(form.get('discord_id') ?? ''), teamId }], url.origin));

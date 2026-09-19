@@ -3,7 +3,7 @@ import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession } from '../../../lib/guard';
 import { removeSignup, setSignup, upsertMember, listEventQuestions, saveAnswers, RuleError } from '../../../lib/db';
 import { parseAnswers } from '../../../lib/questions';
-import { syncEventRolesInBackground } from '../../../lib/event-discord';
+import { syncEventRolesInBackground, syncTeamDiscordInBackground } from '../../../lib/event-discord';
 import { refreshAnnouncementInBackground } from '../../../lib/announce';
 import { announcePromotionsInBackground } from '../../../lib/event-channel';
 
@@ -48,6 +48,8 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   // The event's Discord role follows the roster.
   announcePromotionsInBackground(locals.cfContext, env.DB, env, Math.floor(Date.now() / 1000));
   syncEventRolesInBackground(locals.cfContext, env.DB, env, [id], now);
+  // A changed answer clears the team, so its role goes with it.
+  syncTeamDiscordInBackground(locals.cfContext, env.DB, env, id, now);
   refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
   return redirect(back, 303);
 };

@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, currentSession } from '../../../lib/guard';
 import { captainAddToTeam, captainRemoveFromTeam, captainSetTeamPlace, captainLockTeam, handOverTeam, RuleError } from '../../../lib/db';
-import { syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
+import { syncTeamDiscordInBackground } from '../../../lib/event-discord';
 import { later, notifyTeamPlacement } from '../../../lib/event-channel';
 
 // A team's founder adds a loose player to it, takes a member out, or
@@ -44,7 +44,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
     throw error;
   }
   if (action === 'place') return redirect(`${back}?ok=placed#teams`, 303);
-  syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, now);
+  syncTeamDiscordInBackground(locals.cfContext, env.DB, env, id, now);
   if (action !== 'kick') later(locals.cfContext, notifyTeamPlacement(env.DB, env, id, [{ discordId: target, teamId }], url.origin));
   return redirect(`${back}?ok=${action === 'kick' ? 'team_kicked' : 'team_added'}`, 303);
 };
