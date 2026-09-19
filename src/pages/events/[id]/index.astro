@@ -36,7 +36,7 @@ import { stripeConfigured } from '../../../lib/stripe';
 import { whenLabel, formatHelsinkiRange, unixToHelsinkiInputs, formatHelsinki } from '../../../lib/time';
 import { kindWorth, listTickKinds, listTickableMembers, listTicks } from '../../../lib/ticks';
 import { seasonStartYear } from '../../../lib/activity';
-import { getMarket, marketState, odds, myBets, ownKey, bracketKeys, balance, ensureWallet, listMarkets, parseMatchScope, WINNER, MIN_BET, COIN } from '../../../lib/coins';
+import { getMarket, marketState, odds, myBets, ownKey, bracketKeys, balance, ensureWallet, listMarkets, parseMatchScope, matchScope, WINNER, MIN_BET, COIN, type Market, type Odds } from '../../../lib/coins';
 import { mainBracket, getBracket } from '../../../lib/db';
 import { isCurrentMember } from '../../../lib/minecraft';
 import { participantNames } from '../../../lib/event-channel';
@@ -70,7 +70,25 @@ const betting = marketState(market);
 const mainDraw = event && betting !== 'none' ? await mainBracket(env.DB, event.id) : null;
 const mainMatches = mainDraw ? await getBracket(env.DB, mainDraw.id) : [];
 const betKeys = bracketKeys(mainMatches);
-const pools = event && betting !== 'none' ? await Promise.all((await listMarkets(env.DB, event.id)).map(async (m) => ({ market: m, odds: await odds(env.DB, event.id, m.scope) }))) : [];
+const openMarkets = event && betting !== 'none' ? await listMarkets(env.DB, event.id) : [];
+// Every match still to be played is bettable, whether or not a pool
+// exists yet: the first stake opens it. Without this, a match pool could
+// only ever be started from Discord, and the site could only join one
+// somebody else had already begun.
+const upcoming = betting === 'open' && mainDraw
+  ? mainMatches
+      .filter((m) => m.winner === null && m.side_a !== null && m.side_b !== null)
+      .map((m) => matchScope(mainDraw.id, m.round, m.slot))
+      .filter((scope) => !openMarkets.some((m) => m.scope === scope))
+  : [];
+const pools = event && betting !== 'none'
+  ? [
+      ...(await Promise.all(openMarkets.map(async (m) => ({ scope: m.scope, market: m as Market | null, odds: await odds(env.DB, event.id, m.scope) })))),
+      // A match nobody has staked on yet: no market row at all, and the
+      // first stake creates one.
+      ...upcoming.map((scope) => ({ scope, market: null as Market | null, odds: { pool: 0, bets: 0, picks: [] } as Odds })),
+    ]
+  : [];
 const matchLabel = (scope: string) => { const m = parseMatchScope(scope); const match = m ? mainMatches.find((x) => x.round === m.round && x.slot === m.slot) : null; return match ? `${names.get(match.side_a ?? '') ?? '?'} vs ${names.get(match.side_b ?? '') ?? '?'}` : 'a match'; };
 const names = event && betting !== 'none' ? await participantNames(env.DB, event.id) : new Map<string, string>();
 const pool = event && betting !== 'none' ? await odds(env.DB, event.id) : null;
@@ -229,8 +247,9 @@ const FLASH: Record<string, string> = {
   signin: 'Sign in with Discord first.',
   csrf: 'The form was stale. Try again.',
   bet_on: 'Your stake is in the pool.',
+  bets_unlocked: 'That pool takes stakes again.',
   bet_back: 'Your stake is back in your wallet.',
-  bet_input: 'A stake is a whole number of coins, at least the minimum, and a player backs their own side only.',
+  bet_input: 'A stake is a whole number of coins, at least the minimum, and in your own match you back only yourself.',
   poor: 'Not enough coins for that stake.',
   no_market: 'Betting has not opened for this event.',
   no_match: 'They have no match waiting right now.',
@@ -338,7 +357,21 @@ function syncedMessage(p: URLSearchParams): string {
   if (Number(p.get('left'))) parts.push(`${p.get('left')} left for the next sync`);
   return `Role synced: ${parts.join(', ')}.`;
 }
-const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro.url.searchParams) : okKey === 'discord_team_voice' ? teamVoiceMessage(Astro.url.searchParams) : OK[okKey]) ?? null;
+// How many pools the board just locked rides along in the query.
+function lockedMessage(p: URLSearchParams): string {
+  const n = Number(p.get('n') ?? 1);
+  return n === 1 ? 'That pool is locked: no new stakes until you unlock it or the result is recorded.' : `${n} match pools locked: no new stakes on any of them.`;
+}
+const flash =
+  FLASH[errKey] ??
+  (okKey === 'discord_synced'
+    ? syncedMessage(Astro.url.searchParams)
+    : okKey === 'discord_team_voice'
+      ? teamVoiceMessage(Astro.url.searchParams)
+      : okKey === 'bets_locked'
+        ? lockedMessage(Astro.url.searchParams)
+        : OK[okKey]) ??
+  null;
 ---
 <Base
   title={event ? event.title : 'Event not found'}
@@ -671,24 +704,39 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
             <h2 class="section-label">{COIN} Betting {betting === 'open' ? 'is open' : betting === 'closed' ? 'is closed' : 'is settled'}</h2>
             <p class="member-meta">
               {betting === 'open'
-                ? `Coins on who wins the bracket. Every stake goes into one pool; when the final is decided, the pool is shared by those who picked the champion, in proportion to their stakes. Stakes lock at the first result. Playing? You can back your own side only.`
+                ? `Coins on who wins the bracket. Every stake goes into one pool; when the final is decided, the pool is shared by those who picked the champion, in proportion to their stakes. Stakes lock at the first result. Playing? In your own match you can back only yourself — every other match is yours to bet on.`
                 : betting === 'closed'
                   ? 'Stakes are locked until the final is decided.'
-                  : `Paid out on ${market?.winner ? (names.get(market.winner) ?? 'the champion') : 'the champion'}.`}{betting === 'open' ? ' A stake on a single match opens its own pool and pays out on that result.' : ''}
+                  : `Paid out on ${market?.winner ? (names.get(market.winner) ?? 'the champion') : 'the champion'}.`}{betting === 'open' ? ' A stake on a single match opens its own pool and pays out on that result; the board locks a pool when that match is about to be played.' : ''}
             </p>
-            {pools.filter((p) => p.odds.bets > 0 || p.market.scope === WINNER).map((p) => {
-              const state = marketState(p.market);
-              const sides = p.market.scope === WINNER ? betKeys : (() => { const m = parseMatchScope(p.market.scope); const match = m ? mainMatches.find((x) => x.round === m.round && x.slot === m.slot) : null; return match ? [match.side_a!, match.side_b!] : []; })();
+            {pools.map((p) => {
+              const state = p.market === null ? 'open' : marketState(p.market);
+              const sides = p.scope === WINNER ? betKeys : (() => { const m = parseMatchScope(p.scope); const match = m ? mainMatches.find((x) => x.round === m.round && x.slot === m.slot) : null; return match ? [match.side_a!, match.side_b!] : []; })();
               const rows = sides.map((k) => p.odds.picks.find((x) => x.pick === k) ?? { pick: k, staked: 0, backers: 0, share: 0, multiplier: null });
-              const mineHere = bets.find((b) => b.scope === p.market.scope) ?? null;
+              const mineHere = bets.find((b) => b.scope === p.scope) ?? null;
               return (
                 <div class={`pool pool-${state}`}>
-                  <h3>{p.market.scope === WINNER ? '🏆 Tournament winner' : `⚔️ ${matchLabel(p.market.scope)}`} <span class="pool-state">{state === 'open' ? 'open' : state === 'closed' ? 'locked' : 'paid out'} · {p.odds.pool} {COIN} from {p.odds.bets}</span></h3>
+                  <h3>{p.scope === WINNER ? '🏆 Tournament winner' : `⚔️ ${matchLabel(p.scope)}`} <span class="pool-state">{state === 'open' ? 'open' : state === 'closed' ? 'locked' : 'paid out'} · {p.odds.pool} {COIN} from {p.odds.bets}</span>
+                    {session?.isAdmin && p.scope !== WINNER && state !== 'settled' && p.market !== null && (
+                      <form method="post" action={`/events/${event.id}/bet`} class="inline-form">
+                        <input type="hidden" name="csrf" value={csrf} />
+                        <input type="hidden" name="action" value={state === 'open' ? 'lock' : 'unlock'} />
+                        <input type="hidden" name="scope" value={p.scope} />
+                        <button class="btn btn-ghost btn-sm" type="submit" title={state === 'open' ? 'Stop taking stakes: they are about to play' : 'Take stakes again'}>
+                          {state === 'open' ? 'Lock bets' : 'Unlock'}
+                        </button>
+                      </form>
+                    )}
+                  </h3>
                   <ul class="pool-sides">
                     {rows.map((x) => {
-                      const won = p.market.winner === x.pick;
-                      const lost = p.market.winner !== null && !won;
-                      const canStake = canBet && state === 'open' && (ownSide === null || x.pick === ownSide);
+                      const won = p.market?.winner === x.pick;
+                      const lost = (p.market?.winner ?? null) !== null && !won;
+                      // Playing in THIS match (or in the tournament, for that
+                      // pool) means backing yourself only; someone else's match
+                      // is anyone's to bet on.
+                      const inThisPool = ownSide !== null && sides.includes(ownSide);
+                      const canStake = canBet && state === 'open' && (!inThisPool || x.pick === ownSide);
                       return (
                         <li class={won ? 'side-won' : lost ? 'side-lost' : ''}>
                           <div class="side-head">
@@ -702,7 +750,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                               <form method="post" action={`/events/${event.id}/bet`} class="side-form">
                                 <input type="hidden" name="csrf" value={csrf} />
                                 <input type="hidden" name="pick" value={x.pick} />
-                                <input type="hidden" name="scope" value={p.market.scope} />
+                                <input type="hidden" name="scope" value={p.scope} />
                                 <input type="number" name="coins" min={MIN_BET} max={purse + (mineHere?.amount ?? 0)} step="1" value={mineHere?.pick === x.pick ? mineHere.amount : Math.min(100, purse)} aria-label="Coins" required />
                                 <button class="btn btn-primary btn-sm" type="submit">{mineHere?.pick === x.pick ? 'Change' : 'Stake'}</button>
                               </form>
@@ -728,6 +776,13 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               </p>
             ))}
             {canBet && <p class="member-meta">You have <strong>{purse} {COIN}</strong>. A stake on a side that has no pool yet opens one.</p>}
+            {session?.isAdmin && pools.some((p) => p.scope !== WINNER && p.market !== null && marketState(p.market) === 'open') && (
+              <form method="post" action={`/events/${event.id}/bet`} class="inline-form">
+                <input type="hidden" name="csrf" value={csrf} />
+                <input type="hidden" name="action" value="lock_all" />
+                <button class="btn btn-ghost btn-sm" type="submit" data-confirm="Lock every match pool? Stakes stand; no new ones are taken until you unlock or the result is recorded.">Lock all match bets (round starting)</button>
+              </form>
+            )}
             {!session && betting === 'open' && <p class="member-meta">Sign in with Discord to bet; coins are for members.</p>}
           </section>
         )}

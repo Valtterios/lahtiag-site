@@ -77,7 +77,7 @@ import { passCardPng, homePage, pageCount, clampPage } from '../../lib/pass-card
 import { xpGuideLines } from '../../lib/xp-guide';
 import { scheduleCollapse } from '../../lib/collapse';
 import { progressBoard, progressBoardLines } from '../../lib/gtnh';
-import { ensureWallet, balance, ledger, ledgerLine, grantCoins, placeBet, cancelBet, odds, ownKey, bracketKeys, marketState, coins, COIN, WINNER, nextMatchOf, eventForChannel, listMarkets, parseMatchScope } from '../../lib/coins';
+import { ensureWallet, balance, ledger, ledgerLine, grantCoins, placeBet, cancelBet, odds, ownKey, bracketKeys, marketPool, marketState, coins, COIN, WINNER, nextMatchOf, eventForChannel, listMarkets, parseMatchScope } from '../../lib/coins';
 import { mainBracket } from '../../lib/db';
 import { oddsCardPng, poolLabel } from '../../lib/odds-card';
 import { listClaimableKinds, createClaim, decideClaim, claimLine, claimDecisionDm, CLAIM_NOTE_MAX } from '../../lib/claims';
@@ -559,7 +559,7 @@ async function handleStakeModal(env: WorkerEnv, interaction: Interaction): Promi
       const gone = await cancelBet(env.DB, eventId, userId, now, scope);
       return void (await reply(gone ? `Stake of ${coins(gone.amount)} taken back. You have ${coins(await balance(env.DB, userId))}.` : 'You had no stake on that.'));
     }
-    const bet = await placeBet(env.DB, eventId, userId, pick, amount, bracketKeys(matches), await ownKey(env.DB, eventId, userId), now, scope);
+    const bet = await placeBet(env.DB, eventId, userId, pick, amount, marketPool(matches, scope), await ownKey(env.DB, eventId, userId), now, scope);
     const o = await odds(env.DB, eventId, scope);
     const line = o.picks.find((p) => p.pick === pick);
     await reply(`${COIN} ${coins(bet.amount)} on **${nameOf(pick)}** ${scope === WINNER ? 'to win the tournament' : 'in that match'}. That pool is ${coins(o.pool)}; ${nameOf(pick)} pays ${line ? `${(line.multiplier ?? 1).toFixed(1)}×` : '—'} right now. You have ${coins(await balance(env.DB, userId))} left.`);
@@ -611,7 +611,7 @@ async function handleCoins(env: WorkerEnv, interaction: Interaction, origin: str
       const gone = await cancelBet(env.DB, eventId, userId, now, scope);
       return void (await reply(gone ? `Stake of ${coins(gone.amount)} taken back. You have ${coins(await balance(env.DB, userId))}.` : 'You had no stake on that.'));
     }
-    const bet = await placeBet(env.DB, eventId, userId, pick, amount, keys, own, now, scope);
+    const bet = await placeBet(env.DB, eventId, userId, pick, amount, marketPool(matches, scope), own, now, scope);
     const o = await odds(env.DB, eventId, scope);
     const line = o.picks.find((p) => p.pick === pick);
     await reply(`${COIN} ${coins(bet.amount)} on **${nameOf(pick)}** ${next ? `to beat ${nameOf(next.match.side_a === pick ? next.match.side_b ?? '' : next.match.side_a ?? '')}` : `to win **${cleanText(event.title)}**`}. That pool is ${coins(o.pool)}; ${nameOf(pick)} pays ${line ? `${(line.multiplier ?? 1).toFixed(1)}×` : '—'} right now. You have ${coins(await balance(env.DB, userId))} left. The same command with 0 coins takes it back while it's open.`);

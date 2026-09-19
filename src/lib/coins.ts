@@ -188,7 +188,10 @@ export async function openMarket(db: D1Database, eventId: number, now: number, s
   return (result.meta.changes ?? 0) > 0;
 }
 
-// The first result closes it: from then on the stakes are locked.
+// Closing locks the stakes that are in and takes no more. The first
+// result does it by itself; the board does it by hand when a match is
+// about to be played, which is the point at which the room can see more
+// than the pool can.
 export async function closeMarket(db: D1Database, eventId: number, now: number, scope = WINNER): Promise<boolean> {
   const result = await db.prepare('UPDATE coin_markets SET closed_at = ?2 WHERE event_id = ?1 AND scope = ?3 AND closed_at IS NULL').bind(eventId, now, scope).run();
   return (result.meta.changes ?? 0) > 0;
@@ -218,22 +221,35 @@ export async function myBet(db: D1Database, eventId: number, discordId: string, 
 // A stake on one participant: for the tournament, or for one match
 // (`scope`), which needs both sides known and no result yet, and which
 // opens its own little pool on the first stake while the bracket is
-// live. Someone playing in the event may back their own side and nobody
-// else's: a stake on an opponent is a reason to lose. Replacing an
-// earlier bet gives that stake back first, so the balance check is
-// against the whole wallet.
+// live. `pool` is who this market takes stakes on — the whole bracket for
+// the tournament, the two sides for a match (marketPool).
+//
+// A player may not back anyone but themselves in a market they are in:
+// a stake on an opponent is a reason to lose. That is the whole of the
+// rule, so a match between two other teams is anyone's to bet on —
+// nothing about it is theirs to throw. Replacing an earlier bet gives
+// that stake back first, so the balance check is against the whole wallet.
 export async function placeBet(db: D1Database, eventId: number, discordId: string, pick: string, amount: number, pool: string[], own: string | null, now: number, scope = WINNER): Promise<Bet> {
   if (!Number.isInteger(amount) || amount < MIN_BET || amount > MAX_BET) throw new RuleError('bad_input', `A stake is at least ${MIN_BET} coins.`);
-  if (!pool.includes(pick)) throw new RuleError('missing', 'That team or player is not in the bracket.');
-  if (own !== null && pick !== own) throw new RuleError('bad_input', 'Playing in this one? Then you can only back your own side.');
+  if (!pool.includes(pick)) {
+    throw new RuleError('missing', scope === WINNER ? 'That team or player is not in the bracket.' : 'That team or player is not in this match.');
+  }
+  if (own !== null && pool.includes(own) && pick !== own) {
+    throw new RuleError('bad_input', scope === WINNER ? 'Playing in this one? Then you can only back your own side.' : 'This is your own match: you can only back your own side.');
+  }
   const main = await getMarket(db, eventId, WINNER);
   if (!main) throw new RuleError('no_market', 'Betting has not opened for this event.');
   if (scope === WINNER) {
     if (marketState(main) !== 'open') throw new RuleError('closed', 'Betting on the winner is closed for this event.');
   } else {
     if (main.settled_at !== null) throw new RuleError('closed', 'The tournament is over.');
+    // INSERT OR IGNORE: a pool the board locked is not reopened by
+    // someone trying to bet into it.
     await openMarket(db, eventId, now, scope);
-    if (marketState(await getMarket(db, eventId, scope)) !== 'open') throw new RuleError('closed', 'That match is decided.');
+    const here = await getMarket(db, eventId, scope);
+    if (marketState(here) !== 'open') {
+      throw new RuleError('closed', here?.settled_at !== null ? 'That match is decided.' : 'That match is under way: the pool is locked.');
+    }
   }
   await ensureWallet(db, discordId, now);
   const earlier = await myBet(db, eventId, discordId, scope);
@@ -352,6 +368,18 @@ export async function unsettleMarket(db: D1Database, eventId: number, now: numbe
 }
 
 // The keys anyone can bet on: every side drawn into the bracket.
+// Who a market takes stakes on: everyone still in the draw for the
+// tournament, and a match's two sides for a match. Betting on a match is
+// betting on that match, so a name from elsewhere in the bracket is not
+// an option — and a player who is not in it is free to back either side.
+export function marketPool(matches: BracketMatch[], scope: string): string[] {
+  if (scope === WINNER) return bracketKeys(matches);
+  const at = parseMatchScope(scope);
+  if (!at) return [];
+  const match = matches.find((m) => m.bracket_id === at.bracketId && m.round === at.round && m.slot === at.slot);
+  return match ? [match.side_a, match.side_b].filter((k): k is string => k !== null) : [];
+}
+
 export function bracketKeys(matches: BracketMatch[]): string[] {
   const keys = new Set<string>();
   for (const m of matches) for (const k of [m.side_a, m.side_b]) if (k !== null) keys.add(k);
@@ -384,7 +412,7 @@ export async function eventForChannel(db: D1Database, channelId: string): Promis
 
 // The lines the event's channel gets.
 export function bettingOpenLine(eventId: number, url: string): string {
-  return `${COIN} **Betting is open** on who wins the bracket. \`/bet ${eventId} <team or player> <coins>\` here in Discord, or on the event page. Playing in it? You can back your own side only. Stakes lock at the first result. \`/odds ${eventId}\` shows the pool.
+  return `${COIN} **Betting is open** on who wins the bracket. \`/bet ${eventId} <team or player> <coins>\` here in Discord, or on the event page. Playing in it? In your own match you back only yourself; every other match is yours to bet on. Stakes lock at the first result. \`/odds ${eventId}\` shows the pool.
 ${url}`;
 }
 

@@ -163,3 +163,66 @@ describe('match pools', () => {
     expect(await bal(env.DB, B)).toBe(S + M - 50);
   });
 });
+
+describe('betting on matches you are not in', () => {
+  it('lets a player back either side of someone else’s match, but only themselves in their own', async () => {
+    const { openMarket: open, placeBet: bet, marketPool, matchScope, WINNER } = await import('../src/lib/coins');
+    for (const t of ['coin_bets', 'coin_markets', 'coin_ledger', 'events', 'register', 'members']) await env.DB.prepare(`DELETE FROM ${t}`).run();
+    await member(A, 'Aino');
+    const eventId = await createEvent(env.DB, { title: 'Cup', description: null, starts_at: NOW + 86400, capacity: null, created_by: A }, NOW);
+    const matches = [
+      { bracket_id: 7, event_id: eventId, round: 1, slot: 0, side_a: 't:1', side_b: 't:2', winner: null, score_a: null, score_b: null },
+      { bracket_id: 7, event_id: eventId, round: 1, slot: 1, side_a: 't:3', side_b: 't:4', winner: null, score_a: null, score_b: null },
+      { bracket_id: 7, event_id: eventId, round: 2, slot: 0, side_a: null, side_b: null, winner: null, score_a: null, score_b: null },
+    ];
+    await open(env.DB, eventId, NOW);
+    const mine = matchScope(7, 1, 0); // Aino plays for t:1
+    const theirs = matchScope(7, 1, 1);
+
+    // A pool is the market's own: the whole draw for the tournament, the
+    // two sides for a match.
+    expect(marketPool(matches, WINNER).sort()).toEqual(['t:1', 't:2', 't:3', 't:4']);
+    expect(marketPool(matches, theirs)).toEqual(['t:3', 't:4']);
+
+    // Their own match: themselves only.
+    await expect(bet(env.DB, eventId, A, 't:2', 100, marketPool(matches, mine), 't:1', NOW, mine)).rejects.toMatchObject({ code: 'bad_input' });
+    await bet(env.DB, eventId, A, 't:1', 100, marketPool(matches, mine), 't:1', NOW, mine);
+
+    // Someone else's match: either side, with nothing of theirs to throw.
+    await bet(env.DB, eventId, A, 't:4', 50, marketPool(matches, theirs), 't:1', NOW, theirs);
+    await bet(env.DB, eventId, A, 't:3', 50, marketPool(matches, theirs), 't:1', NOW, theirs); // and may change it
+
+    // The tournament pool still means backing yourself: picking another
+    // champion is picking against your own run.
+    await expect(bet(env.DB, eventId, A, 't:3', 50, marketPool(matches, WINNER), 't:1', NOW)).rejects.toMatchObject({ code: 'bad_input' });
+
+    // A name from elsewhere in the bracket is not in this match at all.
+    await expect(bet(env.DB, eventId, A, 't:1', 50, marketPool(matches, theirs), 't:1', NOW, theirs)).rejects.toMatchObject({ code: 'missing' });
+  });
+
+  it('locks a pool when the match is about to be played, and can take stakes again', async () => {
+    const { openMarket: open, placeBet: bet, closeMarket: close, reopenMarket: reopen, marketPool, marketState, getMarket, matchScope } = await import('../src/lib/coins');
+    for (const t of ['coin_bets', 'coin_markets', 'coin_ledger', 'events', 'register', 'members']) await env.DB.prepare(`DELETE FROM ${t}`).run();
+    await member(A, 'Aino'); await member(B, 'Pekka');
+    const eventId = await createEvent(env.DB, { title: 'Cup', description: null, starts_at: NOW + 86400, capacity: null, created_by: A }, NOW);
+    const matches = [
+      { bracket_id: 7, event_id: eventId, round: 1, slot: 0, side_a: 't:1', side_b: 't:2', winner: null, score_a: null, score_b: null },
+      { bracket_id: 7, event_id: eventId, round: 2, slot: 0, side_a: null, side_b: null, winner: null, score_a: null, score_b: null },
+    ];
+    await open(env.DB, eventId, NOW);
+    const scope = matchScope(7, 1, 0);
+    await bet(env.DB, eventId, A, 't:1', 100, marketPool(matches, scope), null, NOW, scope);
+
+    expect(await close(env.DB, eventId, NOW, scope)).toBe(true);
+    expect(marketState(await getMarket(env.DB, eventId, scope))).toBe('closed');
+    // Nobody joins a game already under way.
+    await expect(bet(env.DB, eventId, B, 't:2', 100, marketPool(matches, scope), null, NOW, scope)).rejects.toMatchObject({ code: 'closed' });
+    // The stake already in stands.
+    expect((await (await import('../src/lib/coins')).odds(env.DB, eventId, scope)).pool).toBe(100);
+
+    // Locked by mistake, or the match did not start after all.
+    expect(await reopen(env.DB, eventId, scope)).toBe(true);
+    await bet(env.DB, eventId, B, 't:2', 100, marketPool(matches, scope), null, NOW, scope);
+    expect((await (await import('../src/lib/coins')).odds(env.DB, eventId, scope)).pool).toBe(200);
+  });
+});
