@@ -1,11 +1,11 @@
 import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
-import { setUpEventDiscord, syncEventRole, tearDownEventDiscord, syncScheduledEvent, upgradeEventDiscord, createTeamVoiceChannels, archiveEventDiscord } from '../../../lib/event-discord';
+import { setUpEventDiscord, syncEventRole, tearDownEventDiscord, syncScheduledEvent, upgradeEventDiscord, syncTeamDiscord, archiveEventDiscord } from '../../../lib/event-discord';
 import { repostEventAnnouncement } from '../../../lib/announce';
 
 // Board: give the event its Discord role and channel (or own category),
-// upgrade one to a category, make team voice channels, sync the role
+// upgrade one to a category, make the teams' roles and voice channels, sync the role
 // against the roster, archive or delete it all, or (re)make the Discord
 // scheduled event for one published before the bot did that.
 
@@ -41,9 +41,9 @@ export const POST: APIRoute = async ({ request, params, redirect, url }) => {
     return redirect(`${back}?ok=discord_upgraded#discord`, 303);
   }
   if (action === 'team_voice') {
-    const result = await createTeamVoiceChannels(env.DB, env, id, now);
+    const result = await syncTeamDiscord(env.DB, env, id, now);
     if (!result.ok) return redirect(`${back}?err=discord_${result.reason}`, 303);
-    return redirect(`${back}?ok=discord_team_voice&c=${result.created}&x=${result.removed}&t=${result.teams}#discord`, 303);
+    return redirect(`${back}?ok=discord_team_voice&c=${result.created}&x=${result.removed}&t=${result.teams}&r=${result.roles}#discord`, 303);
   }
   if (action === 'archive') {
     const result = await archiveEventDiscord(env.DB, env, id);

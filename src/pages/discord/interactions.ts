@@ -45,7 +45,7 @@ import { participantNames, postSignups, postBracketOut, postResult, postRevert, 
 import { cardFace, memberCardPng } from '../../lib/member-card';
 import { cleanText } from '../../lib/raster';
 import { postEventAnnouncement, refreshEventAnnouncement } from '../../lib/announce';
-import { syncEventRolesInBackground } from '../../lib/event-discord';
+import { syncEventRolesInBackground, syncTeamDiscordInBackground } from '../../lib/event-discord';
 import { announcePromotions } from '../../lib/event-channel';
 import { MEMBER_TYPE_LABELS } from '../../lib/register';
 import { DISCORD_GUILD_ID } from '../../lib/config';
@@ -1131,6 +1131,7 @@ async function handleEventButton(env: WorkerEnv, interaction: Interaction, origi
         throw error;
       }
       syncEventRolesInBackground(ctx, env.DB, env, [eventId], now);
+      syncTeamDiscordInBackground(ctx, env.DB, env, eventId, now);
       ctx.waitUntil(announcePromotions(env.DB, env, now).catch(() => {}));
     } else {
       await reply('Unknown button.');

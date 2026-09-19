@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { addManualParticipant, addMemberParticipant, RuleError } from '../../../lib/db';
-import { syncTeamVoiceChannelsInBackground, syncEventRolesInBackground } from '../../../lib/event-discord';
+import { syncTeamDiscordInBackground, syncEventRolesInBackground } from '../../../lib/event-discord';
 import { refreshAnnouncementInBackground } from '../../../lib/announce';
 
 // Two ways onto a roster by hand. A member is added against their own
@@ -44,6 +44,6 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}#participants`, 303);
     throw error;
   }
-  syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, now);
+  syncTeamDiscordInBackground(locals.cfContext, env.DB, env, id, now);
   return redirect(`${back}?ok=${registerRaw !== '' ? 'member_added' : 'added'}#participants`, 303);
 };

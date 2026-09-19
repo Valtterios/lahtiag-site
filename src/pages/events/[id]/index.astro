@@ -26,7 +26,7 @@ import {
   waitlistPosition,
   type TicketTypeWithSales,
 } from '../../../lib/db';
-import { channelUrl, scheduledEventUrl, countGrants, participantIds, listEventChannels, syncInterestInBackground, EVENT_CATEGORY_NAME } from '../../../lib/event-discord';
+import { channelUrl, scheduledEventUrl, countGrants, participantIds, listEventChannels, listTeamRoles, syncInterestInBackground, EVENT_CATEGORY_NAME } from '../../../lib/event-discord';
 import { avatarUrl, listGuildRoles } from '../../../lib/discord';
 import { DISCORD_GUILD_ID } from '../../../lib/config';
 import { questionOptions, answersComplete, QUESTION_KINDS } from '../../../lib/questions';
@@ -120,7 +120,13 @@ const discordParticipants = event ? participantIds(signups).length : 0;
 const discordGrants = event && session?.isAdmin && event.discord_role_id ? await countGrants(env.DB, event.id) : 0;
 const eventChannels = event && session?.isAdmin && (event.discord_category_id || event.discord_channel_id) ? await listEventChannels(env.DB, event.id) : [];
 const teamVoiceCount = eventChannels.filter((c) => c.kind === 'team').length;
-const teamsWithoutVoice = event?.discord_category_id ? eventTeams.filter((t) => !eventChannels.some((c) => c.kind === 'team' && c.event_team_id === t.id)).length : 0;
+const teamRoles = event && session?.isAdmin && event.discord_category_id ? await listTeamRoles(env.DB, event.id) : [];
+// A team is short of its Discord either way: no role to ping, or no channel to sit in.
+const teamsWithoutVoice = event?.discord_category_id
+  ? eventTeams.filter(
+      (t) => !eventChannels.some((c) => c.kind === 'team' && c.event_team_id === t.id) || !teamRoles.some((r) => r.event_team_id === t.id),
+    ).length
+  : 0;
 const archived = Boolean(event && !event.discord_role_id && (event.discord_category_id || event.discord_channel_id));
 const photos = event ? await listEventPhotos(env.DB, event.id) : [];
 const hasTicket = myTicket?.status === 'paid';
@@ -323,7 +329,7 @@ const OK: Record<string, string> = {
 };
 // The sync's tally rides along in the query.
 function teamVoiceMessage(p: URLSearchParams): string {
-  return `Team voice channels: ${p.get('c') ?? 0} made, ${p.get('x') ?? 0} removed, ${p.get('t') ?? 0} teams in all.`;
+  return `Team Discord: ${p.get('r') ?? 0} roles and ${p.get('c') ?? 0} voice channels made, ${p.get('x') ?? 0} removed, ${p.get('t') ?? 0} teams in all.`;
 }
 function syncedMessage(p: URLSearchParams): string {
   const parts = [`${p.get('a') ?? 0} given`, `${p.get('r') ?? 0} taken away`];
@@ -1221,7 +1227,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
               <>
                 <p class="event-meta">
                   {event.discord_category_id ? (
-                    <>Own category with {eventChannels.length} channels: rules, bracket, teams, discussion, Commentators and Interviews{teamVoiceCount > 0 ? `, and ${teamVoiceCount} team voice channels` : ''}.{isTeamEvent && ' A voice channel per team follows the teams as they form and disband.'}</>
+                    <>Own category with {eventChannels.length} channels: rules, bracket, teams, discussion, Commentators and Interviews{teamVoiceCount > 0 ? `, and ${teamVoiceCount} team voice channels` : ''}.{isTeamEvent && ` A mentionable role and a voice channel per team follow the teams as they form and disband${teamRoles.length > 0 ? ` (${teamRoles.length} roles now)` : ''}; the channel is the team's alone, and the role is how you @ them.`}</>
                   ) : (
                     <>One channel under the shared {EVENT_CATEGORY_NAME} category.</>
                   )}
@@ -1246,7 +1252,7 @@ const flash = FLASH[errKey] ?? (okKey === 'discord_synced' ? syncedMessage(Astro
                     <form method="post" action={`/events/${event.id}/discord`}>
                       <input type="hidden" name="csrf" value={csrf} />
                       <input type="hidden" name="action" value="team_voice" />
-                      <button class="btn btn-ghost" type="submit">{teamsWithoutVoice > 0 ? `Refresh team voice channels (${teamsWithoutVoice} missing)` : 'Refresh team voice channels'}</button>
+                      <button class="btn btn-ghost" type="submit">{teamsWithoutVoice > 0 ? `Refresh team roles and channels (${teamsWithoutVoice} missing)` : 'Refresh team roles and channels'}</button>
                     </form>
                   )}
                   {event.discord_category_id ? (

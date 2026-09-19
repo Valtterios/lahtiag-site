@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { adminCreateTeam, autoTeamLoosePlayers, renameEventTeam, setTeamPlace, handOverTeam, listSignups, RuleError } from '../../../lib/db';
-import { syncTeamVoiceChannelsInBackground, renameTeamVoiceChannel } from '../../../lib/event-discord';
+import { syncTeamDiscordInBackground, renameTeamDiscord } from '../../../lib/event-discord';
 import { later, refreshEventBrackets, notifyTeamPlacement } from '../../../lib/event-channel';
 import { refreshAnnouncementInBackground } from '../../../lib/announce';
 
@@ -25,7 +25,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
       if (!Number.isInteger(teamId)) return redirect(`${back}?err=bad_input#participants`, 303);
       await renameEventTeam(env.DB, id, teamId, name);
       // The voice channel and the live bracket carry the new name.
-      later(locals.cfContext, renameTeamVoiceChannel(env.DB, env, id, teamId, name));
+      later(locals.cfContext, renameTeamDiscord(env.DB, env, id, teamId, name));
       later(locals.cfContext, refreshEventBrackets(env.DB, env, id, url.origin, now));
       return redirect(`${back}?ok=team_renamed#participants`, 303);
     }
@@ -42,7 +42,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
     if (form.get('action') === 'auto') {
       const loose = (await listSignups(env.DB, id)).filter((s) => s.status === 'yes' && s.event_team_id === null).map((s) => s.discord_id);
       await autoTeamLoosePlayers(env.DB, id, now);
-      syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, now);
+      syncTeamDiscordInBackground(locals.cfContext, env.DB, env, id, now);
       // Everyone just grouped hears which team they landed in.
       const placed = (await listSignups(env.DB, id)).filter((s) => loose.includes(s.discord_id) && s.event_team_id !== null).map((s) => ({ discordId: s.discord_id, teamId: s.event_team_id! }));
       later(locals.cfContext, notifyTeamPlacement(env.DB, env, id, placed, url.origin));
@@ -51,7 +51,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
     }
     await adminCreateTeam(env.DB, id, String(form.get('name') ?? ''), admin.session.discordId, now);
     // A big event's team voice channels follow the teams.
-    syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, now);
+    syncTeamDiscordInBackground(locals.cfContext, env.DB, env, id, now);
     refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
     return redirect(`${back}?ok=team_saved#participants`, 303);
   } catch (error) {

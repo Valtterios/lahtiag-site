@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import type { APIRoute } from 'astro';
 import { checkCsrf, requireAdmin } from '../../../lib/guard';
 import { adminRemoveSignup, RuleError } from '../../../lib/db';
-import { syncEventRolesInBackground } from '../../../lib/event-discord';
+import { syncEventRolesInBackground, syncTeamDiscordInBackground } from '../../../lib/event-discord';
 import { refreshAnnouncementInBackground } from '../../../lib/announce';
 import { announcePromotionsInBackground } from '../../../lib/event-channel';
 
@@ -22,8 +22,11 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
     if (error instanceof RuleError) return redirect(`${back}?err=${error.code}#participants`, 303);
     throw error;
   }
-  announcePromotionsInBackground(locals.cfContext, env.DB, env, Math.floor(Date.now() / 1000));
-  syncEventRolesInBackground(locals.cfContext, env.DB, env, [id], Math.floor(Date.now() / 1000));
+  const now = Math.floor(Date.now() / 1000);
+  announcePromotionsInBackground(locals.cfContext, env.DB, env, now);
+  syncEventRolesInBackground(locals.cfContext, env.DB, env, [id], now);
+  // Off the roster is off the team: its role goes too.
+  syncTeamDiscordInBackground(locals.cfContext, env.DB, env, id, now);
   refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
   return redirect(`${back}?ok=signup_removed#participants`, 303);
 };

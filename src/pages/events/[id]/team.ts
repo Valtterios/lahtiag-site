@@ -11,7 +11,7 @@ import {
   RuleError,
 } from '../../../lib/db';
 import { answersComplete } from '../../../lib/questions';
-import { syncEventRolesInBackground, syncTeamVoiceChannelsInBackground } from '../../../lib/event-discord';
+import { syncEventRolesInBackground, syncTeamDiscordInBackground } from '../../../lib/event-discord';
 import { later, notifyCaptainJoin } from '../../../lib/event-channel';
 import { refreshAnnouncementInBackground } from '../../../lib/announce';
 
@@ -65,7 +65,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
   // Founding or joining a team is a signup too; the event's Discord role
   // follows, and so do the team voice channels of a big event.
   syncEventRolesInBackground(locals.cfContext, env.DB, env, [id], now);
-  syncTeamVoiceChannelsInBackground(locals.cfContext, env.DB, env, id, now);
+  syncTeamDiscordInBackground(locals.cfContext, env.DB, env, id, now);
   refreshAnnouncementInBackground(locals.cfContext, env.DB, env, [id], url.origin);
   return redirect(back, 303);
 };
