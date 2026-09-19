@@ -6,6 +6,7 @@
 
 import type { BracketMatch } from './db';
 import { Canvas } from './raster';
+import { BRONZE_SLOT, isBronzeMatch } from './podium';
 
 const BLUE = 0x4169e1;
 const YELLOW = 0xffde59;
@@ -58,7 +59,8 @@ export function bracketPictureSize(matches: BracketMatch[]): { width: number; he
   return {
     rounds,
     width: MARGIN * 2 + rounds * BOX_W + Math.max(0, rounds - 1) * COL_GAP,
-    height: HEADER + Math.max(0, first - 1) * PITCH + MATCH_H + FOOTER,
+    // A third-place match hangs a further pitch below the final.
+    height: HEADER + Math.max(0, first - 1) * PITCH + MATCH_H + FOOTER + (matches.some((m) => isBronzeMatch(m, rounds)) ? PITCH : 0),
   };
 }
 
@@ -85,11 +87,16 @@ export async function bracketPng(input: BracketPictureInput): Promise<Uint8Array
   for (const m of firstRound) centre.set(`1:${m.slot}`, HEADER + m.slot * PITCH + MATCH_H / 2);
   for (let round = 2; round <= rounds; round++) {
     for (const m of matches.filter((x) => x.round === round)) {
+      // The third-place match has no feeders of its own: it hangs below
+      // the final rather than between semifinals that do not exist.
+      if (isBronzeMatch(m, rounds)) continue;
       const a = centre.get(`${round - 1}:${m.slot * 2}`) ?? HEADER + MATCH_H / 2;
       const b = centre.get(`${round - 1}:${m.slot * 2 + 1}`) ?? a;
       centre.set(`${round}:${m.slot}`, (a + b) / 2);
     }
   }
+  const bronzeMatch = matches.find((m) => isBronzeMatch(m, rounds));
+  if (bronzeMatch) centre.set(`${rounds}:${BRONZE_SLOT}`, (centre.get(`${rounds}:0`) ?? HEADER + MATCH_H / 2) + PITCH);
   const columnX = (round: number) => MARGIN + (round - 1) * (BOX_W + COL_GAP);
 
   for (let round = 1; round <= rounds; round++) {
@@ -120,6 +127,9 @@ export async function bracketPng(input: BracketPictureInput): Promise<Uint8Array
           const text = String(games);
           canvas.text(x + BOX_W - PAD - 24 - Canvas.textWidth(text), y + 7, text, won || lost ? INK : WHITE, 's');
         }
+      }
+      if (isBronzeMatch(m, rounds)) {
+        canvas.text(x, top - TEXT_H - 4, 'THIRD PLACE', GRAY, 's');
       }
       // Connector to the next round: out of this match, over, into the next.
       if (round < rounds) {

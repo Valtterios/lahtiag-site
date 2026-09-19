@@ -29,6 +29,7 @@ import { bracketPng } from './bracket-image';
 import { openMarket, closeMarket, reopenMarket, settleMarket, unsettleMarket, refundStaleBets, bracketKeys, odds, payPurse, bettingOpenLine, settledLine, getMarket, marketState, matchScope, COIN } from './coins';
 import { formatHelsinki, formatHelsinkiRange } from './time';
 import { scoreText } from './scores';
+import { BRONZE, isBronzeMatch, isFinal, podiumOf, podiumLine, totalRoundsOf } from './podium';
 
 // Participant keys ('u:<discord id>' / 't:<team id>') to display names.
 export async function participantNames(db: D1Database, eventId: number): Promise<Map<string, string>> {
@@ -134,7 +135,9 @@ export function bracketLine(
 
 export interface ResultStory {
   round: number;
+  slot: number;
   totalRounds: number;
+  bronze: boolean; // the third-place match, not the final beside it
   winner: string;
   loser: string;
   score: string | null; // "2–1" when the match was played to more than one game
@@ -164,6 +167,8 @@ export function describeResult(
   const winnerIsA = match.winner === match.side_a;
   return {
     round,
+    slot,
+    bronze: isBronzeMatch(match, totalRounds),
     totalRounds,
     winner: nameOf(names, match.winner),
     loser: nameOf(names, loserKey),
@@ -178,6 +183,9 @@ export function describeResult(
 export function resultLine(story: ResultStory, url: string, bracket: string | null = null): string {
   const which = bracket === null ? '' : `${safe(bracket)} · `;
   const by = story.score === null ? '' : ` ${story.score}`;
+  if (story.bronze) {
+    return `${BRONZE} ${which}Third place: **${story.winner}** beat ${story.loser}${by}.`;
+  }
   if (story.round === story.totalRounds) {
     return `🥇 Champion${bracket === null ? '' : ` of ${safe(bracket)}`}: **${story.winner}**! They beat ${story.loser}${by} in the final.\n${url}`;
   }
@@ -236,11 +244,19 @@ export function liveBracketText(matches: BracketMatch[], names: Map<string, stri
           : `${side(m.side_a, m.winner, m.score_a)} vs ${side(m.side_b, m.winner, m.score_b)}`,
       );
     const label = roundLabel(round, total);
-    rounds.push(`**${label === 'Final' || label.startsWith('Round') ? label : `${label}s`}**\n${lines.join('\n')}`);
+    const heading = label === 'Final' || label.startsWith('Round') ? label : `${label}s`;
+    // The last round holds the final and, when it was played for, the
+    // third-place match: they are named apart rather than listed together.
+    if (round === total && lines.length > 1) {
+      rounds.push(`**Final**\n${lines[0]}`);
+      rounds.push(`**${BRONZE} Third place**\n${lines.slice(1).join('\n')}`);
+    } else {
+      rounds.push(`**${heading}**\n${lines.join('\n')}`);
+    }
   }
-  const final = matches.find((m) => m.round === total && m.slot === 0);
   const head = [`📋 **Live bracket${label === null ? '' : `: ${safe(label)}`}** · updated ${formatHelsinki(now)}`];
-  if (final?.winner) head.push(`🥇 Champion: **${nameOf(names, final.winner)}**`);
+  const standings = podiumOf(matches);
+  if (standings) head.push(podiumLine(standings, (key) => nameOf(names, key), true));
   let body = rounds;
   while (body.length > 1 && [...head, ...body].join('\n\n').length > MESSAGE_MAX) body = ['… earlier rounds on the site', ...body.slice(2)];
   return [...head, ...body, url].join('\n\n');
@@ -256,7 +272,7 @@ export async function bracketPicture(event: Pick<EventRow, 'title'>, matches: Br
 // player. A walk-in has no Discord account to give anything to.
 export async function championsOf(db: D1Database, eventId: number, matches: BracketMatch[]): Promise<string[]> {
   const total = matches.reduce((max, m) => Math.max(max, m.round), 0);
-  const final = matches.find((m) => m.round === total && m.slot === 0);
+  const final = matches.find((m) => isFinal(m, total));
   if (!final?.winner) return [];
   const winner = final.winner;
   const ids = winner.startsWith('t:')
@@ -585,11 +601,19 @@ export async function postResult(db: D1Database, env: { DISCORD_BOT_TOKEN?: stri
   const story = describeResult(matches, round, slot, names, await teamMentions(db, event.id));
   if (!story) return;
   const now = Math.floor(Date.now() / 1000);
-  const decided = story.round === story.totalRounds;
+  // The bronze match sits in the final round but decides nothing about
+  // the title: no champion cards, no purse, no settling the pool.
+  const decided = story.round === story.totalRounds && !story.bronze;
   // The champion's line carries the finished picture, unless the pinned one is right there.
   const picture = decided && (await pictureBelongsInTalk(db, event)) ? await bracketPicture(event, matches, names, now, here.label) : undefined;
   await postEventLine(db, env, event.id, resultLine(story, `${origin}${here.path}`, here.label), decided, picture, story.nextRoles);
   await refreshLiveBracket(db, env, bracketId, origin, now);
+  // The podium, once there is nothing left to play: after the final, or
+  // after a third-place match that followed it.
+  const standings = podiumOf(matches);
+  if (standings && (decided || story.bronze)) {
+    await postEventLine(db, env, event.id, `🏅 **Final standings** · ${podiumLine(standings, (key) => nameOf(names, key))}`);
+  }
   if (decided) await postChampionCards(db, env, event.id, matches, now);
   // Coins: a match with its own pool pays out on its result.
   const decidedMatch = matches.find((m) => m.round === round && m.slot === slot);

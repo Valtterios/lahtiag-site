@@ -9,6 +9,7 @@ import { newTicketCode } from './qr';
 import { imageSize } from './images';
 import { QUESTION_LIMITS, questionOptions, type EventQuestionRow, type QuestionKind } from './questions';
 import { bestOfFor, isBestOf, isLegalScore, sidesOf } from './scores';
+import { BRONZE_SLOT, podiumOf, semifinalLosers } from './podium';
 
 export class RuleError extends Error {
   constructor(
@@ -1133,6 +1134,7 @@ export interface BracketRow {
   created_at: number;
   best_of: number; // 1 unless the board says otherwise
   final_best_of: number | null; // null = the final is played like the rest
+  bronze: number; // 1 = the beaten semifinalists play for third
 }
 
 export interface BracketMatch {
@@ -1289,6 +1291,58 @@ async function removeFromDownstream(
     .bind(bracketId, nextRound, nextSlot, key)
     .run();
   await removeFromDownstream(db, bracketId, nextRound, nextSlot, key, totalRounds);
+}
+
+// The bronze match's sides are the two beaten semifinalists, read back
+// from the semifinals every time one of them changes. Recomputing beats
+// patching: a reverted or re-recorded semifinal can leave no stale name
+// behind, and a bronze result whose side is gone goes with it.
+async function refreshBronze(db: D1Database, bracket: BracketRow, totalRounds: number): Promise<void> {
+  if (!bracket.bronze || totalRounds < 2) return;
+  const match = await getMatch(db, bracket.id, totalRounds, BRONZE_SLOT);
+  if (!match) return;
+  const all = await getBracket(db, bracket.id);
+  const [a, b] = semifinalLosers(all, totalRounds);
+  if (a === match.side_a && b === match.side_b) return;
+  const stands = match.winner !== null && (match.winner === a || match.winner === b);
+  await db
+    .prepare(
+      `UPDATE bracket_matches
+          SET side_a = ?4, side_b = ?5,
+              winner = CASE WHEN ?6 THEN winner ELSE NULL END,
+              score_a = CASE WHEN ?6 THEN score_a ELSE NULL END,
+              score_b = CASE WHEN ?6 THEN score_b ELSE NULL END
+        WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3`,
+    )
+    .bind(bracket.id, totalRounds, BRONZE_SLOT, a, b, stands ? 1 : 0)
+    .run();
+}
+
+// Turn the third-place match on or off. On adds it to the final round
+// beside the final and seats whoever has already lost a semifinal; off
+// removes it, result and all.
+export async function setBracketBronze(db: D1Database, bracketId: number, on: boolean): Promise<void> {
+  const bracket = await getBracketRow(db, bracketId);
+  if (!bracket) throw new RuleError('missing', 'No such bracket.');
+  const totals = await db
+    .prepare('SELECT MAX(round) AS n FROM bracket_matches WHERE bracket_id = ?1')
+    .bind(bracketId)
+    .first<{ n: number }>();
+  const totalRounds = totals?.n ?? 0;
+  if (on && totalRounds < 2) throw new RuleError('bad_input', 'A bracket needs semifinals before it can have a third-place match.');
+  await db.prepare('UPDATE brackets SET bronze = ?2 WHERE id = ?1').bind(bracketId, on ? 1 : 0).run();
+  if (!on) {
+    await db.prepare('DELETE FROM bracket_matches WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3').bind(bracketId, totalRounds, BRONZE_SLOT).run();
+    return;
+  }
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO bracket_matches (bracket_id, event_id, round, slot, side_a, side_b, winner)
+       VALUES (?1, ?2, ?3, ?4, NULL, NULL, NULL)`,
+    )
+    .bind(bracketId, bracket.event_id, totalRounds, BRONZE_SLOT)
+    .run();
+  await refreshBronze(db, { ...bracket, bronze: 1 }, totalRounds);
 }
 
 // Places `key` on its side of the next-round match, evicting (and cascading
@@ -1553,6 +1607,8 @@ export async function setBracketWinner(
     .bind(bracketId, round, slot, winnerKey, sides.score_a, sides.score_b)
     .run();
   await advance(db, bracketId, round, slot, winnerKey, totalRounds);
+  // A decided semifinal also seats the loser in the bronze match.
+  if (round === totalRounds - 1) await refreshBronze(db, bracket, totalRounds);
 }
 
 // How long this bracket's matches are. The final may be longer than the
@@ -1619,6 +1675,10 @@ export async function clearBracketWinner(
     .bind(bracketId, round, slot)
     .run();
   await removeFromDownstream(db, bracketId, round, slot, key, totals!.n);
+  if (round === totals!.n - 1) {
+    const bracket = await getBracketRow(db, bracketId);
+    if (bracket) await refreshBronze(db, bracket, totals!.n);
+  }
 }
 
 // Decided finals, newest first — the results archive. One row per bracket
@@ -1634,6 +1694,19 @@ export interface ResultRow {
   starts_at: number;
   champion_name: string;
   avatars: { discord_id: string; avatar_hash: string | null }[];
+  runner_up_name: string | null; // who lost the final
+  third_name: string | null; // only when a third-place match was played
+}
+
+// 't:<id>' or 'u:<id>' to the name it is shown by.
+export async function sideName(db: D1Database, key: string | null): Promise<string | null> {
+  if (!key) return null;
+  if (key.startsWith('t:')) {
+    const team = await db.prepare('SELECT name FROM event_teams WHERE id = ?1').bind(Number(key.slice(2))).first<{ name: string }>();
+    return team?.name ?? null;
+  }
+  const member = await db.prepare('SELECT username FROM members WHERE discord_id = ?1').bind(key.slice(2)).first<{ username: string }>();
+  return member?.username ?? null;
 }
 
 export async function listResults(db: D1Database, limit = 20): Promise<ResultRow[]> {
@@ -1648,6 +1721,7 @@ export async function listResults(db: D1Database, limit = 20): Promise<ResultRow
          AND e.cancelled_at IS NULL
          AND br.live_at IS NOT NULL
          AND bm.round = (SELECT MAX(round) FROM bracket_matches b2 WHERE b2.bracket_id = bm.bracket_id)
+         AND bm.slot = 0
        ORDER BY e.starts_at DESC, br.created_at ASC, br.id ASC
        LIMIT ?1`,
     )
@@ -1677,6 +1751,8 @@ export async function listResults(db: D1Database, limit = 20): Promise<ResultRow
         title: final.title,
         starts_at: final.starts_at,
         champion_name: team?.name ?? 'Unknown team',
+        runner_up_name: null,
+        third_name: null,
         avatars: members,
       });
     } else {
@@ -1692,9 +1768,18 @@ export async function listResults(db: D1Database, limit = 20): Promise<ResultRow
         title: final.title,
         starts_at: final.starts_at,
         champion_name: member?.username ?? 'Unknown',
+        runner_up_name: null,
+        third_name: null,
         avatars: member ? [{ discord_id: discordId, avatar_hash: member.avatar_hash }] : [],
       });
     }
+  }
+  // Second and third, read from each bracket: the runner-up lost the
+  // final, and third exists only where it was played for.
+  for (const row of rows) {
+    const standings = podiumOf(await getBracket(db, row.bracket_id));
+    row.runner_up_name = await sideName(db, standings?.silver ?? null);
+    row.third_name = await sideName(db, standings?.bronze ?? null);
   }
   return rows;
 }
@@ -3075,7 +3160,7 @@ export async function leaderboard(db: D1Database, now: number, limit = 10): Prom
       `SELECT m.discord_id, m.username, m.avatar_hash,
          (SELECT COUNT(DISTINCT e.id) FROM events e
           WHERE e.cancelled_at IS NULL AND e.published_at IS NOT NULL
-            AND (e.starts_at < ?1 OR EXISTS (SELECT 1 FROM bracket_matches b WHERE b.event_id = e.id AND b.winner IS NOT NULL AND b.round = (SELECT MAX(round) FROM bracket_matches b2 WHERE b2.bracket_id = b.bracket_id)))
+            AND (e.starts_at < ?1 OR EXISTS (SELECT 1 FROM bracket_matches b WHERE b.event_id = e.id AND b.winner IS NOT NULL AND b.slot = 0 AND b.round = (SELECT MAX(round) FROM bracket_matches b2 WHERE b2.bracket_id = b.bracket_id)))
             AND (EXISTS (SELECT 1 FROM signups s WHERE s.event_id = e.id AND s.discord_id = m.discord_id AND s.status = 'yes')
               OR EXISTS (SELECT 1 FROM tickets t WHERE t.event_id = e.id AND t.discord_id = m.discord_id AND t.status = 'paid'))) AS attended
        FROM members m WHERE m.leaderboard_hidden = 0`,
@@ -3185,7 +3270,7 @@ export async function memberStats(db: D1Database, discordId: string, now: number
          (SELECT s.event_team_id FROM signups s WHERE s.event_id = e.id AND s.discord_id = ?1) AS team_id
        FROM events e
        WHERE e.cancelled_at IS NULL AND e.published_at IS NOT NULL
-         AND (e.starts_at < ?2 OR EXISTS (SELECT 1 FROM bracket_matches b WHERE b.event_id = e.id AND b.winner IS NOT NULL AND b.round = (SELECT MAX(round) FROM bracket_matches b2 WHERE b2.bracket_id = b.bracket_id)))
+         AND (e.starts_at < ?2 OR EXISTS (SELECT 1 FROM bracket_matches b WHERE b.event_id = e.id AND b.winner IS NOT NULL AND b.slot = 0 AND b.round = (SELECT MAX(round) FROM bracket_matches b2 WHERE b2.bracket_id = b.bracket_id)))
          AND (EXISTS (SELECT 1 FROM signups s WHERE s.event_id = e.id AND s.discord_id = ?1 AND s.status = 'yes')
            OR EXISTS (SELECT 1 FROM tickets t WHERE t.event_id = e.id AND t.discord_id = ?1 AND t.status = 'paid'))
        ORDER BY e.starts_at`,

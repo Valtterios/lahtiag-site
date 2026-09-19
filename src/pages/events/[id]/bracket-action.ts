@@ -12,6 +12,7 @@ import {
   mainBracket,
   setBracketWinner,
   setBracketFormat,
+  setBracketBronze,
   clearBracketWinner,
   RuleError,
   getBracket,
@@ -148,6 +149,11 @@ export const POST: APIRoute = async ({ request, params, redirect, locals, url })
       // The pinned bracket carries the scores, so it is redrawn.
       later(locals.cfContext, refreshLiveBracket(env.DB, env, chosen.id, url.origin, now));
       return redirect(await backTo(id, chosen.id, 'ok', 'format'), 303);
+    } else if (action === 'bronze') {
+      const on = String(form.get('on') ?? '') === '1';
+      await setBracketBronze(env.DB, chosen.id, on);
+      later(locals.cfContext, refreshLiveBracket(env.DB, env, chosen.id, url.origin, now));
+      return redirect(await backTo(id, chosen.id, 'ok', on ? 'bronze_on' : 'bronze_off'), 303);
     } else if (action === 'winner') {
       await setBracketWinner(env.DB, chosen.id, round, slot, String(form.get('winner') ?? ''), parseScore(form.get('score')));
       later(locals.cfContext, postResult(env.DB, env, chosen.id, url.origin, round, slot));

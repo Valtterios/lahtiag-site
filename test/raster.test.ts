@@ -59,6 +59,18 @@ describe('bracket picture', () => {
   const m = (round: number, slot: number, a: string | null, b: string | null, winner: string | null = null): BracketMatch => ({ bracket_id: 1, event_id: 1, round, slot, side_a: a, side_b: b, winner, score_a: null, score_b: null });
   const names = new Map([['t:1', 'Alpha'], ['t:2', 'Bravo'], ['t:3', 'Charlie'], ['t:4', 'Delta'], ['t:5', 'A very long team name indeed']]);
 
+  it('makes room for a third-place match and keeps it clear of the final', async () => {
+    const plain = [m(1, 0, 't:1', 't:2', 't:1'), m(1, 1, 't:3', 't:4', 't:3'), m(2, 0, 't:1', 't:3', 't:1')];
+    const withBronze = [...plain, m(2, 1, 't:2', 't:4', 't:4')];
+    // The bronze match hangs below the final, so the picture is taller.
+    expect(bracketPictureSize(withBronze).height).toBeGreaterThan(bracketPictureSize(plain).height);
+    expect(bracketPictureSize(withBronze).width).toBe(bracketPictureSize(plain).width);
+    // And it draws: a match with no feeders used to land on top of the final.
+    const png = await bracketPng({ matches: withBronze, names, title: 'Cup', subtitle: 'updated 21:34' });
+    expect(png.length).toBeGreaterThan(1000);
+    expect(Array.from(png.slice(0, 4))).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  });
+
   it('sizes by rounds and first-round matches, and labels rounds', () => {
     const matches = [m(1, 0, 't:1', 't:2'), m(1, 1, 't:3', 't:4'), m(2, 0, null, null)];
     const size = bracketPictureSize(matches);

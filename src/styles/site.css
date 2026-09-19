@@ -6624,3 +6624,76 @@ details.admin-panel[open] > summary {
   color: var(--muted);
   font-size: 0.92rem;
 }
+
+/* The podium: first, second and the third that was played for. Reads as
+   a short list, not a chart — three rows is not worth a bar. */
+.podium {
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+  max-width: 34rem;
+}
+
+.podium-place {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--surface);
+  border-left: 3px solid var(--blue);
+}
+
+.podium-place:first-child {
+  border-left-color: var(--yellow, #ffde59);
+}
+
+.podium-medal {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.podium-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.podium-side strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podium-faces {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.podium-faces img {
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  margin-right: -8px;
+}
+
+.podium-faces img:last-child {
+  margin-right: 0;
+}
+
+/* The third-place match, named where it hangs beside the final. */
+.bracket-bronze-label {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Second and third under a result: present, but never competing with the
+   champion's line above them. */
+.results-rest {
+  display: block;
+  margin-top: 0.15rem;
+}

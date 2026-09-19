@@ -100,7 +100,7 @@ describe('lines', () => {
   it('tells a result with the next opponent, and crowns the champion at the final', () => {
     const matches = [m(1, 0, 't:1', 't:2', 't:1'), m(1, 1, 't:3', 't:4', 't:3'), m(2, 0, 't:1', 't:3')];
     const semi = describeResult(matches, 1, 0, names)!;
-    expect(semi).toEqual({ round: 1, totalRounds: 2, winner: 'Alpha', loser: 'Bravo', next: { a: 'Alpha', b: 'Charlie' }, nextRoles: [], score: null });
+    expect(semi).toEqual({ round: 1, slot: 0, bronze: false, totalRounds: 2, winner: 'Alpha', loser: 'Bravo', next: { a: 'Alpha', b: 'Charlie' }, nextRoles: [], score: null });
     expect(resultLine(semi, 'u')).toBe('🏆 Semifinal: Alpha beat Bravo. Next up: Alpha vs Charlie.');
     expect(describeResult(matches, 2, 0, names)).toBeNull(); // undecided
     const done = [...matches.slice(0, 2), m(2, 0, 't:1', 't:3', 't:3')];
@@ -118,7 +118,7 @@ describe('lines', () => {
     expect(text).not.toContain('Champion');
     expect(text.endsWith('https://x/b')).toBe(true);
     const done = [m(1, 0, 't:1', 't:2', 't:2')];
-    expect(liveBracketText(done, names, 'u', NOW)).toContain('🥇 Champion: **Bravo**');
+    expect(liveBracketText(done, names, 'u', NOW)).toContain('🥇 Champion: **Bravo** · 🥈 Alpha');
 
     // 64 long names in round one: the earliest rounds give way.
     const big: BracketMatch[] = [];

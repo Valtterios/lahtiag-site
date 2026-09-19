@@ -4,6 +4,7 @@ import { getEntry, render } from 'astro:content';
 import Base from '../layouts/Base.astro';
 import { listResults, leaderboard, listPhotoAlbums, listPastEvents, coverVersions, type ResultRow, type EventWithCounts } from '../lib/db';
 import { avatarUrl } from '../lib/discord';
+import { SILVER, BRONZE } from '../lib/podium';
 import { formatHelsinki, formatHelsinkiRange } from '../lib/time';
 import { xpStandings, shownName, type Standing } from '../lib/xp';
 import { listPassLevels, passProgress } from '../lib/pass';
@@ -66,6 +67,11 @@ const champions = new Map(results.map((r) => [r.event_id, r.champion_name]));
                 <a href={`/events/${result.event_id}/bracket${result.bracket_name ? `?b=${result.bracket_id}` : ''}`}> {result.title}</a>
                 {result.bracket_name && <span class="event-meta"> · {result.bracket_name}</span>}
                 <span class="event-meta"> ({formatHelsinki(result.starts_at)})</span>
+                {result.runner_up_name && (
+                  <span class="event-meta results-rest">
+                    {SILVER} {result.runner_up_name}{result.third_name ? ` · ${BRONZE} ${result.third_name}` : ''}
+                  </span>
+                )}
               </span>
               <a class="results-picture" href={`/events/${result.event_id}/bracket${result.bracket_name ? `?b=${result.bracket_id}` : ''}`}>
                 <img src={`/events/${result.event_id}/bracket.png${result.bracket_name ? `?b=${result.bracket_id}` : ''}`} alt={`Final bracket of ${result.title}`} loading="lazy" />

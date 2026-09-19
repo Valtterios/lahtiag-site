@@ -6,6 +6,7 @@ import { getEvent, getBracket, listBrackets, listSignups, listEventTeams } from 
 import { avatarUrl } from '../../../lib/discord';
 import { formatHelsinki } from '../../../lib/time';
 import { bestOfFor, scorelines, BEST_OF_CHOICES } from '../../../lib/scores';
+import { isBronzeMatch, podiumOf, GOLD, SILVER, BRONZE } from '../../../lib/podium';
 
 const id = Number(Astro.params.id);
 const event = Number.isInteger(id) ? await getEvent(env.DB, id) : null;
@@ -72,8 +73,18 @@ function roundLabel(round: number): string {
   if (fromEnd === 2) return 'Quarterfinals';
   return `Round ${round}`;
 }
-const final = matches.find((m) => m.round === totalRounds);
+const final = matches.find((m) => m.round === totalRounds && m.slot === 0);
 const champion = final?.winner ? nameOf(final.winner) : null;
+// First, second and third once the final is played; third only when it
+// was played for.
+const standings = podiumOf(matches);
+const podium = standings
+  ? [
+      { medal: GOLD, place: 'Champion', side: nameOf(standings.gold) },
+      { medal: SILVER, place: 'Runner-up', side: nameOf(standings.silver) },
+      ...(standings.bronze ? [{ medal: BRONZE, place: 'Third', side: nameOf(standings.bronze) }] : []),
+    ]
+  : [];
 // How long a match in this round is: the final may run longer than the rest.
 const bestOfIn = (round: number): number => (bracket ? bestOfFor(bracket, round, totalRounds) : 1);
 
@@ -97,6 +108,8 @@ const OK: Record<string, string> = {
   replaced: 'Substitute in place.',
   renamed: 'Bracket renamed.',
   format: 'Match length saved.',
+  bronze_on: 'Third-place match added, beside the final.',
+  bronze_off: 'Third-place match removed.',
   bracket_deleted: 'Bracket deleted.',
 };
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
@@ -160,6 +173,24 @@ const title = event ? (many && bracket ? `${event.title}: ${bracket.name}` : `${
           ))}
         </p>
       )}
+      {podium.length > 0 && (
+        <ol class="podium">
+          {podium.map((p) => (
+            <li class="podium-place">
+              <span class="podium-medal">{p.medal}</span>
+              <span class="podium-side">
+                <strong>{p.side?.name ?? 'Unknown'}</strong>
+                <span class="member-meta">{p.place}</span>
+              </span>
+              <span class="podium-faces">
+                {(p.side?.avatars ?? []).slice(0, 5).map((src) => (
+                  <img src={src} alt="" width="24" height="24" loading="lazy" />
+                ))}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
 
       {matches.length === 0 ? (
         <p class="app-empty">
@@ -174,9 +205,10 @@ const title = event ? (many && bracket ? `${event.title}: ${bracket.name}` : `${
               <div class="bracket-round">
                 <p class="bracket-round-label">{roundLabel(roundIndex + 1)}</p>
                 {pairs.map((pair) => (
-                <div class={`bracket-pair${pair.length === 2 ? ' pair-linked' : ''}`}>
+                <div class={`bracket-pair${pair.length === 2 && !pair.some((x) => isBronzeMatch(x, totalRounds)) ? ' pair-linked' : ''}`}>
                 {pair.map((match) => (
-                  <div class="bracket-match">
+                  <div class={`bracket-match${isBronzeMatch(match, totalRounds) ? ' bracket-bronze' : ''}`}>
+                    {isBronzeMatch(match, totalRounds) && <p class="bracket-bronze-label">{BRONZE} Third place</p>}
                     {(['side_a', 'side_b'] as const).map((sideName) => {
                       const key = match[sideName];
                       const side = nameOf(key);
@@ -340,6 +372,29 @@ const title = event ? (many && bracket ? `${event.title}: ${bracket.name}` : `${
                 </label>
                 <button class="btn btn-ghost" type="submit">Save</button>
               </form>
+              <h3>Third place</h3>
+              <p class="event-meta">
+                {totalRounds < 2
+                  ? 'A bracket needs semifinals before it can have a third-place match.'
+                  : bracket.bronze
+                    ? 'The beaten semifinalists play for third. The match sits beside the final and seats them as the semifinals are decided.'
+                    : 'Off: the two beaten semifinalists both finish without a place, and the podium names first and second only.'}
+              </p>
+              {totalRounds >= 2 && (
+                <form method="post" action={`/events/${event.id}/bracket-action`}>
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="bracket_id" value={bracket.id} />
+                  <input type="hidden" name="action" value="bronze" />
+                  <input type="hidden" name="on" value={bracket.bronze ? '0' : '1'} />
+                  <button
+                    class="btn btn-ghost"
+                    type="submit"
+                    data-confirm={bracket.bronze ? 'Remove the third-place match? Its result goes with it.' : undefined}
+                  >
+                    {bracket.bronze ? 'Remove the third-place match' : 'Add a third-place match'}
+                  </button>
+                </form>
+              )}
               <h3>Substitute</h3>
               {benchKeys.length === 0 ? (
                 <p class="event-meta">
