@@ -45,6 +45,11 @@ type WorkerEnv = {
   MINECRAFT_WHITELIST_TOKEN?: string;
   // The Discord activity listener's bearer token for /api/discord/activity (src/lib/activity.ts).
   DISCORD_ACTIVITY_TOKEN?: string;
+  // The shared token the CS2 servers use both ways (src/lib/cs2.ts): they
+  // send it as X-MatchZy-Token when pulling a match config from
+  // /api/cs2/match/<id>.json and when posting events to /api/cs2/events.
+  // It is `matchzy_match_token` on the server side.
+  CS2_MATCH_TOKEN?: string;
 };
 
 // Astro v6+ with @astrojs/cloudflare 14: request env is imported from

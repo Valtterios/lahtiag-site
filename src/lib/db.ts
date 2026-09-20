@@ -1290,6 +1290,17 @@ export async function bracketPool(db: D1Database, eventId: number): Promise<stri
     : (await listSignups(db, eventId)).filter((signup) => signup.status === 'yes').map((signup) => `u:${signup.discord_id}`);
 }
 
+// The same read, for callers outside this file (src/lib/cs2.ts asks before
+// letting a game server write over a result).
+export async function getBracketMatch(
+  db: D1Database,
+  bracketId: number,
+  round: number,
+  slot: number,
+): Promise<BracketMatch | null> {
+  return getMatch(db, bracketId, round, slot);
+}
+
 async function getMatch(db: D1Database, bracketId: number, round: number, slot: number) {
   return db
     .prepare('SELECT * FROM bracket_matches WHERE bracket_id = ?1 AND round = ?2 AND slot = ?3')

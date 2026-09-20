@@ -22,6 +22,7 @@ revision: September 2026.
 - [The Minecraft whitelist](#the-minecraft-whitelist)
 - [The Discord activity listener](#the-discord-activity-listener)
 - [The Minecraft chat bridge and GT:NH progress](#the-minecraft-chat-bridge-and-gtnh-progress)
+- [Counter-Strike: running a bracket match on a server](#counter-strike-running-a-bracket-match-on-a-server)
 - [Editing this handbook](#editing-this-handbook)
 - [Editing the site's pages](#editing-the-sites-pages)
 - [The moving parts](#the-moving-parts)
@@ -1383,6 +1384,78 @@ copy is prepared at `/opt/lahtiag-bridge-smp` (container
 `LAHTIAG_BRIDGE_DIR=/opt/lahtiag-bridge-smp lahtiag-bridge-setcreds`
 with the SMP channel's id and webhook starts it. Advancements are
 bridged the same way as the old game's achievements.
+
+## Counter-Strike: running a bracket match on a server
+
+A bracket match can be handed to one of the two Counter-Strike servers. The
+server then loads it, the captains ban maps in game, and the score comes back
+into the bracket as the maps are played — the draw advances by itself.
+
+### On the night
+
+1. Open the bracket. Every undecided match with both sides known has two
+   small buttons on it, **CS1** and **CS2**.
+2. Press one. That queues the match for that server; a server that already
+   has a match on it is greyed out.
+3. The players connect from [lahtiag.fi/cs](https://lahtiag.fi/cs) and ready
+   up with `.ready`. The captains ban with `.ban`. Nobody needs to give you a
+   SteamID, and nobody gets kicked: the rosters are sent empty on purpose,
+   and the LahtiAGTeams plugin works the teams out from the sides at match
+   start.
+4. The match shows **Live · Server 1** on the bracket with the current map's
+   round score. Each map finished moves the bracket on: 1–0, 1–1, 2–1 and the
+   winner advances.
+
+The **×** takes a match off the list here. It does **not** stop the server —
+if people are playing, stop the match in game. Automation reaching into a
+live match on a timer is what wiped two of them.
+
+You can always still record a result by hand. **The board's word is final**:
+once a match has a result the board entered, the server can no longer change
+it, so a late report cannot rewind a decision you made in the room.
+
+### How it is wired
+
+The site is the controller, but it runs on Cloudflare and has no route into
+the home connection the servers sit behind — and opening RCON to the internet
+to give it one would be a far worse trade. So everything is pulled, never
+pushed:
+
+| | |
+|---|---|
+| `GET /api/cs2/match/<id>.json` | the server fetches its own match config |
+| `POST /api/cs2/events` | the server reports going live, rounds and map results |
+| `GET`/`POST /api/cs2/queue` | the bridge on the AMP host asks what to load, and claims it |
+
+All three want the shared token as `X-MatchZy-Token`. It is the Worker secret
+`CS2_MATCH_TOKEN` and `matchzy_match_token` on the servers — the same string.
+Without it every one of those routes answers 404 and the buttons do nothing,
+which is also how the feature sits harmlessly before it is turned on.
+
+The bridge is the one piece that has to live next to the servers, because a
+Worker cannot speak RCON:
+
+```sh
+# on auraserver
+export LAG_SITE=https://lahtiag.fi
+export LAG_CS2_TOKEN=<the same token>
+lag_match.py bridge --setup --yes     # once: points both servers at the site
+lag_match.py bridge                   # then leave it running
+```
+
+It refuses to load a match onto a server with a live match on it, and refuses
+when it cannot tell — `matchzy_loadmatch` over an autostarted live match
+destroys it silently, and that is the bug that wiped two live games. It also
+claims each queued match from the site before touching the server, so the
+same match is never loaded twice.
+
+### Setting it up the first time
+
+```sh
+npx wrangler d1 migrations apply lahtiag --remote
+npx wrangler d1 migrations apply lahtiag-preview --env preview --remote
+npx wrangler secret put CS2_MATCH_TOKEN          # and --env preview for previews
+```
 
 ## Editing this handbook
 

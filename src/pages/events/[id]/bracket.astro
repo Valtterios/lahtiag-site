@@ -7,6 +7,7 @@ import { avatarUrl } from '../../../lib/discord';
 import { formatHelsinki } from '../../../lib/time';
 import { bestOfFor, scorelines, BEST_OF_CHOICES } from '../../../lib/scores';
 import { isBronzeMatch, podiumOf, GOLD, SILVER, BRONZE } from '../../../lib/podium';
+import { activeCS2Matches, CS2_SERVER_IDS, type CS2MatchRow } from '../../../lib/cs2';
 
 const id = Number(Astro.params.id);
 const event = Number.isInteger(id) ? await getEvent(env.DB, id) : null;
@@ -88,6 +89,16 @@ const podium = standings
 // How long a match in this round is: the final may run longer than the rest.
 const bestOfIn = (round: number): number => (bracket ? bestOfFor(bracket, round, totalRounds) : 1);
 
+// What the Counter-Strike servers are running right now. At most one match
+// per server, so this is two rows at the very most. It is read for everyone,
+// not just the board: a match being played is worth showing on the bracket.
+const cs2Running: CS2MatchRow[] = bracket ? await activeCS2Matches(env.DB) : [];
+const cs2Here = new Map(
+  cs2Running.filter((r) => r.bracket_id === bracket?.id).map((r) => [`${r.round}:${r.slot}`, r]),
+);
+const cs2BusyServers = new Set(cs2Running.map((r) => r.server));
+const cs2Of = (match: { round: number; slot: number }) => cs2Here.get(`${match.round}:${match.slot}`) ?? null;
+
 const FLASH: Record<string, string> = {
   bad_input: "That didn't go through: a substitute must be on the roster and not in the bracket yet, and a bracket name is 1 to 40 characters.",
   missing: 'No such match, participant or bracket.',
@@ -111,6 +122,8 @@ const OK: Record<string, string> = {
   bronze_on: 'Third-place match added, beside the final.',
   bronze_off: 'Third-place match removed.',
   bracket_deleted: 'Bracket deleted.',
+  cs2_sent: 'Sent to the server. It loads the match itself; the captains ban maps in game with .ban, and the score appears here as the maps are played.',
+  cs2_cancelled: 'Taken off the server here. The server was NOT told: if people are playing, stop the match in game.',
 };
 const flash = FLASH[Astro.url.searchParams.get('err') ?? ''] ?? OK[Astro.url.searchParams.get('ok') ?? ''] ?? null;
 // For the board's seeding and substitute forms.
@@ -286,6 +299,64 @@ const title = event ? (many && bracket ? `${event.title}: ${bracket.name}` : `${
                         </div>
                       );
                     })}
+                    {(() => {
+                      // The Counter-Strike servers. A match can be handed to
+                      // one; the server then loads it, runs the veto in game
+                      // and reports the maps back here as they are played.
+                      const running = cs2Of(match);
+                      const playable =
+                        session?.isAdmin && match.winner === null &&
+                        match.side_a !== null && match.side_b !== null;
+                      if (!running && !playable) return null;
+                      return (
+                        <p class="bracket-cs2">
+                          {running ? (
+                            <>
+                              <span class={`bracket-cs2-badge${running.status === 'live' ? ' is-live' : ''}`}>
+                                {running.status === 'live' ? 'Live' : 'Sent'} · Server {running.server}
+                              </span>
+                              {running.status === 'live' && running.rounds_a !== null && (
+                                <span class="bracket-cs2-rounds">{running.rounds_a}–{running.rounds_b}</span>
+                              )}
+                              <a class="bracket-cs2-watch" href="/cs">Join or watch</a>
+                              {session?.isAdmin && (
+                                <form method="post" action={`/events/${event.id}/cs2`} class="inline-form">
+                                  <input type="hidden" name="csrf" value={csrf} />
+                                  <input type="hidden" name="bracket" value={bracket!.id} />
+                                  <input type="hidden" name="action" value="cancel" />
+                                  <input type="hidden" name="match" value={running.id} />
+                                  <button
+                                    class="bracket-win-btn"
+                                    type="submit"
+                                    title="Stop following this match here. The server is not told."
+                                    data-confirm="Take this match off the server list? The server is NOT told — if people are playing, stop the match in game."
+                                  >×</button>
+                                </form>
+                              )}
+                            </>
+                          ) : (
+                            CS2_SERVER_IDS.map((id) => (
+                              <form method="post" action={`/events/${event.id}/cs2`} class="inline-form">
+                                <input type="hidden" name="csrf" value={csrf} />
+                                <input type="hidden" name="bracket" value={bracket!.id} />
+                                <input type="hidden" name="action" value="send" />
+                                <input type="hidden" name="round" value={match.round} />
+                                <input type="hidden" name="slot" value={match.slot} />
+                                <input type="hidden" name="server" value={id} />
+                                <button
+                                  class="bracket-win-btn"
+                                  type="submit"
+                                  disabled={cs2BusyServers.has(id)}
+                                  title={cs2BusyServers.has(id)
+                                    ? `Server ${id} already has a match on it`
+                                    : `Play this match on server ${id}`}
+                                >CS{id}</button>
+                              </form>
+                            ))
+                          )}
+                        </p>
+                      );
+                    })()}
                   </div>
                 ))}
                 </div>

@@ -3291,6 +3291,60 @@ a:hover {
   padding: 0 0.3rem;
 }
 
+/* The Counter-Strike servers, on the foot of a bracket match: where it is
+   being played, how the current map stands, and the board's buttons for
+   handing it to a server or taking it back off. */
+.bracket-cs2 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.4rem 0 0;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.75rem;
+}
+
+.bracket-cs2-badge {
+  font-family: var(--display);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Live means people are in there right now. */
+.bracket-cs2-badge.is-live {
+  color: var(--blue);
+}
+
+.bracket-cs2-rounds {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--blue);
+}
+
+.bracket-cs2-watch {
+  margin-left: auto;
+}
+
+.bracket-win-btn[disabled] {
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.bracket-win-btn[disabled]:hover {
+  background: none;
+  color: var(--muted);
+}
+
+/* The bracket picture and the wall display are a record of the draw, not a
+   console: the server controls have no place in either. */
+.display-mode .bracket-cs2 form {
+  display: none;
+}
+
 .team-actions {
   display: grid;
   gap: 1.5rem;

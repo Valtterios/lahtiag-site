@@ -20,3 +20,12 @@ scripts/handbook/cookies.json
 scripts/handbook/shots/
 scripts/handbook/shots.json
 scripts/handbook/jobs.json
+
+# Python bytecode from the helper scripts
+__pycache__/
+
+# CounterStrikeSharp plugin build output (scripts/cs2/plugin)
+scripts/cs2/plugin/*/bin/
+scripts/cs2/plugin/*/obj/
+scripts/cs2/plugin/*/out/
+scripts/cs2/plugin/*/.nuget/
