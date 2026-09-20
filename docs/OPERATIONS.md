@@ -182,8 +182,12 @@ regenerate bracket) ask "are you sure" first.
 
 The Admin panel's **Participants** section edits the roster directly,
 skipping the normal signup rules (closed signups, capacity): change anyone's
-answer (Going/Maybe), move them between teams (team size still holds), or
-**add a walk-in participant by name** — someone without Discord. A manual
+answer (Going/Maybe), move them between teams (team size still holds),
+**add a Discord user** — the picker lists the server's members, so the
+friend who joined a team without signing up goes on against their own
+account (needs the bot's Server Members intent; without it the field takes
+a pasted Discord ID, and the account must still be in the server) — or
+**add a walk-in participant by name**, someone without Discord. A manual
 participant behaves like any other signup afterwards: they land in brackets,
 can be edited, removed (× on their chip), and purged.
 

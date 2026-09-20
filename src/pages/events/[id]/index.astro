@@ -27,7 +27,7 @@ import {
   type TicketTypeWithSales,
 } from '../../../lib/db';
 import { channelUrl, scheduledEventUrl, countGrants, participantIds, listEventChannels, listTeamRoles, syncInterestInBackground, EVENT_CATEGORY_NAME } from '../../../lib/event-discord';
-import { avatarUrl, listGuildRoles } from '../../../lib/discord';
+import { avatarUrl, listGuildRoles, listGuildMemberRoles } from '../../../lib/discord';
 import { DISCORD_GUILD_ID } from '../../../lib/config';
 import { questionOptions, answersComplete, QUESTION_KINDS } from '../../../lib/questions';
 import { purchaseOffer, pendingPurchaseFor, resumablePurchase } from '../../../lib/purchases';
@@ -163,6 +163,24 @@ const allAnswers = event && session?.isAdmin && questions.length > 0 ? await lis
 const [tickKinds, tickMembers, eventTicks] = event && session?.isAdmin
   ? await Promise.all([listTickKinds(env.DB), listTickableMembers(env.DB), listTicks(env.DB, seasonStartYear(nowSeconds), { eventId: event.id })])
   : [[], [], []];
+// Board: someone from the Discord server who is not in the member
+// register — the friend who came along with a team and never signed up.
+// Their own account, so the event role, ticks and stats follow them,
+// which a walk-in placeholder could never do. Needs the Server Members
+// intent on the bot; without it the form takes a pasted id instead.
+const guildList = event && session?.isAdmin && botOn
+  ? await listGuildMemberRoles(env.DISCORD_BOT_TOKEN!, DISCORD_GUILD_ID)
+  : null;
+const guildPeople = guildList?.ok
+  ? [...guildList.members]
+      .filter(([, m]) => !m.bot)
+      .map(([discordId, m]) => ({
+        discordId,
+        label: m.display.toLowerCase() === m.username.toLowerCase() ? m.username : `${m.display} (${m.username})`,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'fi'))
+  : [];
+
 const answerLine = (discordId: string) =>
   questions
     .map((q) => ({ label: q.label, value: allAnswers.get(`u:${discordId}`)?.get(q.id) ?? '' }))
@@ -215,6 +233,8 @@ const PARTICIPANT_KEYS = new Set([
   'signup_saved',
   'signup_removed',
   'member_added',
+  'guest_added',
+  'not_in_server',
   'added',
   'not_linked',
   'team_renamed',
@@ -235,6 +255,8 @@ const FLASH: Record<string, string> = {
   not_team_event: 'This event does not take team signups.',
   not_linked: 'That member has no Discord account linked yet, so there is nothing to add them as. Link it on their register entry first.',
   member_added: 'Added, against their own Discord account: the event role, their ticks and their stats all follow.',
+  guest_added: 'Added, against their own Discord account. Not in the member register — the roster marks them a guest.',
+  not_in_server: 'No account with that id is in the Discord server. Check the id, or add them as a walk-in.',
   added: 'Walk-in added.',
   signup_saved: 'Saved.',
   signup_removed: 'Taken off the roster.',
@@ -1546,6 +1568,37 @@ const flash =
                   <button class="btn btn-primary" type="submit">Add member</button>
                 </form>
               ) : null;
+            })()}
+            {(() => {
+              const here = new Set(signups.map((sg) => sg.discord_id));
+              const outside = guildPeople.filter((p) => !here.has(p.discordId));
+              return (
+                <form method="post" action={`/events/${event.id}/add-participant`} class="participant-row">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  {outside.length > 0 ? (
+                    <label>Discord user
+                      <select name="discord_id" required>
+                        {outside.map((p) => <option value={p.discordId}>{p.label}</option>)}
+                      </select>
+                    </label>
+                  ) : (
+                    <label>Discord user <input name="discord_id" required inputmode="numeric" pattern="[0-9]{17,20}" placeholder="Discord ID" /></label>
+                  )}
+                  <select name="status">
+                    <option value="yes">Going</option>
+                    <option value="maybe">Maybe</option>
+                  </select>
+                  {isTeamEvent && eventTeams.length > 0 && (
+                    <select name="event_team_id">
+                      <option value="">No team</option>
+                      {eventTeams.map((team) => (
+                        <option value={team.id}>{team.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button class="btn btn-primary" type="submit">Add Discord user</button>
+                </form>
+              );
             })()}
             <form method="post" action={`/events/${event.id}/add-participant`} class="participant-row">
               <input type="hidden" name="csrf" value={csrf} />

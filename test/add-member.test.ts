@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
-import { upsertMember, createEvent, adminCreateTeam, listEventTeams, listSignups, setSignup, adminUpdateSignup, addMemberParticipant, RuleError } from '../src/lib/db';
+import { upsertMember, createEvent, adminCreateTeam, listEventTeams, listSignups, setSignup, adminUpdateSignup, addMemberParticipant, addDiscordParticipant, RuleError } from '../src/lib/db';
 
 // Putting a member on a roster by hand. The point of this over the walk-in
 // path is that the signup belongs to their own Discord account, so the
@@ -116,5 +116,53 @@ describe('adding a member to an event by hand', () => {
     const eventId = await teamEvent(null);
     const id = await entry('Solo', '900000000000000006');
     await expect(addMemberParticipant(db(), eventId, id, 'yes', 1, NOW)).rejects.toMatchObject({ code: 'not_team_event' });
+  });
+});
+
+// The friend who came along with a team and never signed up: a Discord
+// account with no register entry, on the roster against its own id so the
+// event role and their stats follow, rather than a nameless placeholder.
+describe('adding a Discord user who is not a register member', () => {
+  it('signs up an account the site has never seen, under the name given', async () => {
+    const eventId = await teamEvent(null);
+    await addDiscordParticipant(db(), eventId, '900000000000000010', 'Kaveri', 'yes', null, NOW);
+    const signups = await listSignups(db(), eventId);
+    expect(signups.map((s) => [s.discord_id, s.username, s.status])).toEqual([
+      ['900000000000000010', 'Kaveri', 'yes'],
+    ]);
+    // Not in the register: the roster marks them a guest.
+    expect(signups[0].is_member).not.toBe(1);
+  });
+
+  it('keeps the name the member cache already has', async () => {
+    const eventId = await teamEvent(null);
+    await upsertMember(db(), { discord_id: '900000000000000011', username: 'axinikk', avatar_hash: null }, NOW);
+    await addDiscordParticipant(db(), eventId, '900000000000000011', '', 'yes', null, NOW);
+    expect((await listSignups(db(), eventId))[0].username).toBe('axinikk');
+  });
+
+  it('puts them in a team, and moves an existing signup instead of duplicating it', async () => {
+    const eventId = await teamEvent(2);
+    const teamId = await adminCreateTeam(db(), eventId, 'Kapital', 'admin', NOW);
+    await addDiscordParticipant(db(), eventId, '900000000000000012', 'Kaveri', 'maybe', null, NOW);
+    await addDiscordParticipant(db(), eventId, '900000000000000012', 'Kaveri', 'maybe', teamId, NOW);
+    const signups = await listSignups(db(), eventId);
+    expect(signups.length).toBe(1);
+    expect(signups[0].event_team_id).toBe(teamId);
+    expect(signups[0].status).toBe('yes'); // a team means Going
+  });
+
+  it('refuses anything that is not a Discord account id', async () => {
+    const eventId = await teamEvent(null);
+    await expect(addDiscordParticipant(db(), eventId, 'manual-abc', 'Walk-in', 'yes', null, NOW)).rejects.toMatchObject({
+      code: 'bad_input',
+    });
+  });
+
+  it('refuses an unknown account with no name to go on', async () => {
+    const eventId = await teamEvent(null);
+    await expect(addDiscordParticipant(db(), eventId, '900000000000000013', '', 'yes', null, NOW)).rejects.toMatchObject({
+      code: 'bad_input',
+    });
   });
 });

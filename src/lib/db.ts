@@ -723,8 +723,6 @@ export async function addMemberParticipant(
   eventTeamId: number | null,
   now: number,
 ): Promise<string> {
-  const event = await getEvent(db, eventId);
-  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
   const member = await db
     .prepare("SELECT full_name, discord_id, discord_name FROM register WHERE id = ?1 AND status = 'member'")
     .bind(registerId)
@@ -733,7 +731,43 @@ export async function addMemberParticipant(
   if (!member.discord_id) {
     throw new RuleError('not_linked', 'That member has no Discord account linked yet, so there is nothing to add them as.');
   }
-  const discordId = member.discord_id;
+  return addDiscordParticipant(
+    db,
+    eventId,
+    member.discord_id,
+    member.discord_name ?? member.full_name,
+    status,
+    eventTeamId,
+    now,
+  );
+}
+
+// Board: a Discord account onto the roster, register member or not. The
+// friend who came along with a team and never signed up is this case —
+// the walk-in above would leave a placeholder holding no role, no ticks
+// and no stats, which never joins up with the person later. An existing
+// signup is moved rather than refused, since putting someone where they
+// belong is what this is for.
+export async function addDiscordParticipant(
+  db: D1Database,
+  eventId: number,
+  discordId: string,
+  name: string,
+  status: 'yes' | 'maybe',
+  eventTeamId: number | null,
+  now: number,
+): Promise<string> {
+  const event = await getEvent(db, eventId);
+  if (!event) throw new RuleError('missing', `No event with id ${eventId}.`);
+  // A Discord account id, never a "manual-..." placeholder one: those two
+  // kinds of participant are added by different forms on purpose.
+  if (!/^\d+$/.test(discordId)) throw new RuleError('bad_input', 'That is not a Discord account id.');
+  const cached = await db
+    .prepare('SELECT username FROM members WHERE discord_id = ?1')
+    .bind(discordId)
+    .first<{ username: string }>();
+  const display = (name ?? '').trim() || cached?.username || '';
+  if (!display) throw new RuleError('bad_input', 'That account needs a name.');
   const existing = await db
     .prepare('SELECT event_team_id FROM signups WHERE event_id = ?1 AND discord_id = ?2')
     .bind(eventId, discordId)
@@ -759,7 +793,7 @@ export async function addMemberParticipant(
        VALUES (?1, ?2, NULL, ?3)
        ON CONFLICT (discord_id) DO NOTHING`,
     )
-    .bind(discordId, member.discord_name ?? member.full_name, now)
+    .bind(discordId, display, now)
     .run();
   if (existing) {
     await db

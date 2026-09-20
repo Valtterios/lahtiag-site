@@ -398,6 +398,7 @@ export interface GuildMemberInfo {
   roles: string[];
   username: string; // the unique handle
   display: string; // server nick, else global name, else handle
+  bot?: boolean;
 }
 
 export type GuildMembers =
@@ -420,7 +421,7 @@ export async function listGuildMemberRoles(botToken: string, guildId: string): P
     if (response.status === 403) return { ok: false, reason: 'intent' };
     if (!response.ok) return { ok: false, reason: 'error' };
     const page_ = (await response.json()) as {
-      user: { id: string; username: string; global_name?: string | null };
+      user: { id: string; username: string; global_name?: string | null; bot?: boolean };
       nick?: string | null;
       roles: string[];
     }[];
@@ -430,6 +431,7 @@ export async function listGuildMemberRoles(botToken: string, guildId: string): P
         roles: m.roles,
         username: m.user.username,
         display: m.nick ?? m.user.global_name ?? m.user.username,
+        bot: m.user.bot === true,
       });
     }
     if (page_.length < 1000) break;
@@ -450,6 +452,37 @@ export async function fetchGuildMemberRoles(botToken: string, guildId: string, u
     if (!response.ok) return null;
     const member = (await response.json()) as { roles?: string[] };
     return member.roles ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// One account by id, asked of the bot: who they are in the server. Null
+// when nobody in the server has that id (a mistyped snowflake, or someone
+// who was never here), which the board's roster form reports as such.
+export async function fetchGuildMemberInfo(
+  botToken: string,
+  guildId: string,
+  userId: string,
+): Promise<GuildMemberInfo | null> {
+  try {
+    const response = await fetch(`${API}/guilds/${guildId}/members/${userId}`, {
+      headers: { authorization: `Bot ${botToken}` },
+    });
+    if (!response.ok) return null;
+    const member = (await response.json()) as {
+      user?: { username?: string; global_name?: string | null; bot?: boolean };
+      nick?: string | null;
+      roles?: string[];
+    };
+    const username = member.user?.username;
+    if (!username) return null;
+    return {
+      roles: member.roles ?? [],
+      username,
+      display: member.nick ?? member.user?.global_name ?? username,
+      bot: member.user?.bot === true,
+    };
   } catch {
     return null;
   }
